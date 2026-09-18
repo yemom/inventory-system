@@ -89,7 +89,7 @@ export default function NewPurchasePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Select
             label="Supplier / Vendor"
-            options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+            options={suppliers.map((s: any) => ({ value: s.id, label: s.name }))}
             value={supplierId}
             onChange={e => setSupplierId(e.target.value)}
             required
@@ -235,3 +235,4 @@ export default function NewPurchasePage() {
     </div>
   );
 }
+

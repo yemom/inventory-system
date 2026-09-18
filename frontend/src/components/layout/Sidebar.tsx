@@ -52,7 +52,7 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    label: 'Finance', icon: <DollarSign size={18} />, roles: ['ADMIN', 'ACCOUNTANT', 'MANAGER'],
+    label: 'Finance', icon: <DollarSign size={18} />, roles: ['SUPER_ADMIN', 'ACCOUNTANT', 'MANAGER'],
     children: [
       { label: 'Payments', href: '/finance/payments' },
       { label: 'Expenses', href: '/finance/expenses' },
@@ -62,7 +62,7 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    label: 'Reports', icon: <BarChart3 size={18} />, roles: ['ADMIN', 'ACCOUNTANT', 'MANAGER'],
+    label: 'Reports', icon: <BarChart3 size={18} />, roles: ['SUPER_ADMIN', 'ACCOUNTANT', 'MANAGER'],
     children: [
       { label: 'Sales Report', href: '/reports/sales' },
       { label: 'Inventory Report', href: '/reports/inventory' },
@@ -70,9 +70,9 @@ const navItems: NavItem[] = [
       { label: 'Purchase Report', href: '/reports/purchases' },
     ],
   },
-  { label: 'Users & Roles', href: '/users', icon: <Shield size={18} />, roles: ['ADMIN'] },
-  { label: 'Audit Logs', href: '/audit-logs', icon: <Activity size={18} />, roles: ['ADMIN', 'MANAGER'] },
-  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, roles: ['ADMIN'] },
+  { label: 'Staff Management', href: '/staff', icon: <Shield size={18} />, roles: ['SUPER_ADMIN'] },
+  { label: 'Audit Logs', href: '/audit-logs', icon: <Activity size={18} />, roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, roles: ['SUPER_ADMIN'] },
 ];
 
 const DEFAULT_EXPANDED = ['Inventory', 'Sales', 'Finance', 'Purchases'];

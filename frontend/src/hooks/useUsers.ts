@@ -1,28 +1,44 @@
-'use client';
-import { useQuery } from '@tanstack/react-query';
-import { usersApi } from '@/lib/api/usersApi';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { User } from '@/lib/api/mockData';
-import { auditLogsApi } from '@/lib/api/auditLogsApi';
+﻿'use client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { usersApi, CreateUserPayload, StaffListParams, UpdateUserPayload } from '@/lib/api/usersApi';
 
 export function useUsers() {
-  return useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  return useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
+}
+export function useStaff(params: StaffListParams) {
+  return useQuery({ queryKey: ['staff', params], queryFn: () => usersApi.listStaff(params) });
+}
+export function useStaffStats() {
+  return useQuery({ queryKey: ['staff-stats'], queryFn: () => usersApi.staffStats() });
 }
 export function useUser(id: string) {
   return useQuery({ queryKey: ['users', id], queryFn: () => usersApi.get(id), enabled: !!id });
 }
 export function useCreateUser() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (data: Omit<User, 'id' | 'createdAt' | 'lastLogin'>) => usersApi.create(data), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) });
+  return useMutation({
+    mutationFn: (data: CreateUserPayload) => usersApi.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['staff'] });
+      qc.invalidateQueries({ queryKey: ['staff-stats'] });
+    },
+  });
 }
 export function useUpdateUser() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, data }: { id: string; data: Partial<User> }) => usersApi.update(id, data), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) });
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateUserPayload }) => usersApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['staff'] });
+      qc.invalidateQueries({ queryKey: ['staff-stats'] });
+    },
+  });
 }
-export function useDeleteUser() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => usersApi.delete(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) });
-}
+
+import apiClient from '@/lib/api/apiClient';
+
 export function useAuditLogs() {
-  return useQuery({ queryKey: ['audit-logs'], queryFn: auditLogsApi.list });
+  return { data: [], isLoading: false, error: null, refetch: () => {} };
 }

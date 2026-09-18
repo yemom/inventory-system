@@ -74,11 +74,43 @@ export default function SignupPage() {
 
   const onSubmit = async (data: FormData) => {
     setServerError('');
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 1000));
-    // For demo: show success then redirect to login
-    setSuccess(true);
-    setTimeout(() => router.push('/login'), 2000);
+    try {
+      const nameParts = data.fullName.trim().split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : nameParts[0];
+
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8081/api/v1';
+      const res = await fetch(`${apiBase}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: data.username,
+          firstName,
+          lastName,
+          email: data.email,
+          phone: data.phone,
+          password: data.password,
+        }),
+      });
+
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        setServerError(body.message ?? 'Email or username already taken');
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setServerError(body.message ?? 'Registration failed. Please try again.');
+        return;
+      }
+
+      setSuccess(true);
+      setTimeout(() => router.push('/login'), 2500);
+    } catch (err: unknown) {
+      setServerError(
+        err instanceof Error ? err.message : 'Network error. Is the server running?'
+      );
+    }
   };
 
   if (success) {
@@ -89,7 +121,7 @@ export default function SignupPage() {
             <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={34} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Account Created!</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Your account has been created successfully. Redirecting you to login…</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Your account has been created successfully. You can now sign in with your credentials.</p>
           <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5">
             <div className="bg-emerald-500 h-1.5 rounded-full animate-[width_2s_linear]" style={{ width: '100%', transition: 'width 2s linear' }} />
           </div>

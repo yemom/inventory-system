@@ -1,15 +1,17 @@
 'use client';
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import apiClient from '@/lib/api/apiClient';
 
-export type Role = 'ADMIN' | 'MANAGER' | 'STOREKEEPER' | 'CASHIER' | 'ACCOUNTANT';
+export type Role = 'SUPER_ADMIN' | 'MANAGER' | 'SUPERVISOR' | 'STOREKEEPER' | 'INVENTORY_STAFF' | 'CASHIER' | 'ACCOUNTANT';
 
 export interface AuthUser {
-  id: string;
+  id: number;
   username: string;
   email: string;
   fullName: string;
   role: Role;
+  permissions: string[];
 }
 
 interface AuthContextProps {
@@ -17,89 +19,20 @@ interface AuthContextProps {
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
-
-// ---------------------------------------------------------------------------
-// Mock user database (development only)
-// Super admin credentials come from env vars read at startup.
-// ---------------------------------------------------------------------------
-const SUPER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL ?? '12yemom@gmail.com';
-const SUPER_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD ?? '12345678';
-
-interface MockUser {
-  id: string;
-  email: string;
-  username: string;
-  fullName: string;
-  password: string;
-  role: Role;
-}
-
-const mockUsers: MockUser[] = [
-  {
-    id: '1',
-    email: SUPER_ADMIN_EMAIL,
-    username: 'superadmin',
-    fullName: 'Super Admin',
-    password: SUPER_ADMIN_PASSWORD,
-    role: 'ADMIN',
-  },
-  {
-    id: '2',
-    email: 'admin@stockflow.com',
-    username: 'admin',
-    fullName: 'System Admin',
-    password: 'admin123',
-    role: 'ADMIN',
-  },
-  {
-    id: '3',
-    email: 'manager@stockflow.com',
-    username: 'manager',
-    fullName: 'Store Manager',
-    password: 'manager123',
-    role: 'MANAGER',
-  },
-  {
-    id: '4',
-    email: 'storekeeper@stockflow.com',
-    username: 'storekeeper',
-    fullName: 'Store Keeper',
-    password: 'store123',
-    role: 'STOREKEEPER',
-  },
-  {
-    id: '5',
-    email: 'cashier@stockflow.com',
-    username: 'cashier',
-    fullName: 'Cashier',
-    password: 'cashier123',
-    role: 'CASHIER',
-  },
-  {
-    id: '6',
-    email: 'accountant@stockflow.com',
-    username: 'accountant',
-    fullName: 'Accountant',
-    password: 'account123',
-    role: 'ACCOUNTANT',
-  },
-];
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Rehydrate session from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem('auth_user');
-      if (stored) {
-        setUser(JSON.parse(stored) as AuthUser);
-      }
+      if (stored) setUser(JSON.parse(stored) as AuthUser);
     } catch {
       localStorage.removeItem('auth_user');
     } finally {
@@ -107,32 +40,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  /**
-   * Login with username OR email, plus password.
-   */
   const login = async (identifier: string, password: string): Promise<void> => {
-    // Simulate network latency
-    await new Promise(r => setTimeout(r, 400));
-
-    const found = mockUsers.find(
-      u =>
-        (u.username.toLowerCase() === identifier.toLowerCase() ||
-          u.email.toLowerCase() === identifier.toLowerCase()) &&
-        u.password === password
-    );
-
-    if (!found) {
-      throw new Error('Invalid username/email or password.');
-    }
-
+    const response = await apiClient.post('/auth/login', { identifier, password });
+    const data = response.data;
+    
+    // Store JWT token
+    localStorage.setItem('auth_token', data.token);
+    
+    // Build user object from response
     const loggedIn: AuthUser = {
-      id: found.id,
-      username: found.username,
-      email: found.email,
-      fullName: found.fullName,
-      role: found.role,
+      id: data.id,
+      username: data.username,
+      email: data.email,
+      fullName: data.name,
+      role: data.role as Role,
+      permissions: data.permissions ?? [],
     };
-
     setUser(loggedIn);
     localStorage.setItem('auth_user', JSON.stringify(loggedIn));
     router.push('/dashboard');
@@ -140,12 +63,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     router.push('/login');
   };
 
+  const hasPermission = (permission: string): boolean => {
+    if (!user) return false;
+    if (user.role === 'SUPER_ADMIN') return true;
+    return user.permissions.includes(permission);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

@@ -27,8 +27,8 @@ export default function ReceivablesPage() {
   const [ref, setRef] = useState('');
 
   // Customers with positive outstanding balance
-  const debtors = customers.filter(c => c.balance > 0);
-  const totalReceivables = debtors.reduce((sum, c) => sum + c.balance, 0);
+  const debtors = customers.filter((c: any) => c.balance > 0);
+  const totalReceivables = debtors.reduce((sum: number, c: any) => sum + c.balance, 0);
 
   // Aging distribution mock
   const currentAging = totalReceivables * 0.55; // 0-30 days
@@ -214,3 +214,4 @@ export default function ReceivablesPage() {
     </div>
   );
 }
+

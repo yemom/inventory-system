@@ -1,18 +1,29 @@
-import { delay, customers as mockCustomers, type Customer } from './mockData';
-const store: Customer[] = [...mockCustomers];
+import apiClient from './apiClient';
+
+export interface CreateCustomerPayload {
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  customerType?: string;
+  creditLimit?: number;
+}
+
 export const customersApi = {
-  list: async () => { await delay(300); return [...store]; },
-  get: async (id: string) => { await delay(200); return store.find(c => c.id === id); },
-  create: async (data: Omit<Customer, 'id' | 'createdAt'>) => {
-    await delay(400);
-    const c: Customer = { ...data, id: 'c' + Date.now(), createdAt: new Date().toISOString().slice(0, 10) };
-    store.push(c); return c;
+  list: async (page = 0, size = 20, search = '') => {
+    const res = await apiClient.get('/customers', { params: { page, size, search } });
+    return res.data;
   },
-  update: async (id: string, data: Partial<Customer>) => {
-    await delay(400);
-    const idx = store.findIndex(c => c.id === id);
-    if (idx === -1) throw new Error('Not found');
-    store[idx] = { ...store[idx], ...data }; return store[idx];
+  get: async (id: number | string) => {
+    const res = await apiClient.get(`/customers/${id}`);
+    return res.data;
   },
-  delete: async (id: string) => { await delay(300); const idx = store.findIndex(c => c.id === id); if (idx !== -1) store.splice(idx, 1); },
+  create: async (data: CreateCustomerPayload) => {
+    const res = await apiClient.post('/customers', data);
+    return res.data;
+  },
+  update: async (id: number | string, data: Partial<CreateCustomerPayload & { status: string }>) => {
+    const res = await apiClient.put(`/customers/${id}`, data);
+    return res.data;
+  },
 };

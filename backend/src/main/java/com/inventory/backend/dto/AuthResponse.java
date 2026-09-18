@@ -1,17 +1,15 @@
 package com.inventory.backend.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
+import java.util.List;
 
-@Data
-@Builder
-@AllArgsConstructor
-@NoArgsConstructor
+@Data @Builder @AllArgsConstructor @NoArgsConstructor
 public class AuthResponse {
     private String token;
+    private Long id;
+    private String username;
     private String email;
     private String name;
     private String role;
+    private List<String> permissions;
 }

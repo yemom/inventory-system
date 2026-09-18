@@ -73,7 +73,7 @@ export default function PurchasesReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-              {suppliers.map(s => (
+              {suppliers.map((s: any) => (
                 <tr key={s.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                   <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">{s.name}</td>
                   <td className="p-3 text-gray-500">{s.contact} ({s.phone})</td>
@@ -93,3 +93,4 @@ export default function PurchasesReportPage() {
     </div>
   );
 }
+

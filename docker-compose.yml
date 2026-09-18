@@ -15,7 +15,7 @@ services:
     volumes:
       - postgres_stockflow_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stockflow -d stockflow_db"]
+      test: [ "CMD-SHELL", "pg_isready -U stockflow -d stockflow_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,6 +36,11 @@ services:
       DATABASE_PASSWORD: stockflowpassword
       JWT_SECRET: 94f6c46cb32145b0a7019f3900350d32b845187740e5dcbd41369d71c897f262
       SERVER_PORT: 8080
+      SUPER_ADMIN_USERNAME: superadmin
+      SUPER_ADMIN_EMAIL: 12yemom@gmail.com
+      SUPER_ADMIN_PASSWORD: Fekerte@zegeye1221
+      SUPER_ADMIN_FIRST_NAME: Super
+      SUPER_ADMIN_LAST_NAME: Admin
     ports:
       - "8081:8080" # Host port 8081 to avoid conflicts
 
@@ -44,6 +49,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
     container_name: stockflow_frontend
     restart: unless-stopped
     depends_on:
@@ -52,9 +59,9 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_APP_NAME: StockFlow
       NEXT_PUBLIC_APP_URL: http://localhost:3005
-      NEXT_PUBLIC_API_BASE_URL: http://backend:8080/api
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
       NEXT_PUBLIC_SUPER_ADMIN_EMAIL: 12yemom@gmail.com
-      NEXT_PUBLIC_SUPER_ADMIN_PASSWORD: "12345678"
+      NEXT_PUBLIC_SUPER_ADMIN_PASSWORD: Fekerte@zegeye1221
     ports:
       - "3005:3000" # Expose production frontend on http://localhost:3005
 

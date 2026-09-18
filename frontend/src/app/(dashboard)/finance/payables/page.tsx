@@ -27,8 +27,8 @@ export default function PayablesPage() {
   const [ref, setRef] = useState('');
 
   // Suppliers with positive balance
-  const creditors = suppliers.filter(s => s.balance > 0);
-  const totalPayables = creditors.reduce((sum, s) => sum + s.balance, 0);
+  const creditors = suppliers.filter((s: any) => s.balance > 0);
+  const totalPayables = creditors.reduce((sum: number, s: any) => sum + s.balance, 0);
 
   const openPaySupplier = (s: Supplier) => {
     setSelectedSupplier(s);
@@ -177,3 +177,4 @@ export default function PayablesPage() {
     </div>
   );
 }
+

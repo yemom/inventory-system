@@ -1,10 +1,9 @@
 'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { suppliersApi } from '@/lib/api/suppliersApi';
-import type { Supplier } from '@/lib/api/mockData';
+import { suppliersApi, CreateSupplierPayload } from '@/lib/api/suppliersApi';
 
 export function useSuppliers() {
-  return useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
+  return useQuery({ queryKey: ['suppliers'], queryFn: () => suppliersApi.list() });
 }
 
 export function useSupplier(id: string) {
@@ -14,7 +13,7 @@ export function useSupplier(id: string) {
 export function useCreateSupplier() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Omit<Supplier, 'id' | 'createdAt'>) => suppliersApi.create(data),
+    mutationFn: (data: CreateSupplierPayload) => suppliersApi.create(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
   });
 }
@@ -22,15 +21,7 @@ export function useCreateSupplier() {
 export function useUpdateSupplier() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Supplier> }) => suppliersApi.update(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
-  });
-}
-
-export function useDeleteSupplier() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => suppliersApi.delete(id),
+    mutationFn: ({ id, data }: { id: string; data: any }) => suppliersApi.update(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
   });
 }

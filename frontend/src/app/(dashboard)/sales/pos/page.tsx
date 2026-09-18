@@ -110,7 +110,7 @@ export default function POSPage() {
       toast('warning', 'Insufficient payment', 'Tendered amount is less than total.');
     }
 
-    const customerObj = customers.find(c => c.id === selectedCustomerId);
+    const customerObj = customers.find((c: any) => c.id === selectedCustomerId);
     const reference = `SALE-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const orderData = {
@@ -251,7 +251,7 @@ export default function POSPage() {
                 className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-gray-800 dark:text-gray-200 focus:outline-none"
               >
                 <option value="walk-in">Walk-in Customer</option>
-                {customers.map(c => (
+                {customers.map((c: any) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -489,3 +489,5 @@ export default function POSPage() {
     </div>
   );
 }
+
+
