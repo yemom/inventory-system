@@ -13,7 +13,7 @@ export default function AuditLogsPage() {
     CREATE: 'success', UPDATE: 'info', DELETE: 'danger', LOGIN: 'default', APPROVE: 'warning',
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'timestamp', label: 'Timestamp', render: v => new Date(String(v)).toLocaleString() },
     { key: 'username', label: 'User', render: v => <span className="font-medium">{String(v)}</span> },
     { key: 'action', label: 'Action', render: v => <Badge variant={actionColors[String(v)] ?? 'default'}>{String(v)}</Badge> },

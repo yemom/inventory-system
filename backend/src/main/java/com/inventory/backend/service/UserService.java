@@ -174,7 +174,7 @@ public class UserService {
         if ("SUPER_ADMIN".equals(roleName(u))) {
             throw new IllegalArgumentException("Super Admin accounts cannot be removed from staff management.");
         }
-        u.setDeleted(true);
+        u.setIsDeleted(true);
         u.setDeletedAt(LocalDateTime.now());
         u.setDeletedBy(actor != null ? actor.getId() : null);
         u.setStatus(UserStatus.INACTIVE);
@@ -217,7 +217,7 @@ public class UserService {
                 .role(u.getRole() != null ? u.getRole().getName() : "UNASSIGNED")
                 .permissions(permissions.stream().map(Permission::getName).sorted().collect(Collectors.toList()))
                 .status(u.getStatus().name())
-                .passwordResetRequired(u.isPasswordResetRequired()).isDeleted(u.isDeleted())
+                .passwordResetRequired(u.getPasswordResetRequired()).isDeleted(u.getIsDeleted())
                 .lastLoginAt(u.getLastLoginAt()).createdAt(u.getCreatedAt()).updatedAt(u.getUpdatedAt())
                 .build();
     }

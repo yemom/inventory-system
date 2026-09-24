@@ -15,7 +15,7 @@ import { Plus } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { Product } from '@/lib/api/mockData';
+import type { Product } from '@/lib/api/productsApi';
 
 const schema = z.object({
   productId: z.string().min(1, 'Product required'),
@@ -43,7 +43,7 @@ export default function AdjustmentsPage() {
     }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'name', label: 'Product', render: (_, row) => (
       <div><p className="font-medium">{String(row.name)}</p><p className="text-xs text-gray-400">{String(row.sku)}</p></div>
     )},
@@ -70,7 +70,7 @@ export default function AdjustmentsPage() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Select
             label="Product"
-            options={products.map(p => ({ value: p.id, label: `${p.name} (${p.quantity} ${p.unit})` }))}
+            options={products.map((p: any) => ({ value: p.id, label: `${p.name} (${p.quantity} ${p.unit})` }))}
             placeholder="Select product"
             error={errors.productId?.message}
             {...register('productId')}

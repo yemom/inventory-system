@@ -39,8 +39,8 @@ export default function DashboardPage() {
   const totalPurchases = purchases?.reduce((s, o) => s + o.total, 0) ?? 0;
   const totalExpenses = expenses?.reduce((s, e) => s + e.amount, 0) ?? 0;
   const grossProfit = totalSales - totalPurchases - totalExpenses;
-  const lowStock = products?.filter(p => p.quantity <= p.reorderLevel && p.quantity > 0) ?? [];
-  const outOfStock = products?.filter(p => p.quantity === 0) ?? [];
+  const lowStock = products?.filter((p: any) => p.quantity <= p.reorderLevel && p.quantity > 0) ?? [];
+  const outOfStock = products?.filter((p: any) => p.quantity === 0) ?? [];
   const recentSales = (sales ?? []).slice(0, 5);
   const loading = loadingProducts || loadingSales || loadingPurchases;
 
@@ -122,7 +122,7 @@ export default function DashboardPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-800/50">
                 <tr>
-                  {['Reference', 'Customer', 'Date', 'Total', 'Status'].map(h => (
+                  {['Reference', 'Customer', 'Date', 'Total', 'Status'].map((h: any) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -132,8 +132,8 @@ export default function DashboardPage() {
                   <tr key={sale.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="px-4 py-3 font-mono text-xs text-blue-600">{sale.reference}</td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{sale.customerName}</td>
-                    <td className="px-4 py-3 text-gray-500">{formatDate(sale.date)}</td>
-                    <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">{formatCurrency(sale.total)}</td>
+                    <td className="px-4 py-3 text-gray-500">{formatDate(sale.date || '')}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">{formatCurrency(sale.total || 0)}</td>
                     <td className="px-4 py-3">
                       <Badge variant={sale.status === 'delivered' ? 'success' : sale.status === 'cancelled' ? 'danger' : sale.status === 'confirmed' ? 'info' : 'default'}>
                         {sale.status}
@@ -157,7 +157,7 @@ export default function DashboardPage() {
             {outOfStock.length > 0 && (
               <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
                 <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-2">OUT OF STOCK ({outOfStock.length})</p>
-                {outOfStock.map(p => (
+                {outOfStock.map((p: any) => (
                   <div key={p.id} className="flex justify-between items-center text-sm py-1">
                     <span className="text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
                     <Badge variant="danger">0 {p.unit}</Badge>
@@ -168,7 +168,7 @@ export default function DashboardPage() {
             {lowStock.length > 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">LOW STOCK ({lowStock.length})</p>
-                {lowStock.slice(0, 5).map(p => (
+                {lowStock.slice(0, 5).map((p: any) => (
                   <div key={p.id} className="flex justify-between items-center text-sm py-1">
                     <span className="text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
                     <Badge variant="warning">{p.quantity} {p.unit}</Badge>

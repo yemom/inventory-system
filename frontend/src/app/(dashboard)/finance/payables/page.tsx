@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useCreatePayment } from '@/hooks/useFinance';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Supplier } from '@/lib/api/mockData';
+import type { Supplier } from '@/lib/api/suppliersApi';
 
 export default function PayablesPage() {
   const { data: suppliers = [], isLoading, refetch } = useSuppliers();
@@ -59,7 +59,7 @@ export default function PayablesPage() {
     }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { 
       key: 'name', 
       label: 'Supplier / Vendor', 

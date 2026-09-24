@@ -65,10 +65,12 @@ public class User {
     private LocalDateTime lastLoginAt;
 
     @Builder.Default
-    private boolean passwordResetRequired = false;
+    @Column(columnDefinition = "boolean default false")
+    private Boolean passwordResetRequired = false;
 
     @Builder.Default
-    private boolean isDeleted = false;
+    @Column(columnDefinition = "boolean default false")
+    private Boolean isDeleted = false;
 
     private LocalDateTime deletedAt;
 

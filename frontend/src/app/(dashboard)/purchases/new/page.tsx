@@ -9,7 +9,7 @@ import Select from '@/components/ui/Select';
 import { formatCurrency } from '@/lib/utils';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
-import { warehouses } from '@/lib/api/mockData';
+import { useWarehouses } from '@/hooks/useWarehouses';
 import { useToast } from '@/components/ui/ToastProvider';
 
 interface PurchaseLine {
@@ -24,6 +24,7 @@ export default function NewPurchasePage() {
   const { toast } = useToast();
   const { data: suppliers = [] } = useSuppliers();
   const { data: products = [] } = useProducts();
+  const { data: warehouses = [] } = useWarehouses();
 
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || '');
   const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id || '');
@@ -96,7 +97,7 @@ export default function NewPurchasePage() {
           />
           <Select
             label="Destination Warehouse"
-            options={warehouses.map(w => ({ value: w.id, label: `${w.name} (${w.code})` }))}
+            options={warehouses.map((w: any) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
             value={warehouseId}
             onChange={e => setWarehouseId(e.target.value)}
             required
@@ -139,7 +140,7 @@ export default function NewPurchasePage() {
                         value={line.productId}
                         onChange={e => updateLine(idx, 'productId', e.target.value)}
                       >
-                        {products.map(p => (
+                        {products.map((p: any) => (
                           <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
                         ))}
                       </select>

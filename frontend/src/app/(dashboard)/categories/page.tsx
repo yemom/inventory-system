@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, Tag, FolderTree } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -9,104 +9,127 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { categories as initialCategories, Category } from '@/lib/api/mockData';
+import { categoriesApi, Category } from '@/lib/api/categoriesApi';
 import { useToast } from '@/components/ui/ToastProvider';
 
 export default function CategoriesPage() {
   const { toast } = useToast();
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [parentCategory, setParentCategory] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [parentId, setParentId] = useState<string>('');
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await categoriesApi.list();
+      setCategories(data);
+    } catch (err: any) {
+      toast('error', 'Failed to fetch', err.message || 'Error loading categories');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
 
   const openCreate = () => {
     setEditing(null);
     setName('');
     setDescription('');
-    setParentCategory('');
-    setStatus('active');
+    setParentId('');
     setModalOpen(true);
   };
 
   const openEdit = (cat: Category) => {
     setEditing(cat);
     setName(cat.name);
-    setDescription(cat.description);
-    setParentCategory(cat.parentCategory || '');
-    setStatus(cat.status);
+    setDescription(cat.description || '');
+    setParentId(cat.parentId ? String(cat.parentId) : '');
     setModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editing) {
-      setCategories(prev => prev.map(c => c.id === editing.id ? {
-        ...c, name, description, parentCategory: parentCategory || undefined, status
-      } : c));
-      toast('success', 'Category updated', `${name} modified successfully.`);
-    } else {
-      const newCat: Category = {
-        id: `cat-${Date.now()}`,
+    try {
+      const payload = {
         name,
         description,
-        parentCategory: parentCategory || undefined,
-        productCount: 0,
-        status
+        parentId: parentId ? Number(parentId) : null
       };
-      setCategories([newCat, ...categories]);
-      toast('success', 'Category created', `${name} added to catalog.`);
+
+      if (editing) {
+        await categoriesApi.update(editing.id, payload);
+        toast('success', 'Category updated', `${name} modified successfully.`);
+      } else {
+        await categoriesApi.create(payload);
+        toast('success', 'Category created', `${name} added to catalog.`);
+      }
+      setModalOpen(false);
+      fetchCategories();
+    } catch (err: any) {
+      toast('error', 'Save Failed', err.message || 'An error occurred.');
     }
-    setModalOpen(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    setCategories(prev => prev.filter(c => c.id !== deleteTarget.id));
-    toast('success', 'Category deleted', `${deleteTarget.name} removed.`);
-    setDeleteTarget(null);
+    try {
+      await categoriesApi.delete(deleteTarget.id);
+      toast('success', 'Category deleted', `${deleteTarget.name} removed.`);
+      fetchCategories();
+    } catch (err: any) {
+      toast('error', 'Delete Failed', err.message || 'An error occurred.');
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { 
       key: 'name', 
       label: 'Category Name', 
-      render: (_, row) => (
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-            <Tag size={15} />
+      render: (_, row) => {
+        const pId = row.parentId as number | undefined;
+        const parentName = categories.find(c => c.id === pId)?.name;
+        return (
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <Tag size={15} />
+            </div>
+            <div>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{String(row.name)}</span>
+              {parentName && (
+                <span className="block text-[11px] text-gray-400">Subcategory of: {parentName}</span>
+              )}
+            </div>
           </div>
-          <div>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">{String(row.name)}</span>
-            {Boolean(row.parentCategory) && (
-              <span className="block text-[11px] text-gray-400">Subcategory of: {String(row.parentCategory)}</span>
-            )}
-          </div>
-        </div>
-      )
+        );
+      }
     },
-    { key: 'description', label: 'Description', render: v => <span className="text-gray-500 text-xs">{String(v)}</span> },
+    { key: 'description', label: 'Description', render: v => <span className="text-gray-500 text-xs">{v ? String(v) : '-'}</span> },
     { 
-      key: 'productCount', 
-      label: 'Assigned Products', 
-      render: v => <span className="font-mono text-xs font-bold bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{String(v)} items</span> 
-    },
-    { 
-      key: 'status', 
-      label: 'Status', 
-      render: v => <Badge variant={v === 'active' ? 'success' : 'default'}>{String(v)}</Badge> 
-    },
+      key: 'id', 
+      label: 'Subcategories', 
+      render: (_, row) => {
+        const subs = (row.subCategories as any[])?.length || 0;
+        return <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{subs} items</span>;
+      }
+    }
   ];
 
   return (
     <div className="space-y-4">
       <PageHeader 
         title="Product Categories" 
-        subtitle="Organize your store inventory hierarchy and category-based reports"
+        subtitle="Organize your store inventory hierarchy"
         actions={
           <Button onClick={openCreate}>
             <Plus size={15} /> Add Category
@@ -119,6 +142,7 @@ export default function CategoriesPage() {
         data={categories as unknown as Record<string, unknown>[]}
         searchable
         searchPlaceholder="Search product categories..."
+        loading={loading}
         actions={row => (
           <div className="flex justify-end gap-1">
             <button 
@@ -157,19 +181,10 @@ export default function CategoriesPage() {
             label="Parent Category (Optional for nesting)"
             options={[
               { value: '', label: 'None (Top-level Category)' },
-              ...categories.filter(c => c.id !== editing?.id).map(c => ({ value: c.name, label: c.name }))
+              ...categories.filter(c => c.id !== editing?.id).map((c: any) => ({ value: String(c.id), label: c.name }))
             ]}
-            value={parentCategory}
-            onChange={e => setParentCategory(e.target.value)}
-          />
-          <Select
-            label="Status"
-            options={[
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' },
-            ]}
-            value={status}
-            onChange={e => setStatus(e.target.value as any)}
+            value={parentId}
+            onChange={e => setParentId(e.target.value)}
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>

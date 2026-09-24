@@ -110,14 +110,14 @@ export default function FinancialReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-              {payments.map(p => (
+              {payments.map((p: any) => (
                 <tr key={p.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                   <td className="p-3 font-mono font-semibold">{p.reference}</td>
-                  <td className="p-3 text-gray-500">{formatDate(p.date)}</td>
+                  <td className="p-3 text-gray-500">{formatDate(p.date || '')}</td>
                   <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{p.party} ({p.partyType})</td>
                   <td className="p-3 capitalize">{p.method}</td>
                   <td className={`p-3 text-right font-bold ${p.type === 'received' ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {p.type === 'received' ? '+' : '-'}{formatCurrency(p.amount)}
+                    {p.type === 'received' ? '+' : '-'}{formatCurrency(p.amount || 0)}
                   </td>
                 </tr>
               ))}

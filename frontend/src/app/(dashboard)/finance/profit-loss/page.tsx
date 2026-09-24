@@ -21,9 +21,10 @@ export default function ProfitLossPage() {
   const totalRevenue = sales.reduce((acc, s) => acc + (s.status !== 'cancelled' ? s.total : 0), 0);
   
   // Approximate COGS from sales line items or default 68% weighted average
-  const totalCogs = sales.reduce((acc, s) => {
+  const totalCogs = sales.reduce((acc: number, s: any) => {
     if (s.status === 'cancelled') return acc;
-    const orderCost = s.items.reduce((itemSum, item) => itemSum + (item.quantity * item.unitPrice * 0.72), 0);
+    const items: any[] = s.items || [];
+    const orderCost = items.reduce((itemSum: number, item: any) => itemSum + (item.quantity * item.unitPrice * 0.72), 0);
     return acc + orderCost;
   }, 0);
 

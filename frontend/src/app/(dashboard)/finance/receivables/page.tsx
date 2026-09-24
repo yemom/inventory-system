@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useCreatePayment } from '@/hooks/useFinance';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Customer } from '@/lib/api/mockData';
+import type { Customer } from '@/lib/api/customersApi';
 
 export default function ReceivablesPage() {
   const { data: customers = [], isLoading, refetch } = useCustomers();
@@ -65,7 +65,7 @@ export default function ReceivablesPage() {
     }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { 
       key: 'name', 
       label: 'Customer', 

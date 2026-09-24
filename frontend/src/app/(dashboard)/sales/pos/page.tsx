@@ -13,7 +13,8 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useProducts } from '@/hooks/useProducts';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Product, Customer } from '@/lib/api/mockData';
+import type { Product } from '@/lib/api/productsApi';
+import type { Customer } from '@/lib/api/customersApi';
 
 interface CartItem {
   product: Product;
@@ -36,7 +37,7 @@ export default function POSPage() {
   const [tenderedAmount, setTenderedAmount] = useState<string>('');
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
 
-  const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
+  const categories = ['All', ...Array.from(new Set(products.map((p: any) => p.category)))];
 
   const filteredProducts = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -218,7 +219,7 @@ export default function POSPage() {
 
                     <div className="mt-3 flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/50">
                       <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                        {formatCurrency(product.sellingPrice)}
+                        {formatCurrency(product.sellingPrice || 0)}
                       </span>
                       {inCart && (
                         <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
@@ -323,7 +324,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-600 dark:text-gray-400">Discount (%)</span>
               <div className="flex items-center gap-1">
-                {[0, 5, 10, 15].map(d => (
+                {[0, 5, 10, 15].map((d: any) => (
                   <button
                     key={d}
                     onClick={() => setDiscountPercent(d)}
@@ -363,7 +364,7 @@ export default function POSPage() {
                 { id: 'cash', label: 'Cash', icon: Banknote },
                 { id: 'bank', label: 'Bank', icon: CreditCard },
                 { id: 'mobile', label: 'Mobile', icon: Smartphone },
-              ].map(m => {
+              ].map((m: any) => {
                 const Icon = m.icon;
                 return (
                   <button

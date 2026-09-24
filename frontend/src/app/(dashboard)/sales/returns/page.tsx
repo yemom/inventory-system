@@ -9,16 +9,18 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { orderReturns, products, OrderReturn } from '@/lib/api/mockData';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useProducts } from '@/hooks/useProducts';
+
 
 export default function SalesReturnsPage() {
   const { toast } = useToast();
-  const [returnsList, setReturnsList] = useState<OrderReturn[]>(
-    orderReturns.filter(r => r.type === 'customer_return')
+  const { data: products = [] } = useProducts();
+  const [returnsList, setReturnsList] = useState<any[]>(
+    ([] as any[]).filter(r => r.type === 'customer_return')
   );
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<OrderReturn | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
 
   const [formRef, setFormRef] = useState('');
   const [formCustomer, setFormCustomer] = useState('');
@@ -55,11 +57,11 @@ export default function SalesReturnsPage() {
     setModalOpen(false);
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'reference', label: 'Return Ref', render: v => <span className="font-mono text-xs font-bold text-blue-600">{String(v)}</span> },
     { key: 'originalReference', label: 'Invoice Ref', render: v => <span className="font-mono text-xs text-gray-500">{String(v)}</span> },
     { key: 'partyName', label: 'Customer', render: v => <span className="font-medium text-gray-900 dark:text-gray-100">{String(v)}</span> },
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'amount', label: 'Refund Amount', render: v => <span className="font-semibold text-red-600">{formatCurrency(Number(v))}</span> },
     { key: 'reason', label: 'Reason', render: v => <span className="text-xs text-gray-500">{String(v)}</span> },
     { 
@@ -118,7 +120,7 @@ export default function SalesReturnsPage() {
           />
           <Select
             label="Returned Product"
-            options={products.map(p => ({ value: p.id, label: `${p.name} (${formatCurrency(p.sellingPrice)})` }))}
+            options={products.map((p: any) => ({ value: p.id, label: `${p.name} (${formatCurrency(p.sellingPrice || 0)})` }))}
             value={formProduct}
             onChange={e => setFormProduct(e.target.value)}
           />
@@ -160,8 +162,8 @@ export default function SalesReturnsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div><span className="text-gray-400 block text-xs">Customer</span><strong>{selectedReturn.partyName}</strong></div>
               <div><span className="text-gray-400 block text-xs">Original Invoice</span><strong>{selectedReturn.originalReference}</strong></div>
-              <div><span className="text-gray-400 block text-xs">Date</span>{formatDate(selectedReturn.date)}</div>
-              <div><span className="text-gray-400 block text-xs">Refund Total</span><strong className="text-red-600">{formatCurrency(selectedReturn.amount)}</strong></div>
+              <div><span className="text-gray-400 block text-xs">Date</span>{formatDate(selectedReturn.date || '')}</div>
+              <div><span className="text-gray-400 block text-xs">Refund Total</span><strong className="text-red-600">{formatCurrency(selectedReturn.amount || 0)}</strong></div>
             </div>
             <div>
               <span className="text-gray-400 block text-xs mb-1">Reason</span>

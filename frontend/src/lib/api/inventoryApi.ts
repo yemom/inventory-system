@@ -1,23 +1,54 @@
-import { delay, stockMovements, transfers, type StockMovement, type Product, type Transfer } from './mockData';
-import { productStore } from './productsApi';
-const movementsStore: StockMovement[] = [...stockMovements];
-const transfersStore: Transfer[] = [...transfers];
+import apiClient from './apiClient';
+
+export interface StockMovement {
+  id: number;
+  productId: number;
+  productName?: string;
+  productSku?: string;
+  warehouseId?: number;
+  warehouseName?: string;
+  type: 'IN' | 'OUT' | 'TRANSFER' | 'ADJUSTMENT';
+  quantity: number;
+  reference?: string;
+  notes?: string;
+  createdBy?: string;
+  createdAt?: string;
+}
 
 export const inventoryApi = {
-  listProducts: async (): Promise<Product[]> => { await delay(300); return [...productStore]; },
-  listMovements: async (): Promise<StockMovement[]> => { await delay(300); return [...movementsStore].sort((a, b) => b.date.localeCompare(a.date)); },
-  getLowStock: async (): Promise<Product[]> => { await delay(300); return productStore.filter(p => p.quantity <= p.reorderLevel); },
-  getOutOfStock: async (): Promise<Product[]> => { await delay(300); return productStore.filter(p => p.quantity === 0); },
-  adjust: async (productId: string, qty: number, note: string): Promise<void> => {
-    await delay(400);
-    const p = productStore.find(p => p.id === productId);
-    if (p) { p.quantity += qty; }
-    movementsStore.push({ id: 'sm' + Date.now(), date: new Date().toISOString().slice(0, 10), type: 'adjustment', productId, productName: p?.name ?? '', quantity: Math.abs(qty), direction: qty >= 0 ? 'in' : 'out', reference: 'ADJ-' + Date.now(), note });
+  listProducts: async (): Promise<any[]> => {
+    const res = await apiClient.get('/products');
+    return res.data.data.content || [];
   },
-  listTransfers: async (): Promise<Transfer[]> => { await delay(300); return [...transfersStore]; },
-  createTransfer: async (data: Omit<Transfer, 'id'>): Promise<Transfer> => {
-    await delay(400);
-    const t: Transfer = { ...data, id: 'tr' + Date.now() };
-    transfersStore.push(t); return t;
+  listMovements: async (): Promise<any[]> => {
+    const res = await apiClient.get('/inventory/movements');
+    return res.data.data.content || [];
   },
+  getLowStock: async (): Promise<any[]> => {
+    const res = await apiClient.get('/products');
+    const products = res.data.data.content || [];
+    return products.filter((p: any) => p.minStockLevel && p.minStockLevel > 0 && p.minStockLevel <= (p.reorderLevel || 10));
+  },
+  listTransfers: async (): Promise<any[]> => {
+    const res = await apiClient.get('/inventory/movements');
+    const movements = res.data.data.content || [];
+    return movements.filter((m: any) => m.type === 'TRANSFER');
+  },
+  adjust: async (productId: number | string, quantity: number, notes: string): Promise<any> => {
+    const res = await apiClient.post('/inventory/movements', {
+      productId,
+      type: 'ADJUSTMENT',
+      quantity,
+      notes
+    });
+    return res.data.data;
+  },
+  recordMovement: async (data: Partial<StockMovement>): Promise<any> => {
+    const res = await apiClient.post('/inventory/movements', data);
+    return res.data.data;
+  },
+  createTransfer: async (data: any): Promise<any> => {
+    const res = await apiClient.post('/inventory/transfers', data);
+    return res.data?.data || res.data;
+  }
 };

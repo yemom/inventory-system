@@ -12,7 +12,7 @@ import { useTransfers, useInventory } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/ToastProvider';
 import { formatDate } from '@/lib/utils';
 import { Plus } from 'lucide-react';
-import type { Transfer } from '@/lib/api/mockData';
+import type { StockMovement } from '@/lib/api/inventoryApi';
 import { inventoryApi } from '@/lib/api/inventoryApi';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -49,9 +49,9 @@ export default function TransfersPage() {
     setSubmitting(false);
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs text-blue-600">{String(v)}</span> },
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'fromLocation', label: 'From' },
     { key: 'toLocation', label: 'To' },
     { key: 'items', label: 'Items', render: v => `${(v as []).length} item(s)` },
@@ -68,9 +68,9 @@ export default function TransfersPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Stock Transfer">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select label="From Location" options={LOCATIONS.map(l => ({ value: l, label: l }))} placeholder="Select source" value={form.from} onChange={e => setForm(f => ({ ...f, from: e.target.value }))} />
-          <Select label="To Location" options={LOCATIONS.map(l => ({ value: l, label: l }))} placeholder="Select destination" value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} />
-          <Select label="Product" options={products.map(p => ({ value: p.id, label: `${p.name} (${p.quantity} available)` }))} placeholder="Select product" value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))} />
+          <Select label="From Location" options={LOCATIONS.map((l: any) => ({ value: l, label: l }))} placeholder="Select source" value={form.from} onChange={e => setForm(f => ({ ...f, from: e.target.value }))} />
+          <Select label="To Location" options={LOCATIONS.map((l: any) => ({ value: l, label: l }))} placeholder="Select destination" value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} />
+          <Select label="Product" options={products.map((p: any) => ({ value: p.id, label: `${p.name} (${p.quantity} available)` }))} placeholder="Select product" value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))} />
           <Input label="Quantity" type="number" min="1" value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} />
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>

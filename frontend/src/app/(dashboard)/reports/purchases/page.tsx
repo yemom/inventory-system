@@ -79,7 +79,7 @@ export default function PurchasesReportPage() {
                   <td className="p-3 text-gray-500">{s.contact} ({s.phone})</td>
                   <td className="p-3 text-center font-mono">{s.totalOrders}</td>
                   <td className="p-3 text-right font-bold text-red-600 dark:text-red-400">
-                    {formatCurrency(s.balance)}
+                    {formatCurrency(s.balance || 0)}
                   </td>
                   <td className="p-3 text-center">
                     <Badge variant={s.status === 'active' ? 'success' : 'default'}>{s.status}</Badge>

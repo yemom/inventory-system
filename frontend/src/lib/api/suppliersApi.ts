@@ -1,3 +1,4 @@
+export interface Supplier { id: string | number; [key: string]: any; }
 import apiClient from './apiClient';
 
 export interface CreateSupplierPayload {

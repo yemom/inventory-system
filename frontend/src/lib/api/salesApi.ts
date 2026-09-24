@@ -1,18 +1,39 @@
-import { delay, saleOrders as mockSales, type SaleOrder } from './mockData';
-const store: SaleOrder[] = [...mockSales];
+﻿import apiClient from './apiClient';
+
+export interface SaleOrder {
+  id: string | number;
+  orderNumber?: string;
+  reference?: string;
+  customerName: string;
+  totalAmount?: number;
+  total?: number; // fallback mapping
+  status: string;
+  paymentStatus?: string;
+  paid?: number;
+  date?: string;
+  createdAt?: string;
+  [key: string]: any;
+}
+
 export const salesApi = {
-  list: async () => { await delay(300); return [...store]; },
-  get: async (id: string) => { await delay(200); return store.find(s => s.id === id); },
-  create: async (data: Omit<SaleOrder, 'id'>) => {
-    await delay(400);
-    const s: SaleOrder = { ...data, id: 'so' + Date.now() };
-    store.push(s); return s;
+  list: async (): Promise<any[]> => {
+    const res = await apiClient.get('/sales');
+    return res.data?.data?.content || res.data?.data || [];
   },
-  update: async (id: string, data: Partial<SaleOrder>) => {
-    await delay(400);
-    const idx = store.findIndex(s => s.id === id);
-    if (idx === -1) throw new Error('Not found');
-    store[idx] = { ...store[idx], ...data }; return store[idx];
+  get: async (id: string | number): Promise<any> => {
+    const res = await apiClient.get(`/sales/${id}`);
+    return res.data?.data || res.data;
   },
-  delete: async (id: string) => { await delay(300); const idx = store.findIndex(s => s.id === id); if (idx !== -1) store.splice(idx, 1); },
+  create: async (data: any): Promise<any> => {
+    const res = await apiClient.post('/sales', data);
+    return res.data?.data || res.data;
+  },
+  update: async (id: string | number, data: any): Promise<any> => {
+    const res = await apiClient.put(`/sales/${id}`, data);
+    return res.data?.data || res.data;
+  },
+  delete: async (id: string | number): Promise<any> => {
+    const res = await apiClient.delete(`/sales/${id}`);
+    return res.data;
+  }
 };

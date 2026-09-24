@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useExpenses, useCreateExpense, useDeleteExpense } from '@/hooks/useFinance';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useForm } from 'react-hook-form';
-import type { Expense } from '@/lib/api/mockData';
+import type { Expense } from '@/lib/api/expensesApi';
 import { useAuth } from '@/lib/auth/AuthProvider';
 
 const CATEGORIES = ['Rent', 'Utilities', 'Salaries', 'Transport', 'Maintenance', 'Office Supplies', 'Marketing', 'Insurance', 'Other'];
@@ -39,11 +39,11 @@ export default function ExpensesPage() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    try { await remove.mutateAsync(deleteTarget.id); toast('success', 'Deleted'); } catch { toast('error', 'Delete failed'); } finally { setDeleteTarget(null); }
+    try { await remove.mutateAsync(String(deleteTarget.id)); toast('success', 'Deleted'); } catch { toast('error', 'Delete failed'); } finally { setDeleteTarget(null); }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+  const columns: Column<any>[] = [
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'category', label: 'Category', render: v => <span className="font-medium text-gray-900 dark:text-gray-100">{String(v)}</span> },
     { key: 'description', label: 'Description' },
     { key: 'paidBy', label: 'Paid By' },
@@ -63,7 +63,7 @@ export default function ExpensesPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Expense">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Select label="Category" options={CATEGORIES.map(c => ({ value: c, label: c }))} {...register('category', { required: true })} />
+          <Select label="Category" options={CATEGORIES.map((c: any) => ({ value: c, label: c }))} {...register('category', { required: true })} />
           <Input label="Description" {...register('description', { required: true })} />
           <Input label="Amount (ETB)" type="number" {...register('amount', { required: true, min: 1 })} />
           <div className="flex justify-end gap-3 pt-2">

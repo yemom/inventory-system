@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import StatCard from '@/components/ui/StatCard';
 import ErrorState from '@/components/ui/ErrorState';
 import { useInventory } from '@/hooks/useInventory';
-import type { Product } from '@/lib/api/mockData';
+import type { Product } from '@/lib/api/productsApi';
 import { formatCurrency } from '@/lib/utils';
 import { StatCardSkeleton } from '@/components/ui/Skeleton';
 
@@ -20,7 +20,7 @@ export default function InventoryPage() {
   const outOfStock = products.filter(p => p.quantity === 0).length;
   const totalSKUs = products.length;
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'name', label: 'Product', render: (_, row) => (
       <div>
         <p className="font-medium text-gray-900 dark:text-gray-100">{String(row.name)}</p>

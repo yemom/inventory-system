@@ -9,16 +9,20 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { orderReturns, products, OrderReturn, suppliers } from '@/lib/api/mockData';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useSuppliers } from '@/hooks/useSuppliers';
+import { useProducts } from '@/hooks/useProducts';
+
 
 export default function PurchaseReturnsPage() {
   const { toast } = useToast();
-  const [returnsList, setReturnsList] = useState<OrderReturn[]>(
-    orderReturns.filter(r => r.type === 'supplier_return')
+  const { data: suppliers = [] } = useSuppliers();
+  const { data: products = [] } = useProducts();
+  const [returnsList, setReturnsList] = useState<any[]>(
+    ([] as any[]).filter(r => r.type === 'supplier_return')
   );
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<OrderReturn | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
 
   const [formRef, setFormRef] = useState('');
   const [formSupplier, setFormSupplier] = useState(suppliers[0]?.name || '');
@@ -31,7 +35,7 @@ export default function PurchaseReturnsPage() {
     const prod = products.find(p => p.id === formProduct);
     if (!prod) return;
 
-    const newRet: OrderReturn = {
+    const newRet: any = {
       id: `pret-${Date.now()}`,
       reference: `PRET-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       originalReference: formRef || 'PO-2024-001',
@@ -55,11 +59,11 @@ export default function PurchaseReturnsPage() {
     setModalOpen(false);
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'reference', label: 'Debit Note Ref', render: v => <span className="font-mono text-xs font-bold text-emerald-600">{String(v)}</span> },
     { key: 'originalReference', label: 'PO Ref', render: v => <span className="font-mono text-xs text-gray-500">{String(v)}</span> },
     { key: 'partyName', label: 'Supplier', render: v => <span className="font-medium text-gray-900 dark:text-gray-100">{String(v)}</span> },
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'amount', label: 'Debit Total', render: v => <span className="font-semibold text-emerald-600">{formatCurrency(Number(v))}</span> },
     { key: 'reason', label: 'Reason', render: v => <span className="text-xs text-gray-500">{String(v)}</span> },
     { 
@@ -91,7 +95,7 @@ export default function PurchaseReturnsPage() {
         searchPlaceholder="Search purchase returns..."
         actions={row => (
           <button 
-            onClick={() => setSelectedReturn(row as unknown as OrderReturn)}
+            onClick={() => setSelectedReturn(row as any)}
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600"
           >
             <Eye size={15} />
@@ -111,13 +115,13 @@ export default function PurchaseReturnsPage() {
           />
           <Select
             label="Supplier"
-            options={suppliers.map(s => ({ value: s.name, label: s.name }))}
+            options={suppliers.map((s: any) => ({ value: s.name, label: s.name }))}
             value={formSupplier}
             onChange={e => setFormSupplier(e.target.value)}
           />
           <Select
             label="Product to Return"
-            options={products.map(p => ({ value: p.id, label: `${p.name} (Cost: ${formatCurrency(p.costPrice)})` }))}
+            options={products.map((p: any) => ({ value: p.id, label: `${p.name} (Cost: ${formatCurrency(p.costPrice || 0)})` }))}
             value={formProduct}
             onChange={e => setFormProduct(e.target.value)}
           />
@@ -159,8 +163,8 @@ export default function PurchaseReturnsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div><span className="text-gray-400 block text-xs">Supplier</span><strong>{selectedReturn.partyName}</strong></div>
               <div><span className="text-gray-400 block text-xs">Original PO</span><strong>{selectedReturn.originalReference}</strong></div>
-              <div><span className="text-gray-400 block text-xs">Date</span>{formatDate(selectedReturn.date)}</div>
-              <div><span className="text-gray-400 block text-xs">Debit Amount</span><strong className="text-emerald-600">{formatCurrency(selectedReturn.amount)}</strong></div>
+              <div><span className="text-gray-400 block text-xs">Date</span>{formatDate(selectedReturn.date || '')}</div>
+              <div><span className="text-gray-400 block text-xs">Debit Amount</span><strong className="text-emerald-600">{formatCurrency(selectedReturn.amount || 0)}</strong></div>
             </div>
             <div>
               <span className="text-gray-400 block text-xs mb-1">Reason</span>

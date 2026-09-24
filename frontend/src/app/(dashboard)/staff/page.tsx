@@ -345,7 +345,7 @@ export default function StaffManagementPage() {
                     <td className="px-4 py-3 whitespace-nowrap"><Badge variant={member.role === 'SUPER_ADMIN' ? 'warning' : 'info'}>{labelize(member.role)}</Badge></td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{member.department || '-'}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><Badge variant={member.status === 'ACTIVE' ? 'success' : 'default'}>{member.status}</Badge></td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatDate(member.dateJoined)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatDate(member.dateJoined || '')}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatDateTime(member.lastLoginAt)}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1">
@@ -429,7 +429,7 @@ export default function StaffManagementPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Detail title="Personal Information" items={[['Phone', viewing.phone], ['Email', viewing.email], ['Gender', viewing.gender], ['Address', viewing.address]]} />
-              <Detail title="Employment" items={[['Job Title', viewing.jobTitle], ['Department', viewing.department], ['Branch', viewing.branch], ['Warehouse', viewing.warehouse], ['Date Joined', formatDate(viewing.dateJoined)]]} />
+              <Detail title="Employment" items={[['Job Title', viewing.jobTitle], ['Department', viewing.department], ['Branch', viewing.branch], ['Warehouse', viewing.warehouse], ['Date Joined', formatDate(viewing.dateJoined || '')]]} />
               <Detail title="Account" items={[['Status', viewing.status], ['Username', viewing.username], ['Last Login', formatDateTime(viewing.lastLoginAt)], ['Created', formatDateTime(viewing.createdAt)]]} />
             </div>
             <div>

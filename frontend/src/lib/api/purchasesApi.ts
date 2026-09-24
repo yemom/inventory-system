@@ -1,18 +1,39 @@
-import { delay, purchaseOrders as mockPurchases, type PurchaseOrder } from './mockData';
-const store: PurchaseOrder[] = [...mockPurchases];
+﻿import apiClient from './apiClient';
+
+export interface PurchaseOrder {
+  id: string | number;
+  orderNumber?: string;
+  reference?: string;
+  supplierName: string;
+  totalAmount?: number;
+  total?: number;
+  status: string;
+  paymentStatus?: string;
+  paid?: number;
+  date?: string;
+  createdAt?: string;
+  [key: string]: any;
+}
+
 export const purchasesApi = {
-  list: async () => { await delay(300); return [...store]; },
-  get: async (id: string) => { await delay(200); return store.find(p => p.id === id); },
-  create: async (data: Omit<PurchaseOrder, 'id'>) => {
-    await delay(400);
-    const p: PurchaseOrder = { ...data, id: 'po' + Date.now() };
-    store.push(p); return p;
+  list: async (): Promise<any[]> => {
+    const res = await apiClient.get('/purchases');
+    return res.data?.data?.content || res.data?.data || [];
   },
-  update: async (id: string, data: Partial<PurchaseOrder>) => {
-    await delay(400);
-    const idx = store.findIndex(p => p.id === id);
-    if (idx === -1) throw new Error('Not found');
-    store[idx] = { ...store[idx], ...data }; return store[idx];
+  get: async (id: string | number): Promise<any> => {
+    const res = await apiClient.get(`/purchases/${id}`);
+    return res.data?.data || res.data;
   },
-  delete: async (id: string) => { await delay(300); const idx = store.findIndex(p => p.id === id); if (idx !== -1) store.splice(idx, 1); },
+  create: async (data: any): Promise<any> => {
+    const res = await apiClient.post('/purchases', data);
+    return res.data?.data || res.data;
+  },
+  update: async (id: string | number, data: any): Promise<any> => {
+    const res = await apiClient.put(`/purchases/${id}`, data);
+    return res.data?.data || res.data;
+  },
+  delete: async (id: string | number): Promise<any> => {
+    const res = await apiClient.delete(`/purchases/${id}`);
+    return res.data;
+  }
 };

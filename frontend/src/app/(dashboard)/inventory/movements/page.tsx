@@ -6,7 +6,7 @@ import Badge from '@/components/ui/Badge';
 import ErrorState from '@/components/ui/ErrorState';
 import { useStockMovements } from '@/hooks/useInventory';
 import { formatDate } from '@/lib/utils';
-import type { StockMovement } from '@/lib/api/mockData';
+import type { StockMovement } from '@/lib/api/inventoryApi';
 import { ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 
 export default function InventoryMovementsPage() {
@@ -16,8 +16,8 @@ export default function InventoryMovementsPage() {
     purchase: 'success', sale: 'info', return: 'warning', adjustment: 'default', transfer: 'default',
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+  const columns: Column<any>[] = [
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs text-blue-600">{String(v)}</span> },
     { key: 'productName', label: 'Product' },
     { key: 'type', label: 'Type', render: v => <Badge variant={typeVariant[String(v)] ?? 'default'}>{String(v)}</Badge> },

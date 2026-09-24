@@ -37,13 +37,13 @@ const PasswordStrength = ({ password }: { password: string }) => {
   return (
     <div className="mt-2 space-y-2">
       <div className="flex gap-1">
-        {[1,2,3,4].map(i => (
+        {[1,2,3,4].map((i: any) => (
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= score ? colors[score] : 'bg-gray-200 dark:bg-gray-600'}`} />
         ))}
       </div>
       <div className="flex items-center justify-between">
         <div className="flex gap-3 flex-wrap">
-          {checks.map(c => (
+          {checks.map((c: any) => (
             <span key={c.label} className={`flex items-center gap-1 text-xs ${c.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
               <CheckCircle2 size={11} className={c.ok ? 'opacity-100' : 'opacity-30'} />
               {c.label}

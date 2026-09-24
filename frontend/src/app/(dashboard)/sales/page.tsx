@@ -11,7 +11,7 @@ import ErrorState from '@/components/ui/ErrorState';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useSales, useDeleteSale } from '@/hooks/useSales';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { SaleOrder } from '@/lib/api/mockData';
+import type { SaleOrder } from '@/lib/api/salesApi';
 
 const statusVariant: Record<string, 'success' | 'info' | 'default' | 'danger'> = {
   delivered: 'success', confirmed: 'info', draft: 'default', cancelled: 'danger',
@@ -29,15 +29,15 @@ export default function SalesPage() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    try { await deleteSale.mutateAsync(deleteTarget.id); toast('success', 'Order deleted'); }
+    try { await deleteSale.mutateAsync(String(deleteTarget.id)); toast('success', 'Order deleted'); }
     catch { toast('error', 'Delete failed'); }
     finally { setDeleteTarget(null); }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
+  const columns: Column<any>[] = [
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs font-semibold text-blue-600">{String(v)}</span> },
     { key: 'customerName', label: 'Customer' },
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'total', label: 'Total', render: v => <span className="font-semibold">{formatCurrency(Number(v))}</span> },
     { key: 'paid', label: 'Paid', render: v => formatCurrency(Number(v)) },
     { key: 'paymentStatus', label: 'Payment', render: v => <Badge variant={payVariant[String(v)] ?? 'default'}>{String(v)}</Badge> },
@@ -74,28 +74,28 @@ export default function SalesPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-gray-500">Customer</p><p className="font-medium">{viewOrder.customerName}</p></div>
-              <div><p className="text-gray-500">Date</p><p className="font-medium">{formatDate(viewOrder.date)}</p></div>
+              <div><p className="text-gray-500">Date</p><p className="font-medium">{formatDate(viewOrder.date || '')}</p></div>
               <div><p className="text-gray-500">Status</p><Badge variant={statusVariant[viewOrder.status] ?? 'default'}>{viewOrder.status}</Badge></div>
-              <div><p className="text-gray-500">Payment</p><Badge variant={payVariant[viewOrder.paymentStatus] ?? 'default'}>{viewOrder.paymentStatus}</Badge></div>
+              <div><p className="text-gray-500">Payment</p><Badge variant={payVariant[viewOrder.paymentStatus || ''] ?? 'default'}>{viewOrder.paymentStatus}</Badge></div>
             </div>
             <table className="w-full text-sm border rounded-lg overflow-hidden">
               <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>{['Product', 'Qty', 'Unit Price', 'Discount', 'Total'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>)}</tr>
+                <tr>{['Product', 'Qty', 'Unit Price', 'Discount', 'Total'].map((h: any) => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>)}</tr>
               </thead>
-              <tbody>{viewOrder.items.map((item, i) => (
+              <tbody>{viewOrder.items.map((item: any, i: number) => (
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{item.productName}</td>
                   <td className="px-3 py-2">{item.quantity}</td>
-                  <td className="px-3 py-2">{formatCurrency(item.unitPrice)}</td>
+                  <td className="px-3 py-2">{formatCurrency(item.unitPrice || 0)}</td>
                   <td className="px-3 py-2">{formatCurrency(item.discount)}</td>
-                  <td className="px-3 py-2 font-semibold">{formatCurrency(item.total)}</td>
+                  <td className="px-3 py-2 font-semibold">{formatCurrency(item.total || 0)}</td>
                 </tr>
               ))}</tbody>
             </table>
             <div className="flex justify-end gap-6 text-sm border-t pt-3">
-              <span className="text-gray-500">Subtotal: <strong>{formatCurrency(viewOrder.subtotal)}</strong></span>
-              <span className="text-gray-500">Discount: <strong>{formatCurrency(viewOrder.discount)}</strong></span>
-              <span className="text-gray-900 dark:text-gray-100 font-bold text-base">Total: {formatCurrency(viewOrder.total)}</span>
+              <span className="text-gray-500">Subtotal: <strong>{formatCurrency(viewOrder.subtotal || 0)}</strong></span>
+              <span className="text-gray-500">Discount: <strong>{formatCurrency(viewOrder.discount || 0)}</strong></span>
+              <span className="text-gray-900 dark:text-gray-100 font-bold text-base">Total: {formatCurrency(viewOrder.total || 0)}</span>
             </div>
           </div>
         )}

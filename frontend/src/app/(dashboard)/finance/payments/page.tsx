@@ -44,8 +44,8 @@ export default function PaymentsPage() {
     } catch { toast('error', 'Failed to record payment'); }
   };
 
-  const columns: Column<Record<string, unknown>>[] = [
-    { key: 'date', label: 'Date', render: v => formatDate(String(v)) },
+  const columns: Column<any>[] = [
+    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs">{String(v)}</span> },
     { key: 'type', label: 'Type', render: v => <Badge variant={v === 'received' ? 'success' : 'danger'}>{String(v) === 'received' ? 'Received (In)' : 'Made (Out)'}</Badge> },
     { key: 'party', label: 'Party', render: (_, row) => (

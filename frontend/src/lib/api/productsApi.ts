@@ -1,22 +1,39 @@
-import { delay, products as mockProducts, type Product } from './mockData';
-export const productStore: Product[] = [...mockProducts];
+﻿import apiClient from './apiClient';
+
+export interface Product {
+  id: number | string;
+  name: string;
+  sku: string;
+  categoryId: number;
+  categoryName?: string;
+  quantity: number;
+  unit: string;
+  costPrice: number;
+  sellingPrice: number;
+  minStockLevel?: number;
+  description?: string;
+  [key: string]: any;
+}
+
 export const productsApi = {
-  list: async () => { await delay(300); return [...productStore]; },
-  get: async (id: string) => { await delay(200); return productStore.find(p => p.id === id); },
-  create: async (data: Omit<Product, 'id' | 'createdAt'>) => {
-    await delay(400);
-    const p: Product = { ...data, id: 'p' + Date.now(), createdAt: new Date().toISOString().slice(0, 10) };
-    productStore.push(p); return p;
+  list: async (): Promise<any[]> => {
+    const res = await apiClient.get('/products');
+    return res.data.data.content || [];
   },
-  update: async (id: string, data: Partial<Product>) => {
-    await delay(400);
-    const idx = productStore.findIndex(p => p.id === id);
-    if (idx === -1) throw new Error('Not found');
-    productStore[idx] = { ...productStore[idx], ...data }; return productStore[idx];
+  get: async (id: string | number): Promise<any> => {
+    const res = await apiClient.get(`/products/${id}`);
+    return res.data.data;
   },
-  delete: async (id: string) => {
-    await delay(300);
-    const idx = productStore.findIndex(p => p.id === id);
-    if (idx !== -1) productStore.splice(idx, 1);
+  create: async (data: Partial<Product>): Promise<any> => {
+    const res = await apiClient.post('/products', data);
+    return res.data.data;
   },
+  update: async (id: string | number, data: Partial<Product>): Promise<any> => {
+    const res = await apiClient.put(`/products/${id}`, data);
+    return res.data.data;
+  },
+  delete: async (id: string | number): Promise<any> => {
+    const res = await apiClient.delete(`/products/${id}`);
+    return res.data;
+  }
 };
