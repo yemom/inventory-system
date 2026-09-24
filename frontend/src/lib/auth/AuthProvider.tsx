@@ -42,12 +42,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (identifier: string, password: string): Promise<void> => {
     const response = await apiClient.post('/auth/login', { identifier, password });
-    const data = response.data;
-    
-    // Store JWT token
+    // AuthController returns AuthResponse directly; also support ApiResponse wrapper
+    const data = response.data?.data ?? response.data;
+    if (!data?.token) {
+      throw new Error(response.data?.message || 'Login failed: no token received');
+    }
+
     localStorage.setItem('auth_token', data.token);
-    
-    // Build user object from response
+
     const loggedIn: AuthUser = {
       id: data.id,
       username: data.username,

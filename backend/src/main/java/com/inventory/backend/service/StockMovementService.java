@@ -17,6 +17,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.format.DateTimeFormatter;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -26,22 +28,26 @@ public class StockMovementService {
     private final WarehouseRepository warehouseRepository;
     private final UserRepository userRepository;
 
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     public Page<StockMovementDTO> listMovements(Pageable pageable) {
         return stockMovementRepository.findAll(pageable).map(this::toDTO);
     }
 
     public StockMovementDTO recordMovement(CreateStockMovementRequest request) {
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new RuntimeException("Product not found"));
-                
+        Product product = productRepository.findByIdWithLock(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
         Warehouse warehouse = null;
         if (request.getWarehouseId() != null) {
             warehouse = warehouseRepository.findById(request.getWarehouseId())
-                    .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
         }
 
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userRepository.findByUsername(username).orElse(null);
+        String principal = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElse(null);
 
         StockMovement movement = new StockMovement();
         movement.setProduct(product);
@@ -51,6 +57,17 @@ public class StockMovementService {
         movement.setReference(request.getReference());
         movement.setNotes(request.getNotes());
         movement.setCreatedBy(user);
+
+        // ── Update product stock for ADJUSTMENT movements ──────────────────────
+        String type = request.getType();
+        if ("ADJUSTMENT".equals(type) || "IN".equals(type) || "OUT".equals(type)) {
+            int current = product.getQuantity() != null ? product.getQuantity() : 0;
+            int delta = request.getQuantity() != null ? request.getQuantity() : 0;
+            // For OUT and ADJUSTMENT with negative qty, delta is already negative
+            int newQty = Math.max(0, current + delta);
+            product.setQuantity(newQty);
+            productRepository.save(product);
+        }
 
         return toDTO(stockMovementRepository.save(movement));
     }
@@ -71,10 +88,17 @@ public class StockMovementService {
         dto.setQuantity(m.getQuantity());
         dto.setReference(m.getReference());
         dto.setNotes(m.getNotes());
+        dto.setNote(m.getNotes()); // alias
+        // Derive direction from type for frontend
+        int qty = m.getQuantity() != null ? m.getQuantity() : 0;
+        dto.setDirection(qty >= 0 ? "in" : "out");
         if (m.getCreatedBy() != null) {
             dto.setCreatedBy(m.getCreatedBy().getUsername());
         }
         dto.setCreatedAt(m.getCreatedAt());
+        if (m.getCreatedAt() != null) {
+            dto.setDate(m.getCreatedAt().format(DATE_FMT));
+        }
         return dto;
     }
 }

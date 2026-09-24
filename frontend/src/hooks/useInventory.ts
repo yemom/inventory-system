@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi } from '@/lib/api/inventoryApi';
 
@@ -17,7 +17,13 @@ export function useTransfers() {
 export function useStockAdjust() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ productId, qty, note }: { productId: string; qty: number; note: string }) => inventoryApi.adjust(productId, qty, note),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['stock-movements'] }); qc.invalidateQueries({ queryKey: ['low-stock'] }); },
+    mutationFn: ({ productId, qty, note }: { productId: number; qty: number; note: string }) =>
+      inventoryApi.adjust(Number(productId), qty, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['stock-movements'] });
+      qc.invalidateQueries({ queryKey: ['low-stock'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
   });
 }

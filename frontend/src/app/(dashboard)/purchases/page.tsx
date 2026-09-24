@@ -48,7 +48,7 @@ export default function PurchasesPage() {
   return (
     <div>
       <PageHeader
-        title="Purchase Orders"
+        title="Purchases"
         subtitle={`${purchases.length} orders total`}
         actions={<Button onClick={() => toast('info', 'New purchase form coming soon')}><Plus size={16} /> New PO</Button>}
       />

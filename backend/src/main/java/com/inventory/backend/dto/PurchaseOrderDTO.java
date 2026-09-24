@@ -9,19 +9,14 @@ import java.util.List;
 public class PurchaseOrderDTO {
     private Long id;
     private String orderNumber;
+    private String reference;       // alias for orderNumber
     private String supplierName;
     private BigDecimal totalAmount;
+    private BigDecimal total;       // alias for totalAmount
+    private BigDecimal paid;
+    private String paymentStatus;   // PAID, PARTIAL, UNPAID
     private String status;
-    private List<PurchaseOrderItemDTO> items;
+    private String date;            // formatted createdAt
     private LocalDateTime createdAt;
-}
-
-@Data
-class PurchaseOrderItemDTO {
-    private Long id;
-    private Long productId;
-    private String productName;
-    private Integer quantity;
-    private BigDecimal unitCost;
-    private BigDecimal subtotal;
+    private List<PurchaseOrderItemDTO> items;
 }

@@ -28,7 +28,7 @@ export default function FinancialReportPage() {
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="Cash Flow & Financial Summary" 
+        title="Financial" 
         subtitle="Consolidated cash collections, supplier payouts, and operating disbursements"
         actions={
           <Button variant="outline" size="sm" onClick={() => window.print()}>

@@ -26,8 +26,8 @@ export default function SuppliersPage() {
   const loadSuppliers = async () => {
     try {
       setLoading(true);
-      const res = await suppliersApi.list();
-      setSuppliers(res.data?.content || []);
+      const data = await suppliersApi.list();
+      setSuppliers(data);
     } catch (e: any) {
       toast('error', 'Failed to load suppliers');
     } finally {

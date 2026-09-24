@@ -27,8 +27,8 @@ export default function CustomersPage() {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const res = await customersApi.list();
-      setCustomers(res.data?.content || []);
+      const data = await customersApi.list();
+      setCustomers(data);
     } catch (e: any) {
       toast('error', 'Failed to load customers');
     } finally {

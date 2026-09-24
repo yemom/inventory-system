@@ -10,6 +10,7 @@ public class ProductDTO {
     private String sku;
     private String barcode;
     private String name;
+    private String unit;
     private String description;
     private Long categoryId;
     private String categoryName;
@@ -19,6 +20,7 @@ public class ProductDTO {
     private Integer minStockLevel;
     private Integer maxStockLevel;
     private Integer reorderLevel;
+    private Integer quantity; // current stock on hand
     private boolean batchTracked;
     private boolean expiryTracked;
     private boolean active;

@@ -60,8 +60,6 @@ services:
       NEXT_PUBLIC_APP_NAME: StockFlow
       NEXT_PUBLIC_APP_URL: http://localhost:3005
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
-      NEXT_PUBLIC_SUPER_ADMIN_EMAIL: 12yemom@gmail.com
-      NEXT_PUBLIC_SUPER_ADMIN_PASSWORD: Fekerte@zegeye1221
     ports:
       - "3005:3000" # Expose production frontend on http://localhost:3005
 

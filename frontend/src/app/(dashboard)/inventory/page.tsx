@@ -15,10 +15,10 @@ import { StatCardSkeleton } from '@/components/ui/Skeleton';
 export default function InventoryPage() {
   const { data: products = [], isLoading, error, refetch } = useInventory();
 
-  const totalValue = products.reduce((s, p) => s + p.quantity * p.costPrice, 0);
-  const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= p.reorderLevel).length;
+  const totalValue = products.reduce((s, p) => s + (p.quantity ?? 0) * (p.purchasePrice ?? 0), 0);
+  const lowStock = products.filter(p => p.quantity > 0 && p.reorderLevel && p.quantity <= p.reorderLevel).length;
   const outOfStock = products.filter(p => p.quantity === 0).length;
-  const totalSKUs = products.length;
+  const totalSKUs = products.filter((p: any) => p.active).length;
 
   const columns: Column<any>[] = [
     { key: 'name', label: 'Product', render: (_, row) => (
@@ -27,7 +27,7 @@ export default function InventoryPage() {
         <p className="text-xs text-gray-400 font-mono">{String(row.sku)}</p>
       </div>
     )},
-    { key: 'category', label: 'Category' },
+    { key: 'categoryName', label: 'Category' },
     { key: 'quantity', label: 'Qty On Hand', render: (v, row) => {
       const qty = Number(v); const rl = Number(row.reorderLevel);
       return (
@@ -37,8 +37,8 @@ export default function InventoryPage() {
       );
     }},
     { key: 'reorderLevel', label: 'Reorder At', render: (v, row) => `${v} ${row.unit}` },
-    { key: 'costPrice', label: 'Unit Cost', render: v => formatCurrency(Number(v)) },
-    { key: 'stockValue', label: 'Stock Value', render: (_, row) => formatCurrency(Number(row.quantity) * Number(row.costPrice)) },
+    { key: 'purchasePrice', label: 'Unit Cost', render: v => formatCurrency(Number(v)) },
+    { key: 'stockValue', label: 'Stock Value', render: (_, row) => formatCurrency(Number(row.quantity) * Number(row.purchasePrice)) },
     { key: 'status', label: 'Status', render: (_, row) => {
       const qty = Number(row.quantity); const rl = Number(row.reorderLevel);
       if (qty === 0) return <Badge variant="danger">Out of Stock</Badge>;

@@ -18,7 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { Product } from '@/lib/api/productsApi';
 
 const schema = z.object({
-  productId: z.string().min(1, 'Product required'),
+  productId: z.coerce.number().int().positive('Product required'),
   qty: z.coerce.number().int().refine(v => v !== 0, 'Quantity cannot be zero'),
   note: z.string().min(2, 'Note required'),
 });
@@ -60,7 +60,7 @@ export default function AdjustmentsPage() {
   return (
     <div>
       <PageHeader
-        title="Stock Adjustments"
+        title="Adjustments"
         subtitle="Manually adjust stock for losses, damages, or corrections"
         actions={<Button onClick={() => setModalOpen(true)}><Plus size={16} /> New Adjustment</Button>}
       />

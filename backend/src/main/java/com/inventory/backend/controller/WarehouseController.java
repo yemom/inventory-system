@@ -20,25 +20,25 @@ public class WarehouseController {
     private final WarehouseService warehouseService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('WAREHOUSE_READ', 'INVENTORY_READ')")
     public ResponseEntity<ApiResponse<List<WarehouseDTO>>> listWarehouses() {
         return ResponseEntity.ok(ApiResponse.ok("Warehouses retrieved successfully", warehouseService.listWarehouses()));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('INVENTORY_CREATE')")
+    @PreAuthorize("hasAnyAuthority('WAREHOUSE_CREATE', 'WAREHOUSE_MANAGE')")
     public ResponseEntity<ApiResponse<WarehouseDTO>> createWarehouse(@Valid @RequestBody CreateWarehouseRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Warehouse created successfully", warehouseService.createWarehouse(request)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('WAREHOUSE_UPDATE', 'WAREHOUSE_MANAGE')")
     public ResponseEntity<ApiResponse<WarehouseDTO>> updateWarehouse(@PathVariable Long id, @Valid @RequestBody CreateWarehouseRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Warehouse updated successfully", warehouseService.updateWarehouse(id, request)));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_DELETE')")
+    @PreAuthorize("hasAuthority('WAREHOUSE_MANAGE')")
     public ResponseEntity<ApiResponse<Void>> deleteWarehouse(@PathVariable Long id) {
         warehouseService.deleteWarehouse(id);
         return ResponseEntity.ok(ApiResponse.ok("Warehouse deleted successfully", null));

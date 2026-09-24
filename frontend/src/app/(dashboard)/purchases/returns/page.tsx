@@ -1,6 +1,6 @@
 'use client';
-import React, { useState } from 'react';
-import { Plus, RotateCcw, CheckCircle, Eye } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RotateCcw, Eye } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Badge from '@/components/ui/Badge';
@@ -12,51 +12,120 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
+import { useStockAdjust } from '@/hooks/useInventory';
 
+interface PurchaseReturn {
+  id: string;
+  reference: string;
+  originalReference: string;
+  partyName: string;
+  type: 'supplier_return';
+  date: string;
+  amount: number;
+  status: string;
+  reason: string;
+  items: { productId: number | string; productName: string; quantity: number; unitPrice: number; total: number }[];
+  stockAdjusted?: boolean;
+}
+
+const STORAGE_KEY = 'stockflow_purchase_returns';
+
+function loadReturns(): PurchaseReturn[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function supplierLabel(s: any) {
+  return s.companyName || s.name || '';
+}
 
 export default function PurchaseReturnsPage() {
   const { toast } = useToast();
   const { data: suppliers = [] } = useSuppliers();
   const { data: products = [] } = useProducts();
-  const [returnsList, setReturnsList] = useState<any[]>(
-    ([] as any[]).filter(r => r.type === 'supplier_return')
-  );
+  const adjust = useStockAdjust();
+  const [returnsList, setReturnsList] = useState<PurchaseReturn[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<PurchaseReturn | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formRef, setFormRef] = useState('');
-  const [formSupplier, setFormSupplier] = useState(suppliers[0]?.name || '');
-  const [formProduct, setFormProduct] = useState(products[0]?.id || '');
-  const [formQty, setFormQty] = useState(5);
+  const [formSupplier, setFormSupplier] = useState('');
+  const [formProduct, setFormProduct] = useState('');
+  const [formQty, setFormQty] = useState(1);
   const [formReason, setFormReason] = useState('Substandard quality');
 
-  const handleCreateReturn = (e: React.FormEvent) => {
+  useEffect(() => {
+    setReturnsList(loadReturns());
+  }, []);
+
+  useEffect(() => {
+    if (!formSupplier && suppliers[0]) setFormSupplier(supplierLabel(suppliers[0]));
+  }, [suppliers, formSupplier]);
+
+  useEffect(() => {
+    if (!formProduct && products[0]) setFormProduct(String(products[0].id));
+  }, [products, formProduct]);
+
+  const persist = (list: PurchaseReturn[]) => {
+    setReturnsList(list);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  };
+
+  const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find(p => p.id === formProduct);
+    const prod = products.find(p => String(p.id) === String(formProduct));
     if (!prod) return;
 
-    const newRet: any = {
-      id: `pret-${Date.now()}`,
-      reference: `PRET-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      originalReference: formRef || 'PO-2024-001',
-      partyName: formSupplier,
-      type: 'supplier_return',
-      date: new Date().toISOString().slice(0, 10),
-      amount: prod.costPrice * formQty,
-      status: 'completed',
-      reason: formReason,
-      items: [{
-        productId: prod.id,
-        productName: prod.name,
-        quantity: formQty,
-        unitPrice: prod.costPrice,
-        total: prod.costPrice * formQty
-      }]
-    };
+    const unitCost = Number(prod.purchasePrice ?? 0);
+    const year = new Date().getFullYear();
+    const reference = `PRET-${year}-${Date.now().toString().slice(-6)}`;
+    const amount = unitCost * formQty;
+    setSubmitting(true);
 
-    setReturnsList([newRet, ...returnsList]);
-    toast('success', 'Supplier return processed', `Debit note generated for ${formatCurrency(newRet.amount)}`);
-    setModalOpen(false);
+    try {
+      // Deduct stock via inventory adjustment (real backend)
+      await adjust.mutateAsync({
+        productId: Number(prod.id),
+        qty: -formQty,
+        note: `Purchase return ${reference}: ${formReason}`,
+      });
+
+      const newRet: PurchaseReturn = {
+        id: `pret-${Date.now()}`,
+        reference,
+        originalReference: formRef,
+        partyName: formSupplier,
+        type: 'supplier_return',
+        date: new Date().toISOString().slice(0, 10),
+        amount,
+        status: 'completed',
+        reason: formReason,
+        stockAdjusted: true,
+        items: [{
+          productId: prod.id,
+          productName: prod.name,
+          quantity: formQty,
+          unitPrice: unitCost,
+          total: amount,
+        }],
+      };
+
+      persist([newRet, ...returnsList]);
+      toast('success', 'Supplier return processed', `Stock deducted (−${formQty}). Debit note ${formatCurrency(amount)}.`);
+      setModalOpen(false);
+      setFormRef('');
+      setFormQty(1);
+    } catch {
+      toast('error', 'Return failed', 'Could not adjust stock. Check inventory API and available quantity.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const columns: Column<any>[] = [
@@ -66,21 +135,21 @@ export default function PurchaseReturnsPage() {
     { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'amount', label: 'Debit Total', render: v => <span className="font-semibold text-emerald-600">{formatCurrency(Number(v))}</span> },
     { key: 'reason', label: 'Reason', render: v => <span className="text-xs text-gray-500">{String(v)}</span> },
-    { 
-      key: 'status', 
-      label: 'Status', 
+    {
+      key: 'status',
+      label: 'Status',
       render: v => {
         const val = String(v);
         return <Badge variant={val === 'completed' ? 'success' : 'warning'}>{val}</Badge>;
-      } 
+      }
     },
   ];
 
   return (
     <div className="space-y-4">
-      <PageHeader 
-        title="Purchase Returns & Debit Notes" 
-        subtitle="Return defective goods to suppliers, deduct payable balances, and log stock deductions"
+      <PageHeader
+        title="Returns"
+        subtitle="Return goods to suppliers via stock deduction. No dedicated returns API — list is stored locally; stock changes use inventory movements."
         actions={
           <Button onClick={() => setModalOpen(true)}>
             <RotateCcw size={15} /> Issue Return / Debit Note
@@ -88,13 +157,19 @@ export default function PurchaseReturnsPage() {
         }
       />
 
+      {returnsList.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-sm text-gray-500">
+          No purchase returns yet. Submitting a return will deduct stock via the inventory movements API.
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         data={returnsList as unknown as Record<string, unknown>[]}
         searchable
         searchPlaceholder="Search purchase returns..."
         actions={row => (
-          <button 
+          <button
             onClick={() => setSelectedReturn(row as any)}
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600"
           >
@@ -103,36 +178,38 @@ export default function PurchaseReturnsPage() {
         )}
       />
 
-      {/* New Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Issue Supplier Return (Debit Note)">
         <form onSubmit={handleCreateReturn} className="space-y-4">
-          <Input 
-            label="Original Purchase Order Reference" 
-            placeholder="e.g. PO-2024-001" 
-            value={formRef} 
-            onChange={e => setFormRef(e.target.value)} 
-            required 
+          <Input
+            label="Original Purchase Order Reference"
+            placeholder="e.g. PO-2026-001"
+            value={formRef}
+            onChange={e => setFormRef(e.target.value)}
+            required
           />
           <Select
             label="Supplier"
-            options={suppliers.map((s: any) => ({ value: s.name, label: s.name }))}
+            options={suppliers.map((s: any) => ({ value: supplierLabel(s), label: supplierLabel(s) }))}
             value={formSupplier}
             onChange={e => setFormSupplier(e.target.value)}
           />
           <Select
             label="Product to Return"
-            options={products.map((p: any) => ({ value: p.id, label: `${p.name} (Cost: ${formatCurrency(p.costPrice || 0)})` }))}
+            options={products.map((p: any) => ({
+              value: String(p.id),
+              label: `${p.name} (Cost: ${formatCurrency(p.purchasePrice || 0)})`,
+            }))}
             value={formProduct}
             onChange={e => setFormProduct(e.target.value)}
           />
           <div className="grid grid-cols-2 gap-3">
-            <Input 
-              label="Quantity" 
-              type="number" 
-              min={1} 
-              value={formQty} 
-              onChange={e => setFormQty(parseInt(e.target.value) || 1)} 
-              required 
+            <Input
+              label="Quantity"
+              type="number"
+              min={1}
+              value={formQty}
+              onChange={e => setFormQty(parseInt(e.target.value) || 1)}
+              required
             />
             <Select
               label="Reason for Return"
@@ -147,16 +224,15 @@ export default function PurchaseReturnsPage() {
             />
           </div>
           <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-            ⚠️ This will deduct {formQty} units from inventory and reduce your Accounts Payable balance to this supplier.
+            This will deduct {formQty} unit(s) from inventory via the stock adjustment API. Debit-note metadata is kept in browser storage.
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Submit Return</Button>
+            <Button type="submit" loading={submitting}>Submit Return</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Detail Modal */}
       <Modal open={!!selectedReturn} onClose={() => setSelectedReturn(null)} title={`Debit Note — ${selectedReturn?.reference}`}>
         {selectedReturn && (
           <div className="space-y-4 text-sm">

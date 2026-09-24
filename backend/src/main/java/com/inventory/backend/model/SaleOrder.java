@@ -29,6 +29,7 @@ public class SaleOrder {
     private BigDecimal finalAmount;
 
     private String status; // PAID, PENDING, CANCELLED
+    private String paymentStatus; // PAID, PARTIAL, UNPAID
     private String paymentMethod; // CASH, CARD, TRANSFER
 
     @OneToMany(mappedBy = "saleOrder", cascade = CascadeType.ALL)

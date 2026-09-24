@@ -22,7 +22,7 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('PRODUCT_READ', 'INVENTORY_READ')")
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> listProducts(
             @RequestParam(required = false) String search,
             @PageableDefault(size = 20) Pageable pageable) {
@@ -30,25 +30,25 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('PRODUCT_READ', 'INVENTORY_READ')")
     public ResponseEntity<ApiResponse<ProductDTO>> getProduct(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok("Product retrieved successfully", productService.getProduct(id)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('INVENTORY_CREATE')")
+    @PreAuthorize("hasAuthority('PRODUCT_CREATE')")
     public ResponseEntity<ApiResponse<ProductDTO>> createProduct(@Valid @RequestBody CreateProductRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Product created successfully", productService.createProduct(request)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_UPDATE')")
+    @PreAuthorize("hasAuthority('PRODUCT_UPDATE')")
     public ResponseEntity<ApiResponse<ProductDTO>> updateProduct(@PathVariable Long id, @RequestBody UpdateProductRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Product updated successfully", productService.updateProduct(id, request)));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_DELETE')")
+    @PreAuthorize("hasAuthority('PRODUCT_DEACTIVATE')")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.ok("Product deleted successfully", null));

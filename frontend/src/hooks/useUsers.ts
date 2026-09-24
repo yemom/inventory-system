@@ -1,6 +1,7 @@
 ﻿'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, CreateUserPayload, StaffListParams, UpdateUserPayload } from '@/lib/api/usersApi';
+import { auditLogsApi } from '@/lib/api/auditLogsApi';
 
 export function useUsers() {
   return useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
@@ -37,8 +38,6 @@ export function useUpdateUser() {
   });
 }
 
-import apiClient from '@/lib/api/apiClient';
-
 export function useAuditLogs() {
-  return { data: [], isLoading: false, error: null, refetch: () => {} };
+  return useQuery({ queryKey: ['audit-logs'], queryFn: () => auditLogsApi.list() });
 }

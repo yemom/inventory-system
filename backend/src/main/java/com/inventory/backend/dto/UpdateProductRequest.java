@@ -8,6 +8,7 @@ public class UpdateProductRequest {
     private String sku;
     private String barcode;
     private String name;
+    private String unit;
     private String description;
     private Long categoryId;
     private BigDecimal purchasePrice;

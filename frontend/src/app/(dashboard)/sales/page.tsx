@@ -49,7 +49,7 @@ export default function SalesPage() {
   return (
     <div>
       <PageHeader
-        title="Sales Orders"
+        title="Sales"
         subtitle={`${sales.length} orders total`}
         actions={<Button onClick={() => toast('info', 'New sale form coming soon')}><Plus size={16} /> New Sale</Button>}
       />

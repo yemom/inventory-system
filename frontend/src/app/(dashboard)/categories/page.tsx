@@ -128,7 +128,7 @@ export default function CategoriesPage() {
   return (
     <div className="space-y-4">
       <PageHeader 
-        title="Product Categories" 
+        title="Categories" 
         subtitle="Organize your store inventory hierarchy"
         actions={
           <Button onClick={openCreate}>

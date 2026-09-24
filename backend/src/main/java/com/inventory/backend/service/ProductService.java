@@ -30,21 +30,22 @@ public class ProductService {
 
     public ProductDTO getProduct(Long id) {
         return productRepository.findById(id).map(this::toDTO)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
     }
 
     public ProductDTO createProduct(CreateProductRequest request) {
         if (productRepository.existsBySku(request.getSku())) {
-            throw new RuntimeException("Product with this SKU already exists");
+            throw new IllegalArgumentException("Product with this SKU already exists");
         }
-        
+
         Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Category not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
 
         Product product = new Product();
         product.setSku(request.getSku());
         product.setBarcode(request.getBarcode());
         product.setName(request.getName());
+        product.setUnit(request.getUnit());
         product.setDescription(request.getDescription());
         product.setCategory(category);
         product.setPurchasePrice(request.getPurchasePrice());
@@ -56,26 +57,33 @@ public class ProductService {
         product.setBatchTracked(request.isBatchTracked());
         product.setExpiryTracked(request.isExpiryTracked());
         product.setActive(true);
+        // Set initial opening stock if provided
+        if (request.getInitialQuantity() != null && request.getInitialQuantity() > 0) {
+            product.setQuantity(request.getInitialQuantity());
+        } else {
+            product.setQuantity(0);
+        }
 
         return toDTO(productRepository.save(product));
     }
 
     public ProductDTO updateProduct(Long id, UpdateProductRequest request) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
 
         if (request.getSku() != null) {
             if (!product.getSku().equals(request.getSku()) && productRepository.existsBySku(request.getSku())) {
-                throw new RuntimeException("Product with this SKU already exists");
+                throw new IllegalArgumentException("Product with this SKU already exists");
             }
             product.setSku(request.getSku());
         }
         if (request.getBarcode() != null) product.setBarcode(request.getBarcode());
         if (request.getName() != null) product.setName(request.getName());
+        if (request.getUnit() != null) product.setUnit(request.getUnit());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
         if (request.getCategoryId() != null) {
             Category category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Category not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Category not found"));
             product.setCategory(category);
         }
         if (request.getPurchasePrice() != null) product.setPurchasePrice(request.getPurchasePrice());
@@ -90,21 +98,22 @@ public class ProductService {
 
         return toDTO(productRepository.save(product));
     }
-    
+
     public void deleteProduct(Long id) {
-        // Soft delete
+        // Soft delete — preserve inventory history
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
         product.setActive(false);
         productRepository.save(product);
     }
 
-    private ProductDTO toDTO(Product product) {
+    public ProductDTO toDTO(Product product) {
         ProductDTO dto = new ProductDTO();
         dto.setId(product.getId());
         dto.setSku(product.getSku());
         dto.setBarcode(product.getBarcode());
         dto.setName(product.getName());
+        dto.setUnit(product.getUnit());
         dto.setDescription(product.getDescription());
         if (product.getCategory() != null) {
             dto.setCategoryId(product.getCategory().getId());
@@ -116,6 +125,7 @@ public class ProductService {
         dto.setMinStockLevel(product.getMinStockLevel());
         dto.setMaxStockLevel(product.getMaxStockLevel());
         dto.setReorderLevel(product.getReorderLevel());
+        dto.setQuantity(product.getQuantity() != null ? product.getQuantity() : 0);
         dto.setBatchTracked(product.isBatchTracked());
         dto.setExpiryTracked(product.isExpiryTracked());
         dto.setActive(product.isActive());

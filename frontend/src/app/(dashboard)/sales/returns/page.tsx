@@ -1,6 +1,6 @@
 'use client';
-import React, { useState } from 'react';
-import { Plus, RotateCcw, CheckCircle, Clock, XCircle, Eye } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RotateCcw, Eye } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Badge from '@/components/ui/Badge';
@@ -11,50 +11,135 @@ import Select from '@/components/ui/Select';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useProducts } from '@/hooks/useProducts';
+import { useStockAdjust } from '@/hooks/useInventory';
+import { useCreatePayment } from '@/hooks/useFinance';
 
+interface OrderReturn {
+  id: string;
+  reference: string;
+  originalReference: string;
+  partyName: string;
+  type: 'customer_return';
+  date: string;
+  amount: number;
+  status: string;
+  reason: string;
+  items: { productId: number | string; productName: string; quantity: number; unitPrice: number; total: number }[];
+  stockAdjusted?: boolean;
+  refundRecorded?: boolean;
+}
+
+const STORAGE_KEY = 'stockflow_sales_returns';
+
+function loadReturns(): OrderReturn[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function SalesReturnsPage() {
   const { toast } = useToast();
   const { data: products = [] } = useProducts();
-  const [returnsList, setReturnsList] = useState<any[]>(
-    ([] as any[]).filter(r => r.type === 'customer_return')
-  );
+  const adjust = useStockAdjust();
+  const createPayment = useCreatePayment();
+  const [returnsList, setReturnsList] = useState<OrderReturn[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<OrderReturn | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formRef, setFormRef] = useState('');
   const [formCustomer, setFormCustomer] = useState('');
-  const [formProduct, setFormProduct] = useState(products[0]?.id || '');
+  const [formProduct, setFormProduct] = useState('');
   const [formQty, setFormQty] = useState(1);
   const [formReason, setFormReason] = useState('Damaged goods');
+  const [issueRefund, setIssueRefund] = useState(true);
 
-  const handleCreateReturn = (e: React.FormEvent) => {
+  useEffect(() => {
+    setReturnsList(loadReturns());
+  }, []);
+
+  useEffect(() => {
+    if (!formProduct && products[0]) setFormProduct(String(products[0].id));
+  }, [products, formProduct]);
+
+  const persist = (list: OrderReturn[]) => {
+    setReturnsList(list);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  };
+
+  const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find(p => p.id === formProduct);
+    const prod = products.find(p => String(p.id) === String(formProduct));
     if (!prod) return;
 
-    const newRet: OrderReturn = {
-      id: `ret-${Date.now()}`,
-      reference: `SRET-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      originalReference: formRef || 'SO-2024-001',
-      partyName: formCustomer || 'Walk-in Customer',
-      type: 'customer_return',
-      date: new Date().toISOString().slice(0, 10),
-      amount: prod.sellingPrice * formQty,
-      status: 'completed',
-      reason: formReason,
-      items: [{
-        productId: prod.id,
-        productName: prod.name,
-        quantity: formQty,
-        unitPrice: prod.sellingPrice,
-        total: prod.sellingPrice * formQty
-      }]
-    };
+    const year = new Date().getFullYear();
+    const reference = `SRET-${year}-${Date.now().toString().slice(-6)}`;
+    const amount = Number(prod.sellingPrice || 0) * formQty;
+    setSubmitting(true);
 
-    setReturnsList([newRet, ...returnsList]);
-    toast('success', 'Return processed', `Stock restocked with ${formQty} unit(s).`);
-    setModalOpen(false);
+    try {
+      // Restock via inventory adjustment (real backend)
+      await adjust.mutateAsync({
+        productId: Number(prod.id),
+        qty: formQty,
+        note: `Sales return ${reference}: ${formReason}`,
+      });
+
+      let refundRecorded = false;
+      if (issueRefund && amount > 0) {
+        await createPayment.mutateAsync({
+          reference: `REF-${Date.now().toString().slice(-8)}`,
+          type: 'made',
+          amount,
+          date: new Date().toISOString().slice(0, 10),
+          method: 'cash',
+          party: formCustomer || 'Walk-in Customer',
+          partyType: 'customer',
+          note: `Refund for sales return ${reference}`,
+        });
+        refundRecorded = true;
+      }
+
+      const newRet: OrderReturn = {
+        id: `ret-${Date.now()}`,
+        reference,
+        originalReference: formRef,
+        partyName: formCustomer || 'Walk-in Customer',
+        type: 'customer_return',
+        date: new Date().toISOString().slice(0, 10),
+        amount,
+        status: 'completed',
+        reason: formReason,
+        stockAdjusted: true,
+        refundRecorded,
+        items: [{
+          productId: prod.id,
+          productName: prod.name,
+          quantity: formQty,
+          unitPrice: Number(prod.sellingPrice || 0),
+          total: amount,
+        }],
+      };
+
+      persist([newRet, ...returnsList]);
+      toast(
+        'success',
+        'Return processed',
+        `Stock restocked (+${formQty}).${refundRecorded ? ' Refund payment recorded.' : ''}`
+      );
+      setModalOpen(false);
+      setFormRef('');
+      setFormCustomer('');
+      setFormQty(1);
+    } catch {
+      toast('error', 'Return failed', 'Could not adjust stock or record refund. Check inventory API.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const columns: Column<any>[] = [
@@ -64,21 +149,21 @@ export default function SalesReturnsPage() {
     { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'amount', label: 'Refund Amount', render: v => <span className="font-semibold text-red-600">{formatCurrency(Number(v))}</span> },
     { key: 'reason', label: 'Reason', render: v => <span className="text-xs text-gray-500">{String(v)}</span> },
-    { 
-      key: 'status', 
-      label: 'Status', 
+    {
+      key: 'status',
+      label: 'Status',
       render: v => {
         const val = String(v);
         return <Badge variant={val === 'completed' ? 'success' : val === 'pending' ? 'warning' : 'danger'}>{val}</Badge>;
-      } 
+      }
     },
   ];
 
   return (
     <div className="space-y-4">
-      <PageHeader 
-        title="Customer Sales Returns" 
-        subtitle="Process customer merchandise returns, refunds, and restock tracking"
+      <PageHeader
+        title="Returns"
+        subtitle="Process returns via stock adjustment (and optional refund payment). No dedicated returns API — list is stored locally."
         actions={
           <Button onClick={() => setModalOpen(true)}>
             <RotateCcw size={15} /> Process Return
@@ -86,13 +171,20 @@ export default function SalesReturnsPage() {
         }
       />
 
+      {returnsList.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-sm text-gray-500">
+          No sales returns yet. Processing a return will restock via the inventory movements API
+          {issueRefund ? ' and can record a refund payment' : ''}.
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         data={returnsList as unknown as Record<string, unknown>[]}
         searchable
         searchPlaceholder="Search customer returns..."
         actions={row => (
-          <button 
+          <button
             onClick={() => setSelectedReturn(row as unknown as OrderReturn)}
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600"
           >
@@ -101,37 +193,36 @@ export default function SalesReturnsPage() {
         )}
       />
 
-      {/* New Return Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Process Customer Return">
         <form onSubmit={handleCreateReturn} className="space-y-4">
-          <Input 
-            label="Original Sales Order / Invoice Reference" 
-            placeholder="e.g. SO-2024-001" 
-            value={formRef} 
-            onChange={e => setFormRef(e.target.value)} 
-            required 
+          <Input
+            label="Original Sales Order / Invoice Reference"
+            placeholder="e.g. SO-2026-001"
+            value={formRef}
+            onChange={e => setFormRef(e.target.value)}
+            required
           />
-          <Input 
-            label="Customer Name" 
-            placeholder="e.g. Abebe Kebede" 
-            value={formCustomer} 
-            onChange={e => setFormCustomer(e.target.value)} 
-            required 
+          <Input
+            label="Customer Name"
+            placeholder="e.g. Abebe Kebede"
+            value={formCustomer}
+            onChange={e => setFormCustomer(e.target.value)}
+            required
           />
           <Select
             label="Returned Product"
-            options={products.map((p: any) => ({ value: p.id, label: `${p.name} (${formatCurrency(p.sellingPrice || 0)})` }))}
+            options={products.map((p: any) => ({ value: String(p.id), label: `${p.name} (${formatCurrency(p.sellingPrice || 0)})` }))}
             value={formProduct}
             onChange={e => setFormProduct(e.target.value)}
           />
           <div className="grid grid-cols-2 gap-3">
-            <Input 
-              label="Quantity Returned" 
-              type="number" 
-              min={1} 
-              value={formQty} 
-              onChange={e => setFormQty(parseInt(e.target.value) || 1)} 
-              required 
+            <Input
+              label="Quantity Returned"
+              type="number"
+              min={1}
+              value={formQty}
+              onChange={e => setFormQty(parseInt(e.target.value) || 1)}
+              required
             />
             <Select
               label="Reason for Return"
@@ -145,17 +236,21 @@ export default function SalesReturnsPage() {
               onChange={e => setFormReason(e.target.value)}
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={issueRefund} onChange={e => setIssueRefund(e.target.checked)} />
+            Record refund payment via payments API
+          </label>
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-            ℹ️ Approving this return will automatically reverse sales revenue and add units back into warehouse inventory.
+            Approving will call the inventory adjustment API to add stock back
+            {issueRefund ? ' and create a refund payment' : ''}. Return metadata is kept in browser storage (no returns endpoint).
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Approve Return</Button>
+            <Button type="submit" loading={submitting}>Approve Return</Button>
           </div>
         </form>
       </Modal>
 
-      {/* View Return Modal */}
       <Modal open={!!selectedReturn} onClose={() => setSelectedReturn(null)} title={`Return Detail — ${selectedReturn?.reference}`}>
         {selectedReturn && (
           <div className="space-y-4 text-sm">

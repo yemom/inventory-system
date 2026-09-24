@@ -72,6 +72,9 @@ public class SecurityConfig {
                         // Login, register, refresh token, etc.
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
+                        // Public health check (no sensitive data)
+                        .requestMatchers("/api/v1/dashboard/health", "/actuator/health").permitAll()
+
                         // All other API endpoints require JWT
                         .anyRequest().authenticated())
 
@@ -142,8 +145,17 @@ public class SecurityConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Allow all origins (supports localhost, WSL IPs, network IPs, Docker networks)
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        // Allow configured frontends (local + docker-mapped ports)
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:3000",
+                "http://localhost:3005",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3005"
+        ));
+        configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",
+                "http://127.0.0.1:*"
+        ));
 
         // HTTP methods
         configuration.setAllowedMethods(List.of(

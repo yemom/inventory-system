@@ -22,12 +22,12 @@ public class WarehouseService {
 
     public WarehouseDTO getWarehouse(Long id) {
         return warehouseRepository.findById(id).map(this::toDTO)
-                .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
     }
 
     public WarehouseDTO createWarehouse(CreateWarehouseRequest request) {
         if (warehouseRepository.existsByName(request.getName())) {
-            throw new RuntimeException("Warehouse with this name already exists");
+            throw new IllegalArgumentException("Warehouse with this name already exists");
         }
         Warehouse w = new Warehouse();
         w.setName(request.getName());
@@ -39,10 +39,10 @@ public class WarehouseService {
 
     public WarehouseDTO updateWarehouse(Long id, CreateWarehouseRequest request) {
         Warehouse w = warehouseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
         
         if (!w.getName().equals(request.getName()) && warehouseRepository.existsByName(request.getName())) {
-            throw new RuntimeException("Warehouse with this name already exists");
+            throw new IllegalArgumentException("Warehouse with this name already exists");
         }
         
         w.setName(request.getName());
@@ -54,7 +54,7 @@ public class WarehouseService {
 
     public void deleteWarehouse(Long id) {
         Warehouse w = warehouseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
         w.setActive(false);
         warehouseRepository.save(w);
     }

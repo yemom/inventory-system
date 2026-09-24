@@ -1,51 +1,105 @@
 'use client';
-import React, { useState } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area 
+import React, { useMemo, useState } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area
 } from 'recharts';
-import { Download, Calendar, TrendingUp, ShoppingBag, DollarSign, Filter } from 'lucide-react';
+import { Download, TrendingUp, ShoppingBag, DollarSign } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import StatCard from '@/components/ui/StatCard';
 import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import ErrorState from '@/components/ui/ErrorState';
+import { formatCurrency } from '@/lib/utils';
 import { useSales } from '@/hooks/useSales';
 
-const salesTrendData = [
-  { date: 'Sep 01', sales: 8500, orders: 1 },
-  { date: 'Sep 02', sales: 15600, orders: 1 },
-  { date: 'Sep 03', sales: 22500, orders: 1 },
-  { date: 'Sep 04', sales: 4550, orders: 1 },
-  { date: 'Sep 05', sales: 12500, orders: 1 },
-  { date: 'Sep 06', sales: 18400, orders: 2 },
-  { date: 'Sep 07', sales: 29000, orders: 3 },
-  { date: 'Sep 08', sales: 34100, orders: 4 },
-  { date: 'Sep 09', sales: 21500, orders: 2 },
-  { date: 'Sep 10', sales: 38900, orders: 5 },
-  { date: 'Sep 11', sales: 42000, orders: 4 },
-  { date: 'Sep 12', sales: 48500, orders: 6 },
-];
+function saleTotal(s: any) {
+  return Number(s.finalAmount ?? s.total ?? s.totalAmount ?? 0);
+}
 
-const topProductsData = [
-  { name: 'Basmati Rice 25kg', revenue: 25600, units: 18 },
-  { name: 'Cooking Oil 20L', revenue: 10840, units: 12 },
-  { name: 'Baby Diapers M (50pcs)', revenue: 8400, units: 16 },
-  { name: 'Coffee 500g', revenue: 6560, units: 8 },
-  { name: 'Sugar 50kg', revenue: 5200, units: 4 },
-];
+function isCancelled(s: any) {
+  const st = String(s.status || '').toUpperCase();
+  return st === 'CANCELLED';
+}
+
+function daysInTimeframe(timeframe: string) {
+  if (timeframe === '7d') return 7;
+  if (timeframe === '90d') return 90;
+  return 30;
+}
+
+function buildDailyTrend(sales: any[], days: number) {
+  const buckets: Record<string, { date: string; sales: number; orders: number; sortKey: number }> = {};
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const label = d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+    buckets[key] = { date: label, sales: 0, orders: 0, sortKey: d.getTime() };
+  }
+
+  for (const sale of sales) {
+    if (isCancelled(sale)) continue;
+    const d = new Date(sale.createdAt || sale.date || '');
+    if (isNaN(d.getTime())) continue;
+    const key = d.toISOString().slice(0, 10);
+    if (buckets[key]) {
+      buckets[key].sales += saleTotal(sale);
+      buckets[key].orders += 1;
+    }
+  }
+
+  return Object.values(buckets).sort((a, b) => a.sortKey - b.sortKey);
+}
+
+function buildTopProducts(sales: any[]) {
+  const tally: Record<string, { name: string; revenue: number; units: number }> = {};
+  for (const order of sales) {
+    if (isCancelled(order)) continue;
+    for (const item of order.items || []) {
+      const name = item.productName || 'Unknown';
+      if (!tally[name]) tally[name] = { name, revenue: 0, units: 0 };
+      tally[name].revenue += Number(item.subtotal ?? item.total ?? 0);
+      tally[name].units += Number(item.quantity ?? 0);
+    }
+  }
+  return Object.values(tally)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+}
+
+function filterByTimeframe(sales: any[], days: number) {
+  const cutoff = Date.now() - days * 86400000;
+  return sales.filter(s => {
+    const d = new Date(s.createdAt || s.date || '');
+    return !isNaN(d.getTime()) && d.getTime() >= cutoff;
+  });
+}
 
 export default function SalesReportPage() {
-  const { data: sales = [] } = useSales();
+  const { data: sales = [], isLoading, error, refetch } = useSales();
   const [timeframe, setTimeframe] = useState('30d');
+  const days = daysInTimeframe(timeframe);
 
-  const totalSales = sales.reduce((acc, s) => acc + s.total, 0);
-  const totalOrders = sales.length;
+  const filtered = useMemo(() => filterByTimeframe(sales, days), [sales, days]);
+  const activeSales = useMemo(() => filtered.filter(s => !isCancelled(s)), [filtered]);
+
+  const totalSales = activeSales.reduce((acc, s) => acc + saleTotal(s), 0);
+  const totalOrders = activeSales.length;
   const avgOrderValue = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
+
+  const salesTrendData = useMemo(() => buildDailyTrend(activeSales, days), [activeSales, days]);
+  const topProductsData = useMemo(() => buildTopProducts(activeSales), [activeSales]);
+  const maxRevenue = topProductsData[0]?.revenue || 1;
+
+  if (error) return <ErrorState retry={refetch} />;
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Sales Analytics & Reports" 
+      <PageHeader
+        title="Sales"
         subtitle="In-depth analysis of sales volume, order averages, top selling items, and revenue trends"
         actions={
           <div className="flex items-center gap-2">
@@ -53,7 +107,7 @@ export default function SalesReportPage() {
               options={[
                 { value: '7d', label: 'Last 7 Days' },
                 { value: '30d', label: 'Last 30 Days' },
-                { value: '90d', label: 'This Quarter' },
+                { value: '90d', label: 'Last 90 Days' },
               ]}
               value={timeframe}
               onChange={e => setTimeframe(e.target.value)}
@@ -66,35 +120,31 @@ export default function SalesReportPage() {
         }
       />
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard 
-          title="Total Sales Volume" 
-          value={formatCurrency(totalSales)} 
-          change={18.2} 
-          changeLabel="vs last period"
-          color="blue" 
-          icon={<DollarSign size={20} />} 
+        <StatCard
+          title="Total Sales Volume"
+          value={isLoading ? '…' : formatCurrency(totalSales)}
+          changeLabel={`last ${days} days`}
+          color="blue"
+          icon={<DollarSign size={20} />}
         />
-        <StatCard 
-          title="Total Orders Completed" 
-          value={`${totalOrders} Orders`} 
-          change={12.0} 
-          color="emerald" 
-          icon={<ShoppingBag size={20} />} 
+        <StatCard
+          title="Total Orders Completed"
+          value={isLoading ? '…' : `${totalOrders} Orders`}
+          changeLabel={`last ${days} days`}
+          color="emerald"
+          icon={<ShoppingBag size={20} />}
         />
-        <StatCard 
-          title="Average Order Value (AOV)" 
-          value={formatCurrency(avgOrderValue)} 
-          change={5.4} 
-          color="purple" 
-          icon={<TrendingUp size={20} />} 
+        <StatCard
+          title="Average Order Value (AOV)"
+          value={isLoading ? '…' : formatCurrency(avgOrderValue)}
+          changeLabel="from filtered sales"
+          color="purple"
+          icon={<TrendingUp size={20} />}
         />
       </div>
 
-      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Revenue Trend */}
         <div className="lg:col-span-8 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div>
@@ -103,49 +153,58 @@ export default function SalesReportPage() {
             </div>
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={salesTrendData}>
-                <defs>
-                  <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.15} />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${v / 1000}k`} />
-                <Tooltip formatter={(v: any) => [formatCurrency(Number(v)), 'Sales']} />
-                <Area type="monotone" dataKey="sales" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#salesGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {salesTrendData.every(d => d.sales === 0) ? (
+              <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                No sales in this period — create sale orders to see the trend.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={salesTrendData}>
+                  <defs>
+                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563EB" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.15} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${v / 1000}k`} />
+                  <Tooltip formatter={(v: any) => [formatCurrency(Number(v)), 'Sales']} />
+                  <Area type="monotone" dataKey="sales" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#salesGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {/* Top Selling Products */}
         <div className="lg:col-span-4 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">Top Selling Items</h3>
             <p className="text-xs text-gray-400 mb-4">Ranked by total revenue generated</p>
 
-            <div className="space-y-3">
-              {topProductsData.map((item, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[170px]">{item.name}</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(item.revenue)}</span>
+            {topProductsData.length === 0 ? (
+              <p className="text-sm text-gray-400 py-8 text-center">No product sales in this period.</p>
+            ) : (
+              <div className="space-y-3">
+                {topProductsData.map((item, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[170px]">{item.name}</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(item.revenue)}</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-gray-400">
+                      <span>{item.units} units sold</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full rounded-full"
+                        style={{ width: `${(item.revenue / maxRevenue) * 100}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-400">
-                    <span>{item.units} units sold</span>
-                  </div>
-                  <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-blue-600 h-full rounded-full" 
-                      style={{ width: `${(item.revenue / 26000) * 100}%` }} 
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

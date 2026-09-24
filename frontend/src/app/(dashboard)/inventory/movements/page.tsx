@@ -17,25 +17,25 @@ export default function InventoryMovementsPage() {
   };
 
   const columns: Column<any>[] = [
-    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
-    { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs text-blue-600">{String(v)}</span> },
+    { key: 'createdAt', label: 'Date', render: v => formatDate(String(v || '')) },
+    { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs text-blue-600">{String(v || '-')}</span> },
     { key: 'productName', label: 'Product' },
-    { key: 'type', label: 'Type', render: v => <Badge variant={typeVariant[String(v)] ?? 'default'}>{String(v)}</Badge> },
+    { key: 'type', label: 'Type', render: v => <Badge variant={Number(String(v)) >= 0 ? 'success' : 'danger'}>{String(v)}</Badge> },
     { key: 'direction', label: 'Direction', render: v => (
       <div className="flex items-center gap-1">
         {v === 'in' ? <ArrowDownCircle size={14} className="text-emerald-500" /> : <ArrowUpCircle size={14} className="text-red-500" />}
-        <span className={v === 'in' ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>{String(v).toUpperCase()}</span>
+        <span className={v === 'in' ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>{String(v || '').toUpperCase()}</span>
       </div>
     )},
-    { key: 'quantity', label: 'Qty', render: (v, row) => <span className={row.direction === 'in' ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>{row.direction === 'in' ? '+' : '-'}{String(v)}</span> },
-    { key: 'note', label: 'Note', render: v => v ? String(v) : '-' },
+    { key: 'quantity', label: 'Qty', render: (v, row) => <span className={row.direction === 'in' ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>{row.direction === 'in' ? '+' : ''}{String(v)}</span> },
+    { key: 'notes', label: 'Note', render: v => v ? String(v) : '-' },
   ];
 
   if (error) return <ErrorState retry={refetch} />;
 
   return (
     <div>
-      <PageHeader title="Stock Movements" subtitle="All inventory in/out transactions" />
+      <PageHeader title="Movements" subtitle="All inventory in/out transactions" />
       <DataTable
         columns={columns}
         data={movements as unknown as Record<string, unknown>[]}

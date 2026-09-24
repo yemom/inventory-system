@@ -27,6 +27,8 @@ public class Product {
     @Column(nullable = false)
     private String name;
 
+    private String unit; // e.g. bag, piece, kg, litre
+
     private String description;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -49,6 +51,10 @@ public class Product {
     private boolean batchTracked;
     private boolean expiryTracked;
     private boolean active = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer quantity = 0;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

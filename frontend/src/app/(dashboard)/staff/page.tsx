@@ -277,7 +277,7 @@ export default function StaffManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Staff Management"
+        title="Staff"
         subtitle="Manage staff members, roles, access permissions, and account status."
         actions={
           <>

@@ -29,13 +29,13 @@ public class CategoryService {
 
     public CategoryDTO getCategory(Long id) {
         Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
         return toDTO(category);
     }
 
     public CategoryDTO createCategory(CreateCategoryRequest request) {
         if (categoryRepository.existsByName(request.getName())) {
-            throw new RuntimeException("Category with this name already exists");
+            throw new IllegalArgumentException("Category with this name already exists");
         }
         
         Category category = new Category();
@@ -44,7 +44,7 @@ public class CategoryService {
         
         if (request.getParentId() != null) {
             Category parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new RuntimeException("Parent category not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Parent category not found"));
             category.setParent(parent);
         }
         
@@ -53,11 +53,11 @@ public class CategoryService {
 
     public CategoryDTO updateCategory(Long id, UpdateCategoryRequest request) {
         Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
                 
         if (request.getName() != null) {
             if (!category.getName().equals(request.getName()) && categoryRepository.existsByName(request.getName())) {
-                throw new RuntimeException("Category with this name already exists");
+                throw new IllegalArgumentException("Category with this name already exists");
             }
             category.setName(request.getName());
         }
@@ -68,10 +68,10 @@ public class CategoryService {
         
         if (request.getParentId() != null) {
             if (request.getParentId().equals(id)) {
-                throw new RuntimeException("Category cannot be its own parent");
+                throw new IllegalArgumentException("Category cannot be its own parent");
             }
             Category parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new RuntimeException("Parent category not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Parent category not found"));
             category.setParent(parent);
         } else {
             category.setParent(null); // Allows clearing parent
@@ -82,9 +82,9 @@ public class CategoryService {
 
     public void deleteCategory(Long id) {
         Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Category not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
         if (!category.getSubCategories().isEmpty()) {
-            throw new RuntimeException("Cannot delete category with subcategories");
+            throw new IllegalArgumentException("Cannot delete category with subcategories");
         }
         // TODO: check if products are attached to this category
         categoryRepository.delete(category);

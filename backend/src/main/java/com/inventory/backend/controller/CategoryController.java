@@ -21,37 +21,37 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'PRODUCT_READ', 'CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<List<CategoryDTO>>> listAllCategories() {
         return ResponseEntity.ok(ApiResponse.ok("Categories retrieved successfully", categoryService.listAllCategories()));
     }
 
     @GetMapping("/roots")
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'PRODUCT_READ', 'CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<List<CategoryDTO>>> listRootCategories() {
         return ResponseEntity.ok(ApiResponse.ok("Root categories retrieved successfully", categoryService.listRootCategories()));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'PRODUCT_READ', 'CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<CategoryDTO>> getCategory(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok("Category retrieved successfully", categoryService.getCategory(id)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('INVENTORY_CREATE')")
+    @PreAuthorize("hasAuthority('CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<CategoryDTO>> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Category created successfully", categoryService.createCategory(request)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_UPDATE')")
+    @PreAuthorize("hasAuthority('CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<CategoryDTO>> updateCategory(@PathVariable Long id, @RequestBody UpdateCategoryRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Category updated successfully", categoryService.updateCategory(id, request)));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('INVENTORY_DELETE')")
+    @PreAuthorize("hasAuthority('CATEGORY_MANAGE')")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable Long id) {
         categoryService.deleteCategory(id);
         return ResponseEntity.ok(ApiResponse.ok("Category deleted successfully", null));

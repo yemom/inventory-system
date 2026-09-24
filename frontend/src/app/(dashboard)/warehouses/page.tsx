@@ -117,7 +117,7 @@ export default function WarehousesPage() {
   return (
     <div className="space-y-4">
       <PageHeader 
-        title="Warehouses & Store Locations" 
+        title="Warehouses" 
         subtitle="Manage physical depots, branches, retail store fronts, and capacity distribution"
         actions={<Button onClick={openCreate}><Plus size={15} /> Add Warehouse</Button>}
       />

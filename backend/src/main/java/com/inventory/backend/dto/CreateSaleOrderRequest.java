@@ -10,6 +10,7 @@ public class CreateSaleOrderRequest {
     private String customerName;
     private BigDecimal discount;
     private String paymentMethod;
+    private String paymentStatus; // PAID, PARTIAL, UNPAID – defaults to PAID
     @NotNull
     private List<CreateSaleOrderItem> items;
 }

@@ -21,13 +21,13 @@ public class StockMovementController {
     private final StockMovementService stockMovementService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('INVENTORY_READ')")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'STOCK_MOVEMENT_READ')")
     public ResponseEntity<ApiResponse<Page<StockMovementDTO>>> listMovements(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.ok("Movements retrieved successfully", stockMovementService.listMovements(pageable)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('INVENTORY_CREATE')")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_ADJUST', 'INVENTORY_TRANSFER', 'INVENTORY_RECEIVE')")
     public ResponseEntity<ApiResponse<StockMovementDTO>> recordMovement(@Valid @RequestBody CreateStockMovementRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Movement recorded successfully", stockMovementService.recordMovement(request)));
     }

@@ -11,10 +11,13 @@ public class StockMovementDTO {
     private String productSku;
     private Long warehouseId;
     private String warehouseName;
-    private String type;
-    private Integer quantity;
+    private String type;       // IN, OUT, ADJUSTMENT, TRANSFER
+    private Integer quantity;  // signed: positive=IN, negative=OUT
+    private String direction;  // "in" or "out" – convenience alias for frontend
     private String reference;
     private String notes;
+    private String note;       // alias for notes
     private String createdBy;
     private LocalDateTime createdAt;
+    private String date;       // formatted createdAt for frontend
 }
