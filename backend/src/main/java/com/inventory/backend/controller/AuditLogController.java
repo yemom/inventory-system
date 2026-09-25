@@ -1,4 +1,4 @@
-﻿package com.inventory.backend.controller;
+package com.inventory.backend.controller;
 
 import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.model.AuditLog;

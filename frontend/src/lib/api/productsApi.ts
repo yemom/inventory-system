@@ -1,48 +1,175 @@
 import apiClient from './apiClient';
+import {
+  extractItem,
+  extractList,
+} from './response';
 
 export interface Product {
-  id: number;          // always a number from the backend (Long)
+  id: number;
+
   name: string;
+
   sku: string;
+
   barcode?: string;
+
   unit?: string;
+
   description?: string;
-  categoryId?: number;
+
+  categoryId?: number | null;
+
   categoryName?: string;
+
   purchasePrice?: number;
+
   sellingPrice: number;
+
   minSellingPrice?: number;
+
   minStockLevel?: number;
+
   maxStockLevel?: number;
+
   reorderLevel?: number;
-  quantity: number;    // current stock on hand
+
+  quantity: number;
+
   batchTracked?: boolean;
+
   expiryTracked?: boolean;
+
   active: boolean;
+
   createdAt?: string;
+
   updatedAt?: string;
-  [key: string]: any;
+}
+
+export interface CreateProductRequest {
+  name: string;
+
+  sku: string;
+
+  barcode?: string;
+
+  unit?: string;
+
+  description?: string;
+
+  categoryId?: number | null;
+
+  purchasePrice?: number;
+
+  sellingPrice: number;
+
+  minSellingPrice?: number;
+
+  minStockLevel?: number;
+
+  maxStockLevel?: number;
+
+  reorderLevel?: number;
+
+  quantity?: number;
+
+  batchTracked?: boolean;
+
+  expiryTracked?: boolean;
 }
 
 export const productsApi = {
-  list: async (): Promise<Product[]> => {
-    const res = await apiClient.get('/products');
-    return res.data?.data?.content || [];
+
+  async list(): Promise<Product[]> {
+
+    const response =
+      await apiClient.get(
+        '/products'
+      );
+
+    return extractList<Product>(
+      response.data
+    );
   },
-  get: async (id: number | string): Promise<Product> => {
-    const res = await apiClient.get(`/products/${id}`);
-    return res.data?.data;
+
+  async get(
+    id: number
+  ): Promise<Product> {
+
+    const response =
+      await apiClient.get(
+        `/products/${id}`
+      );
+
+    const product =
+      extractItem<Product>(
+        response.data
+      );
+
+    if (!product) {
+      throw new Error(
+        'Product not found'
+      );
+    }
+
+    return product;
   },
-  create: async (data: Partial<Product>): Promise<Product> => {
-    const res = await apiClient.post('/products', data);
-    return res.data?.data;
+
+  async create(
+    data: CreateProductRequest
+  ): Promise<Product> {
+
+    const response =
+      await apiClient.post(
+        '/products',
+        data
+      );
+
+    const product =
+      extractItem<Product>(
+        response.data
+      );
+
+    if (!product) {
+      throw new Error(
+        'Product was created but no product was returned'
+      );
+    }
+
+    return product;
   },
-  update: async (id: number | string, data: Partial<Product>): Promise<Product> => {
-    const res = await apiClient.put(`/products/${id}`, data);
-    return res.data?.data;
+
+  async update(
+    id: number,
+    data: Partial<CreateProductRequest>
+  ): Promise<Product> {
+
+    const response =
+      await apiClient.put(
+        `/products/${id}`,
+        data
+      );
+
+    const product =
+      extractItem<Product>(
+        response.data
+      );
+
+    if (!product) {
+      throw new Error(
+        'Product was updated but no product was returned'
+      );
+    }
+
+    return product;
   },
-  delete: async (id: number | string): Promise<any> => {
-    const res = await apiClient.delete(`/products/${id}`);
-    return res.data;
-  }
+
+  async delete(
+    id: number
+  ): Promise<void> {
+
+    await apiClient.delete(
+      `/products/${id}`
+    );
+  },
 };

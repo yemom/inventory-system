@@ -1,85 +1,181 @@
-'use client';
-import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import Badge from '@/components/ui/Badge';
-import Button from '@/components/ui/Button';
-import Modal from '@/components/ui/Modal';
-import Input from '@/components/ui/Input';
-import Select from '@/components/ui/Select';
-import ErrorState from '@/components/ui/ErrorState';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { usePayments, useCreatePayment } from '@/hooks/useFinance';
-import { useToast } from '@/components/ui/ToastProvider';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+"use client";
 
-const schema = z.object({
-  type: z.enum(['received', 'made']),
-  partyType: z.enum(['customer', 'supplier']),
-  party: z.string().min(1, 'Required'),
-  amount: z.coerce.number().min(1, 'Amount > 0'),
-  method: z.enum(['cash', 'bank', 'mobile']),
-  reference: z.string().min(1, 'Required'),
-  note: z.string().optional(),
-});
-type FormData = z.infer<typeof schema>;
+import React, { useMemo } from "react";
+
+import PageHeader from "@/components/ui/PageHeader";
+import DataTable, { type Column } from "@/components/ui/DataTable";
+
+import Badge from "@/components/ui/Badge";
+
+import { formatCurrency, formatDate } from "@/lib/utils";
+
+interface Payment {
+  id: number | string;
+
+  date?: string | Date | null;
+
+  reference?: string | null;
+
+  type?: "received" | "made" | string | null;
+
+  party?: string | null;
+
+  partyType?: string | null;
+
+  method?: string | null;
+
+  amount?: number | string | null;
+
+  [key: string]: unknown;
+}
+
+/*
+ * Convert unknown API data into
+ * a safe Payment object.
+ */
+function normalizePayment(payment: any): Payment {
+  return {
+    id: payment?.id ?? payment?.paymentId ?? crypto.randomUUID(),
+
+    date: payment?.date ?? payment?.paymentDate ?? payment?.createdAt ?? null,
+
+    reference: payment?.reference ?? payment?.paymentReference ?? null,
+
+    type: payment?.type ?? payment?.paymentType ?? null,
+
+    party:
+      payment?.party ??
+      payment?.partyName ??
+      payment?.customerName ??
+      payment?.supplierName ??
+      null,
+
+    partyType: payment?.partyType ?? null,
+
+    method: payment?.method ?? payment?.paymentMethod ?? null,
+
+    amount: payment?.amount ?? payment?.totalAmount ?? 0,
+  };
+}
 
 export default function PaymentsPage() {
-  const { data: payments = [], isLoading, error, refetch } = usePayments();
-  const createPayment = useCreatePayment();
-  const { toast } = useToast();
-  const [modalOpen, setModalOpen] = useState(false);
+  /*
+   * Replace this with your real payment
+   * hook/API once the backend payment
+   * endpoint is connected.
+   *
+   * Keeping it empty is safer than inventing
+   * database data.
+   */
+  const payments: Payment[] = useMemo(() => [], []);
 
-  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { type: 'received', partyType: 'customer', method: 'bank' } });
-  const type = watch('type');
+  const columns: Column<Payment>[] = useMemo(
+    () => [
+      {
+        key: "date",
 
-  const onSubmit = async (data: FormData) => {
-    try {
-      await createPayment.mutateAsync({ ...data, date: new Date().toISOString().slice(0, 10) });
-      toast('success', 'Payment recorded');
-      setModalOpen(false); reset();
-    } catch { toast('error', 'Failed to record payment'); }
-  };
+        label: "Date",
 
-  const columns: Column<any>[] = [
-    { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
-    { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs">{String(v)}</span> },
-    { key: 'type', label: 'Type', render: v => <Badge variant={v === 'received' ? 'success' : 'danger'}>{String(v) === 'received' ? 'Received (In)' : 'Made (Out)'}</Badge> },
-    { key: 'party', label: 'Party', render: (_, row) => (
-      <div><p className="font-medium">{String(row.party)}</p><p className="text-xs text-gray-500 capitalize">{String(row.partyType)}</p></div>
-    )},
-    { key: 'method', label: 'Method', render: v => <span className="capitalize">{String(v)}</span> },
-    { key: 'amount', label: 'Amount', render: (v, row) => <span className={row.type === 'received' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'}>{formatCurrency(Number(v))}</span> },
-  ];
+        render: (value) =>
+          formatDate(value as string | Date | null | undefined),
+      },
 
-  if (error) return <ErrorState retry={refetch} />;
+      {
+        key: "reference",
+
+        label: "Reference",
+
+        render: (value) => (
+          <span className="font-mono text-xs">{String(value ?? "—")}</span>
+        ),
+      },
+
+      {
+        key: "type",
+
+        label: "Type",
+
+        render: (value) => {
+          const type = String(value ?? "").toLowerCase();
+
+          const received =
+            type === "received" || type === "in" || type === "payment_received";
+
+          return (
+            <Badge variant={received ? "success" : "danger"}>
+              {received ? "Received (In)" : "Made (Out)"}
+            </Badge>
+          );
+        },
+      },
+
+      {
+        key: "party",
+
+        label: "Party",
+
+        render: (_value, row) => (
+          <div>
+            <p className="font-medium">{String(row.party ?? "—")}</p>
+
+            <p className="text-xs capitalize text-gray-500">
+              {String(row.partyType ?? "—")}
+            </p>
+          </div>
+        ),
+      },
+
+      {
+        key: "method",
+
+        label: "Method",
+
+        render: (value) => (
+          <span className="capitalize">{String(value ?? "—")}</span>
+        ),
+      },
+
+      {
+        key: "amount",
+
+        label: "Amount",
+
+        render: (value, row) => {
+          const type = String(row.type ?? "").toLowerCase();
+
+          const received =
+            type === "received" || type === "in" || type === "payment_received";
+
+          return (
+            <span
+              className={
+                received
+                  ? "font-bold text-emerald-600"
+                  : "font-bold text-red-600"
+              }
+            >
+              {formatCurrency(Number(value ?? 0))}
+            </span>
+          );
+        },
+      },
+    ],
+    [],
+  );
+
+  const normalizedPayments = useMemo(
+    () => payments.map(normalizePayment),
+    [payments],
+  );
 
   return (
-    <div>
-      <PageHeader title="Payments" actions={<Button onClick={() => setModalOpen(true)}><Plus size={16} /> Record Payment</Button>} />
-      <DataTable columns={columns} data={payments as unknown as Record<string, unknown>[]} loading={isLoading} searchable />
+    <div className="space-y-6">
+      <PageHeader
+        title="Payments"
+        subtitle="Track money received from customers and payments made to suppliers"
+      />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Payment">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Payment Type" options={[{ value: 'received', label: 'Money Received (In)' }, { value: 'made', label: 'Money Paid (Out)' }]} {...register('type')} />
-            <Select label="Party Type" options={[{ value: 'customer', label: 'Customer' }, { value: 'supplier', label: 'Supplier' }]} {...register('partyType')} />
-          </div>
-          <Input label={type === 'received' ? 'From (Customer/Entity)' : 'To (Supplier/Entity)'} error={errors.party?.message} {...register('party')} />
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Amount (ETB)" type="number" error={errors.amount?.message} {...register('amount')} />
-            <Select label="Method" options={[{ value: 'cash', label: 'Cash' }, { value: 'bank', label: 'Bank Transfer' }, { value: 'mobile', label: 'Mobile Money' }]} {...register('method')} />
-          </div>
-          <Input label="Reference / Receipt No" error={errors.reference?.message} {...register('reference')} />
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={createPayment.isPending}>Save</Button>
-          </div>
-        </form>
-      </Modal>
+      <DataTable<Payment> columns={columns} data={normalizedPayments} />
     </div>
   );
 }

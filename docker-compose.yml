@@ -1,68 +1,102 @@
-version: '3.8'
-
 services:
-  # 1. PostgreSQL Database
+
+  # ==========================================================
+  # PostgreSQL
+  # ==========================================================
   db:
     image: postgres:15-alpine
     container_name: stockflow_db
     restart: unless-stopped
+
     environment:
-      POSTGRES_USER: stockflow
-      POSTGRES_PASSWORD: stockflowpassword
-      POSTGRES_DB: stockflow_db
+      POSTGRES_USER: ${POSTGRES_USER:-stockflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-stockflow_db}
+
     ports:
-      - "5434:5432" # Host port 5434 to avoid conflicts with other local containers
+      - "5434:5432"
+
     volumes:
       - postgres_stockflow_data:/var/lib/postgresql/data
+
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U stockflow -d stockflow_db" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db}" ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
-  # 2. Spring Boot Backend Application
+  # ==========================================================
+  # Spring Boot Backend
+  # ==========================================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+
     container_name: stockflow_backend
     restart: unless-stopped
+
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      DATABASE_URL: jdbc:postgresql://db:5432/stockflow_db
-      DATABASE_USERNAME: stockflow
-      DATABASE_PASSWORD: stockflowpassword
-      JWT_SECRET: 94f6c46cb32145b0a7019f3900350d32b845187740e5dcbd41369d71c897f262
-      SERVER_PORT: 8080
-      SUPER_ADMIN_USERNAME: superadmin
-      SUPER_ADMIN_EMAIL: 12yemom@gmail.com
-      SUPER_ADMIN_PASSWORD: Fekerte@zegeye1221
-      SUPER_ADMIN_FIRST_NAME: Super
-      SUPER_ADMIN_LAST_NAME: Admin
-    ports:
-      - "8081:8080" # Host port 8081 to avoid conflicts
 
-  # 3. Next.js Production Frontend
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-stockflow_db}
+      DATABASE_USERNAME: ${POSTGRES_USER:-stockflow}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+
+      JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret}
+
+      SERVER_PORT: 8080
+
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-Esrom Basazinaw}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-12yemom@gmail.com}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-Fekerte@zegeye1221}
+      SUPER_ADMIN_FIRST_NAME: ${SUPER_ADMIN_FIRST_NAME:-Super}
+      SUPER_ADMIN_LAST_NAME: ${SUPER_ADMIN_LAST_NAME:-Admin}
+
+    ports:
+      - "8081:8080"
+
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==========================================================
+  # Next.js Frontend
+  # ==========================================================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
+        NEXT_PUBLIC_APP_URL: http://localhost:3005
+
     container_name: stockflow_frontend
     restart: unless-stopped
+
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_APP_NAME: StockFlow
       NEXT_PUBLIC_APP_URL: http://localhost:3005
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
-    ports:
-      - "3005:3000" # Expose production frontend on http://localhost:3005
 
+    ports:
+      - "3005:3000"
+
+# ============================================================
+# Persistent PostgreSQL volume
+# ============================================================
 volumes:
   postgres_stockflow_data:
     driver: local
