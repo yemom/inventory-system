@@ -165,7 +165,7 @@ export default function PurchaseReturnsPage() {
 
       <DataTable
         columns={columns}
-        data={returnsList as unknown as Record<string, unknown>[]}
+        data={returnsList}
         searchable
         searchPlaceholder="Search purchase returns..."
         actions={row => (

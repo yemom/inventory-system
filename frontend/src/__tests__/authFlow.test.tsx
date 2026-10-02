@@ -80,6 +80,9 @@ describe('hasPermission — SUPER_ADMIN', () => {
       role: 'SUPER_ADMIN',
       permissions: [], // empty — SUPER_ADMIN bypasses list
     };
+    // AuthProvider restores a session only when BOTH the token and the
+    // cached user are present; a lone auth_user is treated as invalid.
+    localStorage.setItem('auth_token', 'jwt.token.here');
     localStorage.setItem('auth_user', JSON.stringify(superAdmin));
 
     renderWithAuth();
@@ -110,6 +113,7 @@ describe('hasPermission — non-SUPER_ADMIN', () => {
       role: 'CASHIER',
       permissions: ['CUSTOMER_CREATE', 'CUSTOMER_READ', 'SALE_CREATE'],
     };
+    localStorage.setItem('auth_token', 'jwt.token.here');
     localStorage.setItem('auth_user', JSON.stringify(cashier));
 
     renderWithAuth();
@@ -133,6 +137,7 @@ describe('hasPermission — non-SUPER_ADMIN', () => {
       role: 'CASHIER',
       permissions: [],
     };
+    localStorage.setItem('auth_token', 'jwt.token.here');
     localStorage.setItem('auth_user', JSON.stringify(restricted));
 
     renderWithAuth();
@@ -248,6 +253,7 @@ describe('State restoration from localStorage on mount', () => {
       role: 'STOREKEEPER',
       permissions: ['PRODUCT_READ', 'INVENTORY_READ'],
     };
+    localStorage.setItem('auth_token', 'jwt.token.here');
     localStorage.setItem('auth_user', JSON.stringify(storekeeper));
 
     renderWithAuth();

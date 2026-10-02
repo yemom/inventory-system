@@ -13,7 +13,15 @@ export interface Column<T> {
   className?: string;
 }
 
-interface DataTableProps<T extends Record<string, unknown>> {
+/**
+ * `T` is intentionally unconstrained. Constraining it to
+ * `Record<string, unknown>` forces every consumer to cast their
+ * domain interfaces (`Customer`, `Product`, ...) into an
+ * index-signature shape, which is why call sites were littered
+ * with `as unknown as Record<string, unknown>[]`. Rows are read
+ * through an internal `Row` view instead, so any object row works.
+ */
+interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
@@ -26,7 +34,9 @@ interface DataTableProps<T extends Record<string, unknown>> {
   pageSize?: number;
 }
 
-export default function DataTable<T extends Record<string, unknown>>({
+type Row = Record<string, unknown>;
+
+export default function DataTable<T>({
   columns, data, loading, searchable, searchPlaceholder = 'Search...', actions,
   rowKey = 'id' as keyof T, emptyTitle, emptyMessage, pageSize = 10,
 }: DataTableProps<T>) {
@@ -34,7 +44,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   const [page, setPage] = useState(1);
 
   const filtered = search
-    ? data.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(search.toLowerCase())))
+    ? data.filter(row => Object.values(row as Row).some(v => String(v).toLowerCase().includes(search.toLowerCase())))
     : data;
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -81,10 +91,12 @@ export default function DataTable<T extends Record<string, unknown>>({
               </tr>
             ) : (
               paginated.map((row, i) => (
-                <tr key={String(row[rowKey]) || i} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                <tr key={String((row as Row)[rowKey as string]) || i} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
                   {columns.map((col, colIdx) => (
                     <td key={`${col.key}-${colIdx}`} className={cn('px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap', col.className)}>
-                      {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? '-')}
+                      {col.render
+                        ? col.render((row as Row)[col.key], row)
+                        : String((row as Row)[col.key] ?? '-')}
                     </td>
                   ))}
                   {actions && <td className="px-4 py-3 text-right">{actions(row)}</td>}

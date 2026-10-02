@@ -55,7 +55,7 @@ export default function ExpensesPage() {
   return (
     <div>
       <PageHeader title="Expenses" actions={<Button onClick={() => setModalOpen(true)}><Plus size={16} /> Record Expense</Button>} />
-      <DataTable columns={columns} data={expenses as unknown as Record<string, unknown>[]} loading={isLoading} searchable
+      <DataTable columns={columns} data={expenses} loading={isLoading} searchable
         actions={row => (
           <button onClick={() => setDeleteTarget(row as unknown as Expense)} className="p-1.5 rounded hover:bg-gray-100 text-red-500"><Trash2 size={15} /></button>
         )}

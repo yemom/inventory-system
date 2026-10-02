@@ -180,7 +180,7 @@ export default function SalesReturnsPage() {
 
       <DataTable
         columns={columns}
-        data={returnsList as unknown as Record<string, unknown>[]}
+        data={returnsList}
         searchable
         searchPlaceholder="Search customer returns..."
         actions={row => (

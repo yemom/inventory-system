@@ -93,7 +93,7 @@ export const productsApi = {
   },
 
   async get(
-    id: number
+    id: string | number
   ): Promise<Product> {
 
     const response =
@@ -140,7 +140,7 @@ export const productsApi = {
   },
 
   async update(
-    id: number,
+    id: string | number,
     data: Partial<CreateProductRequest>
   ): Promise<Product> {
 
@@ -165,7 +165,7 @@ export const productsApi = {
   },
 
   async delete(
-    id: number
+    id: string | number
   ): Promise<void> {
 
     await apiClient.delete(

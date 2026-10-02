@@ -64,7 +64,7 @@ export default function AdjustmentsPage() {
         subtitle="Manually adjust stock for losses, damages, or corrections"
         actions={<Button onClick={() => setModalOpen(true)}><Plus size={16} /> New Adjustment</Button>}
       />
-      <DataTable columns={columns} data={products as unknown as Record<string, unknown>[]} loading={isLoading} searchable />
+      <DataTable columns={columns} data={products} loading={isLoading} searchable />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Stock Adjustment">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

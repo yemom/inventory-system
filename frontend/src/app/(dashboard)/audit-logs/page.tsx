@@ -27,7 +27,7 @@ export default function AuditLogsPage() {
   return (
     <div>
       <PageHeader title="Audit Logs" subtitle="System activity and security trail" />
-      <DataTable columns={columns} data={logs as unknown as Record<string, unknown>[]} loading={isLoading} searchable searchPlaceholder="Search logs..." />
+      <DataTable columns={columns} data={logs} loading={isLoading} searchable searchPlaceholder="Search logs..." />
     </div>
   );
 }

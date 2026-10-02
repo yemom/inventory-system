@@ -320,7 +320,7 @@ export default function TransfersPage() {
 
       <DataTable
         columns={columns}
-        data={transfers as unknown as Record<string, unknown>[]}
+        data={transfers}
         loading={isLoading}
         searchable
       />

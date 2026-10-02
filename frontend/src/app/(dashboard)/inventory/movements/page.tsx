@@ -38,7 +38,7 @@ export default function InventoryMovementsPage() {
       <PageHeader title="Movements" subtitle="All inventory in/out transactions" />
       <DataTable
         columns={columns}
-        data={movements as unknown as Record<string, unknown>[]}
+        data={movements}
         loading={isLoading}
         searchable
         searchPlaceholder="Search movements..."

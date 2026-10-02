@@ -28,8 +28,8 @@ WORKDIR /app
 # Create non-root user
 RUN addgroup -S spring && adduser -S spring -G spring
 
-# Copy generated JAR
-COPY --from=builder /app/target/*.jar app.jar
+# Copy generated JAR (exclude any *.jar.original left by the Spring Boot repackage)
+COPY --from=builder /app/target/backend-*.jar app.jar
 
 # Use non-root user
 USER spring:spring

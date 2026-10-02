@@ -20,11 +20,15 @@ services:
       - postgres_stockflow_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db}" ]
+      # pg_isready only proves the postmaster accepts connections.
+      # `SELECT 1` against the real application database additionally
+      # proves initdb finished and the target database exists, which is
+      # what the backend actually needs.
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db} -q && psql -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db} -tAc 'SELECT 1' >/dev/null" ]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 20
+      start_period: 15s
 
   # ==========================================================
   # Spring Boot Backend
@@ -37,6 +41,7 @@ services:
     container_name: stockflow_backend
     restart: unless-stopped
 
+    # Do not start until PostgreSQL is genuinely accepting queries.
     depends_on:
       db:
         condition: service_healthy
@@ -48,7 +53,12 @@ services:
 
       JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret}
 
+      # Internal container port; published to the host as 8081 below.
       SERVER_PORT: 8080
+
+      # Actuator: expose health only, and never leak component details.
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: true
 
       SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-Esrom Basazinaw}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-12yemom@gmail.com}
@@ -57,14 +67,22 @@ services:
       SUPER_ADMIN_LAST_NAME: ${SUPER_ADMIN_LAST_NAME:-Admin}
 
     ports:
+      # host:container — the browser talks to http://localhost:8081
       - "8081:8080"
 
     healthcheck:
-      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1" ]
+      # spring-boot-starter-actuator is a declared dependency and
+      # /actuator/health is permitAll in SecurityConfig, so this endpoint
+      # is public and reflects the real state (including the DB indicator).
+      # NOTE: busybox grep has no BRE support for quoted literals here, so
+      # match `status":"UP` without quote characters around the pattern.
+      # Use 127.0.0.1 explicitly: inside the container `localhost`
+      # resolves to ::1 first, which the server may not be bound to.
+      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/actuator/health | grep -q 'status.:.UP'" ]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 30
+      start_period: 60s
 
   # ==========================================================
   # Next.js Frontend
@@ -75,24 +93,42 @@ services:
       dockerfile: Dockerfile
 
       args:
+        # NEXT_PUBLIC_* values are inlined into the browser bundle at
+        # BUILD time, so they must use the host-published port.
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
         NEXT_PUBLIC_APP_URL: http://localhost:3005
 
     container_name: stockflow_frontend
     restart: unless-stopped
 
+    # The backend must be healthy, not merely started: a running JVM
+    # can still be mid-initialisation while Hibernate creates the schema.
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
 
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_APP_NAME: StockFlow
-      NEXT_PUBLIC_APP_URL: http://localhost:3005
+      # Runtime mirror of the build-time value (harmless, but keeps
+      # `docker exec` inspection consistent with the baked bundle).
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
+      NEXT_PUBLIC_APP_URL: http://localhost:3005
+      # Server-side / Docker-internal URL. `backend` resolves ONLY inside
+      # the compose network; the browser must never receive this value.
+      API_INTERNAL_BASE_URL: http://backend:8080/api/v1
 
     ports:
       - "3005:3000"
+
+    healthcheck:
+      # Probes a real application route. 127.0.0.1 avoids the ::1
+      # resolution issue described in the backend health check.
+      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/login >/dev/null || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 # ============================================================
 # Persistent PostgreSQL volume

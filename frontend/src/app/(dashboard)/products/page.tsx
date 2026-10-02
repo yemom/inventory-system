@@ -125,7 +125,7 @@ export default function ProductsPage() {
 
       <DataTable
         columns={columns}
-        data={products as unknown as Record<string, unknown>[]}
+        data={products}
         loading={isLoading}
         searchable
         searchPlaceholder="Search products..."

@@ -34,23 +34,24 @@ describe('usersApi', () => {
 
     const result = await usersApi.create(newUser);
 
-    expect(apiClient.post).toHaveBeenCalledWith('/users', newUser);
+    // usersApi.create targets /staff, the endpoint the staff page uses.
+    expect(apiClient.post).toHaveBeenCalledWith('/staff', newUser);
     expect(result).toEqual({ success: true });
   });
 
-  it('should call PATCH /users/:id/activate', async () => {
+  it('should activate a member via PATCH /staff/:id/status', async () => {
     (apiClient.patch as jest.Mock).mockResolvedValueOnce({ data: { success: true } });
 
     await usersApi.activate(5);
 
-    expect(apiClient.patch).toHaveBeenCalledWith('/users/5/activate');
+    expect(apiClient.patch).toHaveBeenCalledWith('/staff/5/status', { status: 'ACTIVE' });
   });
 
-  it('should call PATCH /users/:id/deactivate', async () => {
+  it('should deactivate a member via PATCH /staff/:id/status', async () => {
     (apiClient.patch as jest.Mock).mockResolvedValueOnce({ data: { success: true } });
 
     await usersApi.deactivate(5);
 
-    expect(apiClient.patch).toHaveBeenCalledWith('/users/5/deactivate');
+    expect(apiClient.patch).toHaveBeenCalledWith('/staff/5/status', { status: 'INACTIVE' });
   });
 });

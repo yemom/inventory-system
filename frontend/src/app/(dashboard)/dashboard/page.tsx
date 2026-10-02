@@ -11,6 +11,7 @@ import { useSales } from '@/hooks/useSales';
 import { usePurchases } from '@/hooks/usePurchases';
 import { StatCardSkeleton } from '@/components/ui/Skeleton';
 import apiClient from '@/lib/api/apiClient';
+import { labelApiError } from '@/lib/api/apiErrors';
 
 // Derive monthly sales trend from real sale orders
 function buildSalesTrend(sales: any[], purchases: any[]) {
@@ -59,12 +60,6 @@ function buildTopProducts(sales: any[]) {
     .slice(0, 5);
 }
 
-function errorMessage(err: unknown, fallback: string): string {
-  if (!err) return fallback;
-  const anyErr = err as { message?: string; response?: { data?: { message?: string } } };
-  return anyErr.response?.data?.message || anyErr.message || fallback;
-}
-
 export default function DashboardPage() {
   const { data: products = [], isLoading: loadingProducts, error: productsError } = useProducts();
   const { data: sales = [], isLoading: loadingSales, error: salesError } = useSales();
@@ -74,16 +69,19 @@ export default function DashboardPage() {
 
   // Fetch real dashboard stats from backend
   useEffect(() => {
-    setStatsError(null);
+    let cancelled = false;
     apiClient.get('/dashboard/stats')
       .then(res => {
-        setDashStats(res.data?.data);
+        if (cancelled) return;
+        setDashStats(res.data?.data ?? null);
         setStatsError(null);
       })
       .catch((err) => {
+        if (cancelled) return;
         setDashStats(null);
-        setStatsError(errorMessage(err, 'Failed to load dashboard stats'));
+        setStatsError(labelApiError('Dashboard statistics', err).message);
       });
+    return () => { cancelled = true; };
   }, []);
 
   // ── KPI calculations from real data ──────────────────────────────────────
@@ -96,11 +94,18 @@ export default function DashboardPage() {
   const recentSales = (sales as any[]).slice(0, 5);
 
   const loading = loadingProducts || loadingSales || loadingPurchases;
+
+  /**
+   * Each failed request keeps its own stable identity (`label`) as the
+   * React key. Using the error message as the key was the bug: several
+   * unreachable-backend failures all collapse to the same message, so
+   * React saw duplicate keys. The label also makes the message useful.
+   */
   const dataErrors = [
-    productsError && errorMessage(productsError, 'Failed to load products'),
-    salesError && errorMessage(salesError, 'Failed to load sales'),
-    purchasesError && errorMessage(purchasesError, 'Failed to load purchases'),
-  ].filter(Boolean) as string[];
+    productsError && labelApiError('Products', productsError),
+    salesError && labelApiError('Sales', salesError),
+    purchasesError && labelApiError('Purchases', purchasesError),
+  ].filter(Boolean) as ReturnType<typeof labelApiError>[];
 
   // ── Chart data derived from real orders ───────────────────────────────────
   const salesTrend = buildSalesTrend(sales, purchases);
@@ -114,13 +119,31 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {(statsError || dataErrors.length > 0) && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 space-y-1">
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 space-y-1"
+        >
           {statsError && (
-            <p>Dashboard stats unavailable — showing values computed from sales/products. ({statsError})</p>
+            <p className="font-medium">{statsError}</p>
           )}
-          {dataErrors.map((msg) => (
-            <p key={msg}>{msg}</p>
-          ))}
+          {dataErrors.length > 0 && (
+            <p>
+              Some data could not be loaded from the backend. Start it with{' '}
+              <code className="font-mono">docker compose up --build</code> and
+              reload this page.
+            </p>
+          )}
+          <ul className="list-disc pl-5 space-y-0.5">
+            {dataErrors.map((error) => (
+              <li key={error.label}>
+                <span className="font-medium">{error.label}:</span>{' '}
+                {error.message}
+                {error.endpoint ? (
+                  <span className="opacity-70"> ({error.endpoint})</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

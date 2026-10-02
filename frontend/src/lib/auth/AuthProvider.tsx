@@ -7,7 +7,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import apiClient from "@/lib/api/apiClient";
+import apiClient, { SESSION_EXPIRED_EVENT } from "@/lib/api/apiClient";
 
 export type Role =
   | "SUPER_ADMIN"

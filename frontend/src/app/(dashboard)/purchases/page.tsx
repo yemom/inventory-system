@@ -53,7 +53,7 @@ export default function PurchasesPage() {
         actions={<Button onClick={() => toast('info', 'New purchase form coming soon')}><Plus size={16} /> New PO</Button>}
       />
       <DataTable
-        columns={columns} data={purchases as unknown as Record<string, unknown>[]} loading={isLoading} searchable
+        columns={columns} data={purchases} loading={isLoading} searchable
         searchPlaceholder="Search orders..."
         actions={row => (
           <div className="flex items-center justify-end gap-1">

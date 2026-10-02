@@ -54,7 +54,7 @@ export default function SalesPage() {
         actions={<Button onClick={() => toast('info', 'New sale form coming soon')}><Plus size={16} /> New Sale</Button>}
       />
       <DataTable
-        columns={columns} data={sales as unknown as Record<string, unknown>[]} loading={isLoading} searchable
+        columns={columns} data={sales} loading={isLoading} searchable
         searchPlaceholder="Search orders..."
         actions={row => (
           <div className="flex items-center justify-end gap-1">

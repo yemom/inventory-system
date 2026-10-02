@@ -496,7 +496,7 @@ export default function CategoriesPage() {
 
       <DataTable
         columns={columns as Column<any>[]}
-        data={categories as unknown as Record<string, unknown>[]}
+        data={categories}
         searchable
         searchPlaceholder="
           Search product categories...

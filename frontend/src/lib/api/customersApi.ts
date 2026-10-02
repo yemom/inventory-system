@@ -75,7 +75,7 @@ export const customersApi = {
   },
 
   async get(
-    id: number
+    id: string | number
   ): Promise<Customer> {
 
     const response =
@@ -122,7 +122,7 @@ export const customersApi = {
   },
 
   async update(
-    id: number,
+    id: string | number,
     data: Partial<CreateCustomerRequest>
   ): Promise<Customer> {
 

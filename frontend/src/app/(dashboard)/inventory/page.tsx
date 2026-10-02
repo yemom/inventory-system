@@ -71,7 +71,7 @@ export default function InventoryPage() {
         <CardContent className="p-0 pb-4">
           <DataTable
             columns={columns}
-            data={products as unknown as Record<string, unknown>[]}
+            data={products}
             loading={isLoading}
             searchable
             searchPlaceholder="Search products..."

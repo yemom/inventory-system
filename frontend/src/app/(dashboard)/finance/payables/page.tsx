@@ -156,7 +156,7 @@ export default function PayablesPage() {
 
       <DataTable
         columns={columns}
-        data={creditors as unknown as Record<string, unknown>[]}
+        data={creditors}
         loading={isLoading}
         searchable
         searchPlaceholder="Search creditors..."
