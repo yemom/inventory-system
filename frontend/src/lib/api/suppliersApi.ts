@@ -1,4 +1,4 @@
-import apiClient from "./apiClient";
+import apiClient, { fetchAllPages } from "./apiClient";
 import {
   extractItem,
   extractList,
@@ -61,19 +61,9 @@ export const suppliersApi = {
     size = 100,
     search = "",
   ): Promise<Supplier[]> {
-    const response =
-      await apiClient.get("/suppliers", {
-        params: {
-          page,
-          size,
-          search:
-            search.trim() || undefined,
-        },
-      });
-
-    return extractList<Supplier>(
-      response.data,
-    );
+    return fetchAllPages<Supplier>("/suppliers", {
+      search: search.trim() || undefined,
+    });
   },
 
   /**

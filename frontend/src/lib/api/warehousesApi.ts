@@ -1,4 +1,4 @@
-﻿import apiClient from './apiClient';
+﻿import apiClient, { fetchAllPages } from './apiClient';
 
 export interface Warehouse {
   id: number;
@@ -19,26 +19,7 @@ export interface CreateWarehouseRequest {
 
 export const warehousesApi = {
   list: async (): Promise<Warehouse[]> => {
-    const response = await apiClient.get('/warehouses');
-
-    const data = response.data?.data;
-
-    // Backend returns:
-    // {
-    //   success: true,
-    //   message: "...",
-    //   data: [...]
-    // }
-    if (Array.isArray(data)) {
-      return data;
-    }
-
-    // Defensive support if backend later returns pagination.
-    if (Array.isArray(data?.content)) {
-      return data.content;
-    }
-
-    return [];
+    return fetchAllPages<Warehouse>('/warehouses');
   },
 
   get: async (

@@ -1,4 +1,4 @@
-﻿import apiClient from './apiClient';
+﻿import apiClient, { fetchAllPages } from './apiClient';
 
 export interface PurchaseOrder {
   id: string | number;
@@ -17,8 +17,7 @@ export interface PurchaseOrder {
 
 export const purchasesApi = {
   list: async (): Promise<any[]> => {
-    const res = await apiClient.get('/purchases');
-    return res.data?.data?.content || res.data?.data || [];
+    return fetchAllPages('/purchases');
   },
   get: async (id: string | number): Promise<any> => {
     const res = await apiClient.get(`/purchases/${id}`);

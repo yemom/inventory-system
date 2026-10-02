@@ -26,11 +26,25 @@ public class SaleOrder {
     private BigDecimal discount;
 
     @Column(precision = 10, scale = 2)
+    private BigDecimal tax;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal finalAmount;
 
     private String status; // PAID, PENDING, CANCELLED
     private String paymentStatus; // PAID, PARTIAL, UNPAID
-    private String paymentMethod; // CASH, CARD, TRANSFER
+    private String paymentMethod; // CASH, CARD, TRANSFER, BANK, MOBILE_MONEY, CREDIT
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id")
+    private User createdBy;
+
+    @Column(unique = true)
+    private String idempotencyKey;
 
     @OneToMany(mappedBy = "saleOrder", cascade = CascadeType.ALL)
     private List<SaleOrderItem> items;

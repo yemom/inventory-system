@@ -34,4 +34,10 @@ public class SaleOrderController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Sale recorded successfully", saleOrderService.createSale(request)));
     }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('SALE_READ')")
+    public ResponseEntity<ApiResponse<SaleOrderDTO>> getSale(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(saleOrderService.getSale(id)));
+    }
 }

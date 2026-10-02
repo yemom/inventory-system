@@ -65,7 +65,7 @@ export default function DashboardPage() {
   const { data: sales = [], isLoading: loadingSales, error: salesError } = useSales();
   const { data: purchases = [], isLoading: loadingPurchases, error: purchasesError } = usePurchases();
   const [dashStats, setDashStats] = useState<any>(null);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState<ReturnType<typeof labelApiError> | null>(null);
 
   // Fetch real dashboard stats from backend
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function DashboardPage() {
       .catch((err) => {
         if (cancelled) return;
         setDashStats(null);
-        setStatsError(labelApiError('Dashboard statistics', err).message);
+        setStatsError(labelApiError('Dashboard statistics', err));
       });
     return () => { cancelled = true; };
   }, []);
@@ -105,7 +105,11 @@ export default function DashboardPage() {
     productsError && labelApiError('Products', productsError),
     salesError && labelApiError('Sales', salesError),
     purchasesError && labelApiError('Purchases', purchasesError),
-  ].filter(Boolean) as ReturnType<typeof labelApiError>[];
+  ]
+    // 403s are permission issues, not backend failures — suppress from the banner
+    .filter((e): e is ReturnType<typeof labelApiError> => Boolean(e) && e!.status !== 403);
+
+  const bannerStatsError = statsError && statsError.status !== 403 ? statsError : null;
 
   // ── Chart data derived from real orders ───────────────────────────────────
   const salesTrend = buildSalesTrend(sales, purchases);
@@ -118,29 +122,32 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {(statsError || dataErrors.length > 0) && (
+      {(bannerStatsError || dataErrors.length > 0) && (
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 space-y-1"
         >
-          {statsError && (
-            <p className="font-medium">{statsError}</p>
+          {bannerStatsError && (
+            <p className="font-medium">
+              {bannerStatsError.label}: {bannerStatsError.status === null
+                ? 'Cannot reach the server. Please make sure the app is running and try again.'
+                : bannerStatsError.message}
+            </p>
           )}
           {dataErrors.length > 0 && (
             <p>
-              Some data could not be loaded from the backend. Start it with{' '}
-              <code className="font-mono">docker compose up --build</code> and
-              reload this page.
+              Some data could not be loaded. Please reload the page, or{' '}
+              <code className="font-mono">docker compose up --build</code> if you
+              just started the app.
             </p>
           )}
           <ul className="list-disc pl-5 space-y-0.5">
             {dataErrors.map((error) => (
               <li key={error.label}>
                 <span className="font-medium">{error.label}:</span>{' '}
-                {error.message}
-                {error.endpoint ? (
-                  <span className="opacity-70"> ({error.endpoint})</span>
-                ) : null}
+                {error.status === null
+                  ? 'Cannot reach the server.'
+                  : error.message}
               </li>
             ))}
           </ul>

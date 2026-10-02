@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Eye, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -15,12 +16,15 @@ import type { PurchaseOrder } from '@/lib/api/purchasesApi';
 
 const statusVariant: Record<string, 'success' | 'info' | 'default' | 'danger'> = {
   received: 'success', ordered: 'info', draft: 'default', cancelled: 'danger',
+  PAID: 'success', PENDING: 'info', CANCELLED: 'danger', RECEIVED: 'success',
 };
 const payVariant: Record<string, 'success' | 'warning' | 'danger'> = {
   paid: 'success', partial: 'warning', unpaid: 'danger',
+  PAID: 'success', PARTIAL: 'warning', UNPAID: 'danger',
 };
 
 export default function PurchasesPage() {
+  const router = useRouter();
   const { data: purchases = [], isLoading, error, refetch } = usePurchases();
   const deletePurchase = useDeletePurchase();
   const { toast } = useToast();
@@ -50,7 +54,7 @@ export default function PurchasesPage() {
       <PageHeader
         title="Purchases"
         subtitle={`${purchases.length} orders total`}
-        actions={<Button onClick={() => toast('info', 'New purchase form coming soon')}><Plus size={16} /> New PO</Button>}
+        actions={<Button onClick={() => router.push('/purchases/new')}><Plus size={16} /> New PO</Button>}
       />
       <DataTable
         columns={columns} data={purchases} loading={isLoading} searchable

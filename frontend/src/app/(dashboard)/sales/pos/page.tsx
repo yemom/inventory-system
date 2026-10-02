@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Search,
@@ -27,6 +28,8 @@ import { formatCurrency } from "@/lib/utils";
 import { useProducts } from "@/hooks/useProducts";
 
 import { customersApi, type Customer } from "@/lib/api/customersApi";
+
+import { salesApi } from "@/lib/api/salesApi";
 
 import type { Product } from "@/lib/api/productsApi";
 
@@ -85,6 +88,21 @@ export default function POSPage() {
   const [tenderedAmount, setTenderedAmount] = useState<string>("");
 
   const [receiptOrder, setReceiptOrder] = useState<ReceiptOrder | null>(null);
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  /*
+   * One idempotency key per cart — regenerated every time the cart is reset,
+   * so an accidental double-click on "Complete Sale" cannot create two
+   * sales, and a retry after a network failure reuses the same sale.
+   */
+  const idempotencyKey = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `sale-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   /*
    * Load customers.
@@ -269,6 +287,10 @@ export default function POSPage() {
     setCart([]);
     setDiscountPercent(0);
     setTenderedAmount("");
+    idempotencyKey.current =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sale-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   };
 
   /*
@@ -300,17 +322,18 @@ export default function POSPage() {
   const change = tendered > total ? tendered - total : 0;
 
   /*
-   * Complete checkout.
-   *
-   * This currently creates the receipt state used by
-   * the POS screen. The actual /sales API should be
-   * called here if you want the transaction persisted
-   * to the backend.
+   * Complete checkout — persists the sale to the backend via the real
+   * /sales API (sale record + items + stock reduction + payment),
+   * then shows the receipt from the server response.
    */
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       toast("error", "Cart is empty", "Add products to cart before checkout.");
 
+      return;
+    }
+
+    if (submitting) {
       return;
     }
 
@@ -340,39 +363,89 @@ export default function POSPage() {
             (customer) => String(customer.id) === selectedCustomerId,
           );
 
-    const reference = `SALE-${new Date().getFullYear()}-${Math.floor(
-      100000 + Math.random() * 900000,
-    )}`;
-
-    const orderData: ReceiptOrder = {
-      reference,
-
-      customerName: customerObj?.name ?? "Walk-in Customer",
-
-      date: new Date().toISOString(),
-
-      items: [...cart],
-
-      subtotal,
-
-      discountAmount,
-
-      taxAmount,
-
-      total,
-
-      paymentMethod,
-
-      tendered: paymentMethod === "cash" ? tendered : total,
-
-      change: paymentMethod === "cash" ? change : 0,
+    const paymentMethodMap: Record<"cash" | "bank" | "mobile", string> = {
+      cash: "CASH",
+      bank: "BANK",
+      mobile: "MOBILE_MONEY",
     };
 
-    setReceiptOrder(orderData);
+    const payload = {
+      customerName: customerObj?.name ?? "Walk-in Customer",
+      customerId: customerObj ? Number(customerObj.id) : undefined,
+      discount: discountAmount,
+      tax: taxAmount,
+      paymentMethod: paymentMethodMap[paymentMethod],
+      paymentStatus: "PAID",
+      idempotencyKey: idempotencyKey.current,
+      items: cart.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: Number(item.product.sellingPrice || 0),
+        discount: 0,
+      })),
+    };
 
-    toast("success", "Sale completed", `Transaction ${reference} created.`);
+    try {
+      setSubmitting(true);
 
-    clearCart();
+      const created = await salesApi.create(payload);
+
+      const reference =
+        created?.orderNumber ?? created?.reference ?? "Sale recorded";
+
+      const orderData: ReceiptOrder = {
+        reference,
+
+        customerName: customerObj?.name ?? "Walk-in Customer",
+
+        date: created?.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
+
+        items: [...cart],
+
+        subtotal: Number(created?.totalAmount ?? subtotal),
+
+        discountAmount: Number(created?.discount ?? discountAmount),
+
+        taxAmount: Number(created?.tax ?? taxAmount),
+
+        total: Number(created?.finalAmount ?? created?.total ?? total),
+
+        paymentMethod,
+
+        tendered: paymentMethod === "cash" ? tendered : total,
+
+        change: paymentMethod === "cash" ? change : 0,
+      };
+
+      setReceiptOrder(orderData);
+
+      toast("success", "Sale completed", `Transaction ${reference} saved.`);
+
+      clearCart();
+
+      await queryClient.invalidateQueries({ queryKey: ["sales"] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+    } catch (error: unknown) {
+      const responseError = (
+        error as {
+          response?: { data?: { message?: string; error?: string } };
+          message?: string;
+        }
+      )?.response?.data;
+
+      const message =
+        responseError?.message ??
+        responseError?.error ??
+        (error as { message?: string })?.message ??
+        "Unable to complete sale. Please try again.";
+
+      toast("error", "Sale failed", String(message));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -756,11 +829,13 @@ export default function POSPage() {
             {/* Checkout */}
             <Button
               onClick={handleCheckout}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || submitting}
               className="w-full gap-2 py-2.5 text-sm font-bold shadow-md"
             >
               <CheckCircle size={16} />
-              Complete Sale ({formatCurrency(total)})
+              {submitting
+                ? "Completing Sale..."
+                : `Complete Sale (${formatCurrency(total)})`}
             </Button>
           </div>
         </div>

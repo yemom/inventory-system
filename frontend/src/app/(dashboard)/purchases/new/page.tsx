@@ -48,12 +48,14 @@ export default function NewPurchasePage() {
      API data
   ======================================================= */
 
-  const { data: suppliers = [], isLoading: suppliersLoading } = useSuppliers();
+  const { data: suppliers = [], isLoading: suppliersLoading, error: suppliersError } = useSuppliers();
 
-  const { data: products = [], isLoading: productsLoading } = useProducts();
+  const { data: products = [], isLoading: productsLoading, error: productsError } = useProducts();
 
-  const { data: warehouses = [], isLoading: warehousesLoading } =
+  const { data: warehouses = [], isLoading: warehousesLoading, error: warehousesError } =
     useWarehouses();
+
+  const setupError = suppliersError ?? productsError ?? warehousesError;
 
   /* =======================================================
      Form state
@@ -459,6 +461,11 @@ export default function NewPurchasePage() {
 
   return (
     <div className="max-w-6xl space-y-6">
+      {setupError && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          Some setup data couldn't be loaded (suppliers, products, or warehouses). Check your connection and permissions, then refresh the page.
+        </div>
+      )}
       {/* ===================================================
           Back button
       =================================================== */}

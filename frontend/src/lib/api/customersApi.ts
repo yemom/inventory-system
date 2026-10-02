@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { fetchAllPages } from './apiClient';
 import {
   extractItem,
   extractList,
@@ -56,22 +56,9 @@ export const customersApi = {
     search = ''
   ): Promise<Customer[]> {
 
-    const response =
-      await apiClient.get(
-        '/customers',
-        {
-          params: {
-            page,
-            size,
-            search:
-              search.trim() || undefined,
-          },
-        }
-      );
-
-    return extractList<Customer>(
-      response.data
-    );
+    return fetchAllPages<Customer>('/customers', {
+      search: search.trim() || undefined,
+    });
   },
 
   async get(

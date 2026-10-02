@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Plus, Trash2 } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -62,6 +63,13 @@ export default function NewSalePage() {
   const [lines, setLines] = useState<SaleLine[]>([]);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const queryClient = useQueryClient();
+  const idempotencyKey = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `sale-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   // --------------------------------------------------
   // Automatically select first customer
@@ -349,13 +357,11 @@ export default function NewSalePage() {
 
     const payload = {
       customerName,
-
+      customerId: Number(customerId),
       discount: safeDiscount,
-
       paymentMethod,
-
       paymentStatus,
-
+      idempotencyKey: idempotencyKey.current ?? undefined,
       items: lines.map((line) => ({
         productId: Number(line.productId),
         quantity: Number(line.quantity),
@@ -375,6 +381,12 @@ export default function NewSalePage() {
         "Sale recorded",
         `${reference} was successfully saved and inventory was updated.`,
       );
+
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      await queryClient.invalidateQueries({ queryKey: ['payments'] });
 
       router.push("/sales");
     } catch (error: unknown) {

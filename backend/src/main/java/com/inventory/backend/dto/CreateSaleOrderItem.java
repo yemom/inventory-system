@@ -9,7 +9,9 @@ public class CreateSaleOrderItem {
     @NotNull
     private Long productId;
     @NotNull
+    @jakarta.validation.constraints.Min(1)
     private Integer quantity;
     @NotNull
     private BigDecimal unitPrice;
+    private BigDecimal discount;
 }

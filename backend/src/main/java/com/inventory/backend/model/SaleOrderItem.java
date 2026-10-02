@@ -25,5 +25,8 @@ public class SaleOrderItem {
     private BigDecimal unitPrice;
 
     @Column(precision = 10, scale = 2)
+    private BigDecimal discount;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal subtotal;
 }

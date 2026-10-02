@@ -75,15 +75,41 @@ export function toApiError(error: unknown): ApiError {
                 ? body
                 : body?.message ?? body?.error;
 
-        const detail =
+        let detail =
             fromBody?.trim() ||
             error.message ||
             `Request failed with status ${status}`;
 
+        // Translate log-speak HTTP jargon into plain-language messages so
+        // every page renders something a non-technical user understands.
+        const fallbackDetail = (error.message || '').toLowerCase();
+        if (
+            status === 403 ||
+            detail === 'Forbidden' ||
+            detail === 'Access denied. You do not have permission.'
+        ) {
+            detail =
+                "You don't have permission to do that. Ask an administrator to grant the required role.";
+        } else if (status === 401 || detail.toLowerCase().includes('authentication required')) {
+            detail = 'Please log in again to continue.';
+        } else if (status === 404) {
+            detail = 'Not found — it may have been removed.';
+        } else if (status != null && status >= 500) {
+            detail =
+                detail && !fallbackDetail.includes('network') && !detail.startsWith('Request failed')
+                    ? detail
+                    : 'Something went wrong on the server. Please try again.';
+        } else if (
+            detail.toLowerCase().includes('network error') ||
+            detail.toLowerCase().includes('err_network')
+        ) {
+            detail = 'Cannot reach the server. Please check your connection and try again.';
+        }
+
         return {
             status,
             isNetworkError: false,
-            message: `${status} — ${detail}`,
+            message: detail,
             endpoint: describeEndpoint(error.config),
         };
     }

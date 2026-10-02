@@ -28,5 +28,8 @@ public class SaleOrderDTO {
     // "date" mirrors createdAt date for frontend convenience
     private String date;
     private LocalDateTime createdAt;
+    private Long customerId;
+    private BigDecimal tax;
+    private String createdBy;
     private List<SaleOrderItemDTO> items;
 }

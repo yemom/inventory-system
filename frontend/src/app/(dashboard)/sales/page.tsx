@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Eye, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -15,12 +16,15 @@ import type { SaleOrder } from '@/lib/api/salesApi';
 
 const statusVariant: Record<string, 'success' | 'info' | 'default' | 'danger'> = {
   delivered: 'success', confirmed: 'info', draft: 'default', cancelled: 'danger',
+  PAID: 'success', PENDING: 'info', CANCELLED: 'danger',
 };
 const payVariant: Record<string, 'success' | 'warning' | 'danger'> = {
   paid: 'success', partial: 'warning', unpaid: 'danger',
+  PAID: 'success', PARTIAL: 'warning', UNPAID: 'danger',
 };
 
 export default function SalesPage() {
+  const router = useRouter();
   const { data: sales = [], isLoading, error, refetch } = useSales();
   const deleteSale = useDeleteSale();
   const { toast } = useToast();
@@ -33,6 +37,21 @@ export default function SalesPage() {
     catch { toast('error', 'Delete failed'); }
     finally { setDeleteTarget(null); }
   };
+
+  const rows = React.useMemo(
+    () =>
+      (sales as any[]).map((s) => ({
+        ...s,
+        reference: s.reference ?? s.orderNumber ?? s.id,
+        total: Number(s.finalAmount ?? s.total ?? s.totalAmount ?? 0),
+        paid:
+          s.paid ??
+          (String(s.paymentStatus ?? s.status ?? '').toUpperCase() === 'PAID'
+            ? Number(s.finalAmount ?? s.total ?? s.totalAmount ?? 0)
+            : 0),
+      })),
+    [sales],
+  );
 
   const columns: Column<any>[] = [
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs font-semibold text-blue-600">{String(v)}</span> },
@@ -50,11 +69,15 @@ export default function SalesPage() {
     <div>
       <PageHeader
         title="Sales"
-        subtitle={`${sales.length} orders total`}
-        actions={<Button onClick={() => toast('info', 'New sale form coming soon')}><Plus size={16} /> New Sale</Button>}
+        subtitle={`${rows.length} orders total`}
+        actions={
+          <Button onClick={() => router.push('/sales/new')}>
+            <Plus size={16} /> New Sale
+          </Button>
+        }
       />
       <DataTable
-        columns={columns} data={sales} loading={isLoading} searchable
+        columns={columns} data={rows} loading={isLoading} searchable
         searchPlaceholder="Search orders..."
         actions={row => (
           <div className="flex items-center justify-end gap-1">

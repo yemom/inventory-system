@@ -1,4 +1,4 @@
-﻿import apiClient from './apiClient';
+﻿import apiClient, { fetchAllPages } from './apiClient';
 
 export interface Expense {
   id: string | number;
@@ -15,8 +15,7 @@ export interface Expense {
 
 export const expensesApi = {
   list: async (): Promise<any[]> => {
-    const res = await apiClient.get('/expenses');
-    return res.data?.data?.content || res.data?.data || [];
+    return fetchAllPages('/expenses');
   },
   get: async (id: string | number): Promise<any> => {
     const res = await apiClient.get(`/expenses/${id}`);

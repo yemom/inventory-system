@@ -1,4 +1,4 @@
-﻿import apiClient from './apiClient';
+﻿import apiClient, { fetchAllPages } from './apiClient';
 
 export interface SaleOrder {
   id: string | number;
@@ -17,8 +17,7 @@ export interface SaleOrder {
 
 export const salesApi = {
   list: async (): Promise<any[]> => {
-    const res = await apiClient.get('/sales');
-    return res.data?.data?.content || res.data?.data || [];
+    return fetchAllPages('/sales');
   },
   get: async (id: string | number): Promise<any> => {
     const res = await apiClient.get(`/sales/${id}`);
@@ -27,6 +26,14 @@ export const salesApi = {
   create: async (data: any): Promise<any> => {
     const res = await apiClient.post('/sales', data);
     return res.data?.data || res.data;
+  },
+  report: async (params?: {
+    from?: string; to?: string; customerId?: number; productId?: number;
+    sellerId?: number; paymentMethod?: string; status?: string;
+  }): Promise<{ summary: any; sales: any[] }> => {
+    const res = await apiClient.get('/reports/sales', { params });
+    const data = res.data?.data || res.data;
+    return { summary: data?.summary ?? {}, sales: data?.sales ?? [] };
   },
   update: async (id: string | number, data: any): Promise<any> => {
     const res = await apiClient.put(`/sales/${id}`, data);

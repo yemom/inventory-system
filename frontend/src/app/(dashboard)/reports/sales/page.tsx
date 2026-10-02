@@ -1,5 +1,6 @@
 'use client';
 import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area
 } from 'recharts';
@@ -10,7 +11,7 @@ import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
 import ErrorState from '@/components/ui/ErrorState';
 import { formatCurrency } from '@/lib/utils';
-import { useSales } from '@/hooks/useSales';
+import { salesApi } from '@/lib/api/salesApi';
 
 function saleTotal(s: any) {
   return Number(s.finalAmount ?? s.total ?? s.totalAmount ?? 0);
@@ -79,15 +80,26 @@ function filterByTimeframe(sales: any[], days: number) {
 }
 
 export default function SalesReportPage() {
-  const { data: sales = [], isLoading, error, refetch } = useSales();
   const [timeframe, setTimeframe] = useState('30d');
   const days = daysInTimeframe(timeframe);
 
-  const filtered = useMemo(() => filterByTimeframe(sales, days), [sales, days]);
-  const activeSales = useMemo(() => filtered.filter(s => !isCancelled(s)), [filtered]);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['sales-report', timeframe],
+    queryFn: () => {
+      const to = new Date();
+      const from = new Date(to.getTime() - days * 86400000);
+      return salesApi.report({ from: from.toISOString(), to: to.toISOString() });
+    },
+  });
 
-  const totalSales = activeSales.reduce((acc, s) => acc + saleTotal(s), 0);
-  const totalOrders = activeSales.length;
+  const sales: any[] = data?.sales ?? [];
+  const summary = data?.summary ?? {};
+
+  const activeSales = useMemo(() => sales.filter(s => !isCancelled(s)), [sales]);
+
+  // Prefer the backend-computed summary; fall back to client aggregation.
+  const totalSales = Number(summary.netSales ?? activeSales.reduce((acc, s) => acc + saleTotal(s), 0));
+  const totalOrders = Number(summary.transactionCount ?? activeSales.length);
   const avgOrderValue = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
 
   const salesTrendData = useMemo(() => buildDailyTrend(activeSales, days), [activeSales, days]);
@@ -142,6 +154,13 @@ export default function SalesReportPage() {
           color="purple"
           icon={<TrendingUp size={20} />}
         />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard title="Items Sold" value={isLoading ? '…' : `${summary.itemsSold ?? 0}`} changeLabel={`last ${days} days`} color="blue" icon={<ShoppingBag size={20} />} />
+        <StatCard title="Discounts" value={isLoading ? '…' : formatCurrency(Number(summary.discount ?? 0))} changeLabel={`last ${days} days`} color="purple" icon={<DollarSign size={20} />} />
+        <StatCard title="Tax Collected" value={isLoading ? '…' : formatCurrency(Number(summary.tax ?? 0))} changeLabel={`last ${days} days`} color="emerald" icon={<DollarSign size={20} />} />
+        <StatCard title="Gross Profit" value={isLoading ? '…' : formatCurrency(Number(summary.grossProfit ?? 0))} changeLabel="net sales − COGS" color="emerald" icon={<TrendingUp size={20} />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -207,6 +226,56 @@ export default function SalesReportPage() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">Sales Detail</h3>
+        <p className="text-xs text-gray-400 mb-4">Every persisted sale with its products, quantities, prices, and totals</p>
+
+        {activeSales.length === 0 ? (
+          <p className="text-sm text-gray-400 py-8 text-center">No sales in this period.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                  <th className="pb-2 pr-4 font-medium">Sale</th>
+                  <th className="pb-2 pr-4 font-medium">Date</th>
+                  <th className="pb-2 pr-4 font-medium">Customer</th>
+                  <th className="pb-2 pr-4 font-medium">Seller</th>
+                  <th className="pb-2 pr-4 font-medium">Products</th>
+                  <th className="pb-2 pr-4 font-medium">Subtotal</th>
+                  <th className="pb-2 pr-4 font-medium">Discount</th>
+                  <th className="pb-2 pr-4 font-medium">Tax</th>
+                  <th className="pb-2 pr-4 font-medium">Total</th>
+                  <th className="pb-2 font-medium">Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeSales.map((s: any) => (
+                  <tr key={s.id} className="border-b border-gray-50 dark:border-gray-700/50 align-top">
+                    <td className="py-2 pr-4 font-mono font-semibold text-gray-800 dark:text-gray-200">{s.orderNumber ?? s.reference ?? s.id}</td>
+                    <td className="py-2 pr-4 text-gray-500">{s.date ?? (s.createdAt ? String(s.createdAt).slice(0, 10) : '—')}</td>
+                    <td className="py-2 pr-4 text-gray-700 dark:text-gray-300">{s.customerName ?? '—'}</td>
+                    <td className="py-2 pr-4 text-gray-500">{s.createdBy ?? '—'}</td>
+                    <td className="py-2 pr-4 text-gray-600 dark:text-gray-400">
+                      {(s.items ?? []).map((it: any, idx: number) => (
+                        <div key={idx}>
+                          {it.productName ?? `Product #${it.productId}`} × {it.quantity} @ {formatCurrency(Number(it.unitPrice ?? 0))}
+                        </div>
+                      ))}
+                    </td>
+                    <td className="py-2 pr-4">{formatCurrency(Number(s.totalAmount ?? 0))}</td>
+                    <td className="py-2 pr-4">{formatCurrency(Number(s.discount ?? 0))}</td>
+                    <td className="py-2 pr-4">{formatCurrency(Number(s.tax ?? 0))}</td>
+                    <td className="py-2 pr-4 font-bold text-gray-900 dark:text-gray-100">{formatCurrency(saleTotal(s))}</td>
+                    <td className="py-2 text-gray-500">{s.paymentMethod ?? '—'} / {s.paymentStatus ?? s.status ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

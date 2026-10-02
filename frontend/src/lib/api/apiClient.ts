@@ -78,4 +78,38 @@ apiClient.interceptors.response.use(
   }
 );
 
+/**
+ * Fetch EVERY page of a paginated list endpoint (Spring Page or plain
+ * array). The first request asks for a large page; when the backend
+ * reports totalPages > 1 we pull the remaining pages too. This is what
+ * guarantees "list all real data" in the UI instead of silently
+ * showing only the first page.
+ */
+export async function fetchAllPages<T = any>(
+  url: string,
+  params: Record<string, any> = {},
+): Promise<T[]> {
+  const PAGE_SIZE = 200;
+  const all: T[] = [];
+  let page = 0;
+  let totalPages = 1;
+
+  while (page < totalPages) {
+    const res = await apiClient.get(url, {
+      params: { ...params, page, size: PAGE_SIZE },
+    });
+    const payload = res.data?.data ?? res.data;
+    const content: T[] = Array.isArray(payload)
+      ? payload
+      : (payload?.content ?? []);
+    all.push(...content);
+    totalPages = Array.isArray(payload)
+      ? 1
+      : Math.max(1, Number(payload?.totalPages ?? 1));
+    page += 1;
+  }
+
+  return all;
+}
+
 export default apiClient;

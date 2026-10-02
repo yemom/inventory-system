@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { fetchAllPages } from './apiClient';
 import {
   extractItem,
   extractList,
@@ -81,15 +81,7 @@ export interface CreateProductRequest {
 export const productsApi = {
 
   async list(): Promise<Product[]> {
-
-    const response =
-      await apiClient.get(
-        '/products'
-      );
-
-    return extractList<Product>(
-      response.data
-    );
+    return fetchAllPages<Product>('/products');
   },
 
   async get(

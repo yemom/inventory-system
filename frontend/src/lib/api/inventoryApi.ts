@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { fetchAllPages } from './apiClient';
 
 export interface StockMovement {
   id: number;
@@ -49,37 +49,16 @@ export interface CreateStockMovementRequest {
 
 export const inventoryApi = {
   listProducts: async (): Promise<any[]> => {
-    const response =
-      await apiClient.get('/products');
-
-    return (
-      response.data?.data?.content ??
-      response.data?.data ??
-      []
-    );
+    return fetchAllPages('/products');
   },
 
   listMovements:
     async (): Promise<StockMovement[]> => {
-      const response =
-        await apiClient.get(
-          '/inventory/movements',
-        );
-
-      return (
-        response.data?.data?.content ??
-        []
-      );
+      return fetchAllPages<StockMovement>('/inventory/movements');
     },
 
   getLowStock: async (): Promise<any[]> => {
-    const response =
-      await apiClient.get('/products');
-
-    const products =
-      response.data?.data?.content ??
-      response.data?.data ??
-      [];
+    const products = await fetchAllPages('/products');
 
     return products.filter(
       (product: any) =>
@@ -93,14 +72,8 @@ export const inventoryApi = {
 
   listTransfers:
     async (): Promise<StockMovement[]> => {
-      const response =
-        await apiClient.get(
-          '/inventory/movements',
-        );
-
       const movements =
-        response.data?.data?.content ??
-        [];
+        await fetchAllPages<StockMovement>('/inventory/movements');
 
       return movements.filter(
         (movement: StockMovement) =>
