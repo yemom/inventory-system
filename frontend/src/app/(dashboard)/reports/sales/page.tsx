@@ -28,6 +28,21 @@ function daysInTimeframe(timeframe: string) {
   return 30;
 }
 
+/**
+ * Local-time calendar day key (YYYY-MM-DD).
+ *
+ * Must NOT use toISOString(), which converts to UTC: in a timezone ahead of
+ * UTC (e.g. Africa/Addis_Ababa, UTC+3) local midnight is 21:00 on the
+ * *previous* UTC day, so every bucket would be shifted a day and today's
+ * sales would silently disappear from the trend.
+ */
+function dayKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function buildDailyTrend(sales: any[], days: number) {
   const buckets: Record<string, { date: string; sales: number; orders: number; sortKey: number }> = {};
   const now = new Date();
@@ -36,16 +51,15 @@ function buildDailyTrend(sales: any[], days: number) {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
-    buckets[key] = { date: label, sales: 0, orders: 0, sortKey: d.getTime() };
+    buckets[dayKey(d)] = { date: label, sales: 0, orders: 0, sortKey: d.getTime() };
   }
 
   for (const sale of sales) {
     if (isCancelled(sale)) continue;
     const d = new Date(sale.createdAt || sale.date || '');
     if (isNaN(d.getTime())) continue;
-    const key = d.toISOString().slice(0, 10);
+    const key = dayKey(d);
     if (buckets[key]) {
       buckets[key].sales += saleTotal(sale);
       buckets[key].orders += 1;

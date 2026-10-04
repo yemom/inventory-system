@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Backend: compile + unit/integration tests
+  # Integration tests use Testcontainers (ephemeral PostgreSQL), so they can
+  # never touch a real database.
+  # ─────────────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # Fail fast if the lockfile/POM drift, rather than discovering it mid-build.
+      - name: Verify Maven wrapper is present
+        run: test -x ./mvnw && chmod +x ./mvnw
+
+      - name: Compile
+        run: ./mvnw -B -q clean compile
+
+      - name: Run tests
+        # Testcontainers needs Docker; GitHub runners provide it.
+        run: ./mvnw -B clean verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Frontend: install, lint, type-check, build
+  # Uses `npm ci` so the lockfile is honoured exactly (never `npm install`).
+  # ─────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend lint, type-check & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (npm ci)
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Docker image builds — proves both images build on a clean machine.
+  # ─────────────────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [ backend, frontend ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          load: true
+          tags: stockflow-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          load: true
+          tags: stockflow-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Smoke test — boots the full stack and checks health + a real login.
+  # Only runs on main/master pushes and manual dispatch (not on PRs).
+  # ─────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: Stack smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: docker-build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: |
+          docker compose up -d --build db redis backend frontend
+          echo "Waiting for services to become healthy..."
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:8081/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy after ${i}0s"; break
+            fi
+            sleep 10
+          done
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Verify backend health
+        run: |
+          curl -fsS http://localhost:8081/actuator/health
+          echo
+          curl -fsS http://localhost:8081/api/v1/dashboard/health
+
+      - name: Verify login + protected endpoint
+        env:
+          SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || '12yemom@gmail.com' }}
+          SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD || 'Fekerte@zegeye1221' }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -fsS -X POST http://localhost:8081/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"identifier\":\"$SUPER_ADMIN_EMAIL\",\"password\":\"$SUPER_ADMIN_PASSWORD\"}" \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+          echo "Login OK"
+          curl -fsS http://localhost:8081/api/v1/dashboard/stats -H "Authorization: Bearer $TOKEN" >/dev/null
+          echo "Protected endpoint OK"
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

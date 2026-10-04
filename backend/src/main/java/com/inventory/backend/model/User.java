@@ -48,6 +48,12 @@ public class User {
 
     private String warehouse;
 
+    /**
+     * Tenant/organization ID for multi-tenancy.
+     * Null means "default" tenant (single-tenant mode).
+     */
+    private String tenantId;
+
     private LocalDate dateJoined;
 
     @Column(nullable = false)

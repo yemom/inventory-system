@@ -171,12 +171,12 @@ export default function LoginPage() {
                 )}
               </div>
 
-              {/* Forgot password link */}
-              <div className="flex justify-end">
-                <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium">
-                  Forgot password?
-                </Link>
-              </div>
+              {/*
+                No self-service password-reset endpoint exists yet, so the
+                previous "Forgot password?" link was a guaranteed 404.
+                Password resets are performed by an administrator from
+                Staff Management. Add the link back together with the API.
+              */}
 
               {/* Submit button */}
               <button

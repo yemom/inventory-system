@@ -7,7 +7,13 @@
 # ============================================================
 # Stage 1: Build Next.js application
 # ============================================================
-FROM node:20-alpine AS builder
+# NOTE: Debian slim (glibc) rather than Alpine (musl).
+# Next.js ships prebuilt native SWC bindings per libc. On Alpine the musl
+# build is not always selected/installed, which makes `next build` fail with
+# "Turbopack is not supported on this platform ... native bindings are not
+# available". glibc matches the standard linux-x64 binding, so the slim base
+# removes that whole class of failure for both build and runtime.
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -44,7 +50,7 @@ RUN npm run build
 # ============================================================
 # Stage 2: Production runner
 # ============================================================
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 

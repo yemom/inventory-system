@@ -1,66 +1,53 @@
-# ==========================================
-# StockFlow — Master Project .gitignore
-# ==========================================
+# ── Secrets ───────────────────────────────────────────────���──
+# Real credentials must never be committed. Only .env-example is tracked.
+.env
+.env.*
+!.env-example
 
-# ── Dependencies & Package Managers ───────────
+# ── Dependencies ─────────────────────────────────────────────────
 node_modules/
 .pnp
 .pnp.js
+
+# ── Build output ─────────────────────────────────────────────────
+# Backend
+backend/target/
 target/
-.mvn/wrapper/maven-wrapper.jar
+*.jar
+*.war
 
-# ── Environment & Secrets ─────────────────────
-.env
-.env*.local
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# ── Next.js & Build Outputs ───────────────────
-.next/
-out/
-build/
-dist/
+# Frontend
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/next-env.d.ts
 *.tsbuildinfo
-next-env.d.ts
 
-# ── Logs & Debugging ──────────────────────────
+# ── Test output ──────────────────────────────────────────────────
+coverage/
+frontend/coverage/
+backend/target/surefire-reports/
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/.playwright/
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-*.log
+logs/
 
-# ── Java & Spring Boot Artifacts ──────────────
-*.class
-*.jar
-*.war
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# ── IDE & Editor Configurations ───────────────
-.idea/
-*.iml
-.vscode/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# ── OS / editor ──────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
 
-# ── Testing & Coverage ────────────────────────
-coverage/
-.nyc_output/
-
-# ── Tooling & AI Caches ───────────────────────
-.refact/
-.gemini/
-
-# ── Docker & Local Overrides ──────────────────
+# ── Local overrides ──────────────────────────────────────────────
 docker-compose.override.yml
+*.local

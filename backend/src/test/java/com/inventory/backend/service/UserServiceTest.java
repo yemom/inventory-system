@@ -127,7 +127,7 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.createUser(req))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Email already exists");
+                .hasMessageContaining("Email address is already registered");
 
         verify(userRepository, never()).save(any(User.class));
     }

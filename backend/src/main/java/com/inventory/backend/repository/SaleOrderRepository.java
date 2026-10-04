@@ -48,4 +48,18 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
             WHERE s.id IN :ids
             """)
     List<SaleOrder> findByIdsWithItems(@org.springframework.data.repository.query.Param("ids") List<Long> ids);
+
+    /**
+     * Fetch all sale orders with their items, products, customers, and creators
+     * in a single query to avoid N+1 problems.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            ORDER BY s.createdAt DESC
+            """)
+    List<SaleOrder> findAllWithDetails(org.springframework.data.domain.Pageable pageable);
 }

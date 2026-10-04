@@ -40,6 +40,8 @@ class SystemLifecycleE2ETest extends BaseIntegrationTest {
                 .phone("+251911778899")
                 .password("CashierPass@2026!")
                 .roleName("CASHIER")
+                .employeeId("EMP-E2E-001")
+                .dateJoined(java.time.LocalDate.now())
                 .build();
 
         mockMvc.perform(post("/api/v1/users")
@@ -79,8 +81,11 @@ class SystemLifecycleE2ETest extends BaseIntegrationTest {
                 .firstName("Rogue")
                 .lastName("User")
                 .email("rogue@stockflow.local")
+                .phone("+251911000009")
                 .password("Password@123")
                 .roleName("CASHIER")
+                .employeeId("EMP-ROGUE-001")
+                .dateJoined(java.time.LocalDate.now())
                 .build();
 
         mockMvc.perform(post("/api/v1/users")

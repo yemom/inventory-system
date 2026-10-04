@@ -89,7 +89,9 @@ export async function fetchAllPages<T = any>(
   url: string,
   params: Record<string, any> = {},
 ): Promise<T[]> {
-  const PAGE_SIZE = 200;
+  // Matches the backend's max page size (WebConfig.MAX_PAGE_SIZE).
+  // The loop below still walks every page, so no rows are ever lost.
+  const PAGE_SIZE = 100;
   const all: T[] = [];
   let page = 0;
   let totalPages = 1;

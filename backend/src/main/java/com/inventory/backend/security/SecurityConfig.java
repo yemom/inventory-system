@@ -1,6 +1,8 @@
 package com.inventory.backend.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.inventory.backend.ratelimit.RateLimitFilter;
+import com.inventory.backend.tenant.TenantFilter;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
@@ -50,7 +52,9 @@ public class SecurityConfig {
 
         @Bean
         public SecurityFilterChain securityFilterChain(
-                        HttpSecurity http) throws Exception {
+                        HttpSecurity http,
+                        RateLimitFilter rateLimitFilter,
+                        TenantFilter tenantFilter) throws Exception {
 
                 http
 
@@ -105,6 +109,20 @@ public class SecurityConfig {
                                 .authenticationProvider(authenticationProvider())
 
                                 // -------------------------------------------------
+                                // RATE LIMIT FILTER (before JWT auth)
+                                // -------------------------------------------------
+                                .addFilterBefore(
+                                                rateLimitFilter,
+                                                UsernamePasswordAuthenticationFilter.class)
+
+                                // -------------------------------------------------
+                                // TENANT FILTER (resolves tenant from JWT)
+                                // -------------------------------------------------
+                                .addFilterBefore(
+                                                tenantFilter,
+                                                UsernamePasswordAuthenticationFilter.class)
+
+                                // -------------------------------------------------
                                 // JWT FILTER
                                 // -------------------------------------------------
                                 .addFilterBefore(
@@ -112,6 +130,25 @@ public class SecurityConfig {
                                                 UsernamePasswordAuthenticationFilter.class);
 
                 return http.build();
+        }
+
+        // =========================================================
+        // RATE LIMIT + TENANT FILTERS (defined as beans here so
+        // they are only created with the full security config —
+        // @WebMvcTest slice tests exclude this @Configuration and
+        // therefore never instantiate them)
+        // =========================================================
+
+        @Bean
+        public RateLimitFilter rateLimitFilter(
+                        com.inventory.backend.ratelimit.RateLimiterService rateLimiterService,
+                        ObjectMapper objectMapper) {
+                return new RateLimitFilter(rateLimiterService, objectMapper);
+        }
+
+        @Bean
+        public TenantFilter tenantFilter() {
+                return new TenantFilter();
         }
 
         // =========================================================

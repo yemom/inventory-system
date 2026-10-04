@@ -5,6 +5,7 @@ import com.inventory.backend.model.*;
 import com.inventory.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +28,13 @@ public class PurchaseOrderService {
 
     @Transactional(readOnly = true)
     public Page<PurchaseOrderDTO> listPurchases(Pageable pageable) {
-        return purchaseOrderRepository.findAll(pageable).map(this::toDTO);
+        // Use fetch join to avoid N+1 queries when accessing items and products
+        List<PurchaseOrder> orders = purchaseOrderRepository.findAllWithDetails(pageable);
+        List<PurchaseOrderDTO> dtos = orders.stream().map(this::toDTO).collect(Collectors.toList());
+
+        // Get total count for pagination metadata
+        long total = purchaseOrderRepository.count();
+        return new PageImpl<>(dtos, pageable, total);
     }
 
     @Transactional

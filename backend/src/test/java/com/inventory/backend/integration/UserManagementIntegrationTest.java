@@ -41,6 +41,8 @@ class UserManagementIntegrationTest extends BaseIntegrationTest {
                 .phone("+251911223344")
                 .password("Cashier@StockFlow2026!")
                 .roleName("CASHIER")
+                .employeeId("EMP-SARAH-001")
+                .dateJoined(java.time.LocalDate.now())
                 .build();
 
         mockMvc.perform(post("/api/v1/users")

@@ -44,6 +44,14 @@ public class CustomUserDetails implements UserDetails {
         return user.getId();
     }
 
+    /**
+     * Returns the tenant/organization ID for multi-tenancy.
+     * Falls back to "default" if not set (single-tenant mode).
+     */
+    public String getTenantId() {
+        return user.getTenantId() != null ? user.getTenantId() : "default";
+    }
+
     @Override
     public boolean isAccountNonExpired() {
         return true;
