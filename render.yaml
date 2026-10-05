@@ -1,0 +1,174 @@
+# render.yaml — StockFlow deployment on Render.com
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Services defined here:
+#   • stockflow-db       — Managed PostgreSQL 15
+#   • stockflow-redis    — Managed Redis 7
+#   • stockflow-backend  — Spring Boot API (Docker)
+#   • stockflow-frontend — Next.js (Docker)
+#
+# IMPORTANT: After the first deploy, set these secret env vars manually
+# in the Render dashboard (they are intentionally omitted from this file):
+#   - JWT_SECRET
+#   - SUPER_ADMIN_PASSWORD
+#   - DATABASE_PASSWORD  (auto-linked below, but verify)
+#   - REDIS_PASSWORD     (auto-linked below, but verify)
+
+databases:
+  - name: stockflow-db
+    databaseName: stockflow_db
+    user: stockflow
+    plan: free          # change to "starter" or higher for production
+    region: oregon      # match your preferred region
+    ipAllowList: []     # empty = allow all (Render services can always connect)
+
+services:
+  # ── Managed Redis ─────────────────────────────────────────────────────────
+  - type: redis
+    name: stockflow-redis
+    plan: free          # change to "starter" for persistence + higher memory
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  # ── Spring Boot Backend ───────────────────────────────────────────────────
+  - type: web
+    name: stockflow-backend
+    runtime: docker
+    region: oregon
+    plan: free          # change to "starter" or higher for production
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+
+    # Health check — Render waits for this before marking the deploy live.
+    # The /actuator/health endpoint is already exposed via management config.
+    healthCheckPath: /actuator/health
+
+    envVars:
+      # ── Server ────────────────────────────────────────────────────────────
+      - key: SERVER_PORT
+        value: "8080"
+
+      # ── Database ──────────────────────────────────────────────────────────
+      # Render provides `connectionString` as postgres://user:pass@host:port/db.
+      # Spring Boot requires jdbc:postgresql://host:port/db.
+      #
+      # The cleanest solution: Spring Boot's relaxed binding means
+      # SPRING_DATASOURCE_URL env var always overrides spring.datasource.url.
+      # We set it directly using Render's individual DB properties, assembled
+      # in a start command — OR we set it manually in the dashboard using the
+      # Internal DB URL from Render's PostgreSQL dashboard (just prepend jdbc:).
+      #
+      # Env vars below expose the DB parts; the application.properties
+      # assembles the JDBC URL from DB_HOST, DB_PORT, DB_NAME (see note).
+      - key: DB_HOST
+        fromDatabase:
+          name: stockflow-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: stockflow-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: stockflow-db
+          property: database
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: stockflow-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: stockflow-db
+          property: password
+
+      # ── Redis ─────────────────────────────────────────────────────────────
+      - key: REDIS_HOST
+        fromService:
+          name: stockflow-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: stockflow-redis
+          type: redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          name: stockflow-redis
+          type: redis
+          property: password
+
+      # ── JWT (set the real value in the Render dashboard) ──────────────────
+      - key: JWT_SECRET
+        generateValue: true   # generates a random 256-bit hex secret on first deploy
+
+      # ── Connection pool (conservative for free tier) ───────────────────────
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: DB_POOL_MIN
+        value: "1"
+
+      # ── Rate limiting ──────────────────────────────────────────────────────
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_LOGIN
+        value: "5"
+      - key: RATE_LIMIT_LOGIN_WINDOW
+        value: "60"
+      - key: RATE_LIMIT_SIGNUP
+        value: "3"
+      - key: RATE_LIMIT_SIGNUP_WINDOW
+        value: "3600"
+      - key: RATE_LIMIT_API
+        value: "120"
+      - key: RATE_LIMIT_API_WINDOW
+        value: "60"
+      - key: RATE_LIMIT_REPORTS
+        value: "20"
+      - key: RATE_LIMIT_REPORTS_WINDOW
+        value: "60"
+
+      # ── Cache TTLs ────────────────────────────────────────────────────────
+      - key: CACHE_CATEGORY_TTL
+        value: "300"
+      - key: CACHE_WAREHOUSE_TTL
+        value: "300"
+      - key: CACHE_DASHBOARD_TTL
+        value: "30"
+      - key: CACHE_PRODUCT_TTL
+        value: "120"
+
+      # ── Super-admin bootstrap (set real values in dashboard) ──────────────
+      - key: SUPER_ADMIN_USERNAME
+        value: superadmin
+      - key: SUPER_ADMIN_EMAIL
+        value: 12yemom@gmail.com
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false   # set manually in Render dashboard — never commit passwords
+      - key: SUPER_ADMIN_FIRST_NAME
+        value: Super
+      - key: SUPER_ADMIN_LAST_NAME
+        value: Admin
+
+  # ── Next.js Frontend ──────────────────────────────────────────────────────
+  - type: web
+    name: stockflow-frontend
+    runtime: docker
+    region: oregon
+    plan: free
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_NAME
+        value: StockFlow
+      # Set these to your actual Render service URLs after first deploy:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://stockflow-backend.onrender.com/api/v1
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://stockflow-frontend.onrender.com
+      - key: API_INTERNAL_BASE_URL
+        value: https://stockflow-backend.onrender.com/api/v1

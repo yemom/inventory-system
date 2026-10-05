@@ -1,0 +1,171 @@
+services:
+
+  # ==========================================================
+  # PostgreSQL
+  # ==========================================================
+  db:
+    image: postgres:15-alpine
+    container_name: cismoke_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stockflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-stockflow_db}
+
+    ports:
+      - "5444:5432"
+
+    volumes:
+      - postgres_stockflow_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db} -q && psql -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow_db} -tAc 'SELECT 1' >/dev/null" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ==========================================================
+  # Redis (distributed rate limiting + cache)
+  # ==========================================================
+  redis:
+    image: redis:7-alpine
+    container_name: cismoke_redis
+    restart: unless-stopped
+
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass} --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+    ports:
+      - "6390:6379"
+
+    volumes:
+      - redis_stockflow_data:/data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redispass} ping | grep -q PONG" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # ==========================================================
+  # Spring Boot Backend
+  # ==========================================================
+  backend:
+    # Locally this is built from source; in CI/CD IMAGE_TAG pins the published
+    # image to an exact commit. `image:` is ignored when only `build:` is used.
+    image: ${BACKEND_IMAGE:-stockflow-backend:local}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: cismoke_backend
+    restart: unless-stopped
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-stockflow_db}
+      DATABASE_USERNAME: ${POSTGRES_USER:-stockflow}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+
+      # Redis for rate limiting + cache
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+
+      # Rate limiting
+      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-5}
+      RATE_LIMIT_LOGIN_WINDOW: ${RATE_LIMIT_LOGIN_WINDOW:-60}
+      RATE_LIMIT_API: ${RATE_LIMIT_API:-120}
+      RATE_LIMIT_API_WINDOW: ${RATE_LIMIT_API_WINDOW:-60}
+      RATE_LIMIT_REPORTS: ${RATE_LIMIT_REPORTS:-20}
+      RATE_LIMIT_REPORTS_WINDOW: ${RATE_LIMIT_REPORTS_WINDOW:-60}
+
+      # Cache TTLs
+      CACHE_CATEGORY_TTL: ${CACHE_CATEGORY_TTL:-300}
+      CACHE_WAREHOUSE_TTL: ${CACHE_WAREHOUSE_TTL:-300}
+      CACHE_DASHBOARD_TTL: ${CACHE_DASHBOARD_TTL:-30}
+      CACHE_PRODUCT_TTL: ${CACHE_PRODUCT_TTL:-120}
+
+      # Connection pool
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_POOL_MIN: ${DB_POOL_MIN:-2}
+
+      JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret}
+
+      SERVER_PORT: 8080
+
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: true
+
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-Esrom Basazinaw}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-12yemom@gmail.com}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-Fekerte@zegeye1221}
+      SUPER_ADMIN_FIRST_NAME: ${SUPER_ADMIN_FIRST_NAME:-Super}
+      SUPER_ADMIN_LAST_NAME: ${SUPER_ADMIN_LAST_NAME:-Admin}
+
+    ports:
+      - "8099:8080"
+
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/actuator/health | grep -q 'status.:.UP'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ==========================================================
+  # Next.js Frontend
+  # ==========================================================
+  frontend:
+    image: ${FRONTEND_IMAGE:-stockflow-frontend:local}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8099/api/v1
+        NEXT_PUBLIC_APP_URL: http://localhost:3105
+
+    container_name: cismoke_frontend
+    restart: unless-stopped
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_APP_NAME: StockFlow
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8099/api/v1
+      NEXT_PUBLIC_APP_URL: http://localhost:3105
+      API_INTERNAL_BASE_URL: http://backend:8080/api/v1
+
+    ports:
+      - "3105:3000"
+
+    healthcheck:
+      # Debian slim has no curl/wget preinstalled; probe with plain Node so
+      # the image needs no extra packages (smaller + fewer CVEs).
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+# ============================================================
+# Persistent volumes
+# ============================================================
+volumes:
+  postgres_stockflow_data:
+    driver: local
+  redis_stockflow_data:
+    driver: local
+
+

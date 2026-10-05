@@ -2,6 +2,7 @@ package com.inventory.backend.exception;
 
 import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.filter.RequestIdFilter;
+import io.jsonwebtoken.JwtException;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +16,7 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -47,6 +49,31 @@ public class GlobalExceptionHandler {
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
                 .collect(Collectors.joining(", "));
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", errors);
+    }
+
+    /**
+     * Malformed/unparseable request body (bad JSON, wrong content type, missing
+     * quotes, etc.). Must be a 400, not a 500 — but it falls into the generic
+     * handler if not mapped.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableMessage(HttpMessageNotReadableException ex) {
+        log.debug("Unreadable request body (requestId={}): {}",
+                MDC.get(RequestIdFilter.MDC_REQUEST_ID_KEY), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "BAD_REQUEST_BODY",
+                "The request body is missing or contains invalid JSON.");
+    }
+
+    /**
+     * Tokens that fail validation/signature/expiration should produce a 401,
+     * not a 500.
+     */
+    @ExceptionHandler(JwtException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJwt(JwtException ex) {
+        log.debug("JWT validation failure (requestId={}): {}",
+                MDC.get(RequestIdFilter.MDC_REQUEST_ID_KEY), ex.getMessage());
+        return build(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN",
+                "The provided token is invalid or expired.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

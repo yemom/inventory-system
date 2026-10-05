@@ -10,6 +10,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -70,7 +72,41 @@ public class JwtUtil {
     }
 
     private Key getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secret);
-        return Keys.hmacShaKeyFor(keyBytes);
+        return Keys.hmacShaKeyFor(decodeSecret(secret));
+    }
+
+    /**
+     * Derive the raw HMAC key bytes from the configured JWT secret.
+     *
+     * The legacy behaviour did {@code Decoders.BASE64.decode(secret)}, which
+     * throws {@code io.jsonwebtoken.io.DecodingException} for any secret that is
+     * not base64 (CI's default {@code change-this-jwt-secret} contains '-'),
+     * turning token issuing/validating into a 500 on protected requests.
+     *
+     * Now: try base64 first (keeps compatibility for base64 secrets and yields
+     * >= 32 bytes), otherwise fall back to the raw UTF-8 bytes of the string,
+     * and hash with SHA-256 anything still too short for HS256 (32 bytes+).
+     */
+    private byte[] decodeSecret(String s) {
+        if (s == null || s.isBlank()) {
+            throw new IllegalStateException("jwt.secret is not configured");
+        }
+        try {
+            byte[] decoded = Decoders.BASE64.decode(s);
+            if (decoded.length >= 32) {
+                return decoded;
+            }
+        } catch (Exception ignored) {
+            // fall through to raw-byte handling
+        }
+        byte[] raw = s.getBytes(StandardCharsets.UTF_8);
+        if (raw.length >= 32) {
+            return raw;
+        }
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(raw);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to derive JWT signing key", e);
+        }
     }
 }
