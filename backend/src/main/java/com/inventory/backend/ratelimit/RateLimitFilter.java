@@ -50,6 +50,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
+        // Never rate-limit CORS preflight (OPTIONS) requests. They are part of
+        // the same logical request as the real call and must always pass so the
+        // browser can read the Access-Control-Allow-* headers.
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // Determine rate limit type based on endpoint
         RateLimiterService.RateLimitType type = resolveRateLimitType(path, method);
 

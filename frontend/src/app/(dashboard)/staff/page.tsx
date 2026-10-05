@@ -232,8 +232,13 @@ export default function StaffManagementPage() {
         : `Deactivate ${member.fullName}'s account. Historical sales, inventory transactions, and audit records remain intact.`,
       label: nextActive ? 'Activate' : 'Deactivate',
       action: async () => {
-        nextActive ? await usersApi.activate(member.id) : await usersApi.deactivate(member.id);
-        toast('success', nextActive ? 'Staff account activated successfully.' : 'Staff account deactivated successfully.');
+        if (nextActive) {
+          await usersApi.activate(member.id);
+          toast('success', 'Staff account activated successfully.');
+        } else {
+          await usersApi.deactivate(member.id);
+          toast('success', 'Staff account deactivated successfully.');
+        }
         loadStaff();
       },
     });

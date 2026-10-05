@@ -25,6 +25,13 @@ WORKDIR /app
 # production mode, so nothing here needs it.
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Pin npm to the version that generates/locks package-lock.json.
+# node:20-slim ships npm 10.x; the lockfile format differs from npm 11.x, and
+# `npm ci` fails with "package.json and package-lock.json are not in sync" when
+# the lockfile was written by a different major. Pinning keeps builds
+# reproducible no matter which npm version a developer has installed locally.
+RUN npm install -g npm@10.8.2
+
 # Build-time environment variables (inlined into the client bundle)
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3005

@@ -51,3 +51,8 @@ Thumbs.db
 # ── Local overrides ──────────────────────────────────────────────
 docker-compose.override.yml
 *.local
+
+# ── Local AI/tooling scratch state ──────────────────────────────
+# These are machine-local agent memory/digest files, not project source.
+# They churn on every run and must not be committed.
+.refact/

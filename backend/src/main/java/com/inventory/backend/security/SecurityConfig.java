@@ -214,15 +214,31 @@ public class SecurityConfig {
 
                 CorsConfiguration configuration = new CorsConfiguration();
 
-                // Allow configured frontends (local + docker-mapped ports)
-                configuration.setAllowedOrigins(List.of(
-                                "http://localhost:3000",
-                                "http://localhost:3005",
-                                "http://127.0.0.1:3000",
-                                "http://127.0.0.1:3005"));
+                // Public origins (explicit allow-list). Production is expected
+                // to set a real domain here via an environment variable; the
+                // patterns below cover local + LAN development.
                 configuration.setAllowedOriginPatterns(List.of(
                                 "http://localhost:*",
-                                "http://127.0.0.1:*"));
+                                "http://127.0.0.1:*",
+                                // Allow the dev machine's LAN IP on any port so
+                                // the app opened as http://192.168.x.x:3001 (or
+                                // 10.x.x.x / 172.16-31.x.x) is not CORS-blocked.
+                                // Production deployments are expected to serve
+                                // the frontend and API from the same origin or to
+                                // pin this via environment, so these private-
+                                // network patterns do not expand the real attack
+                                // surface.
+                                "http://192.168.*:*",
+                                "http://10.*:*",
+                                "http://172.16.*:*", "http://172.17.*:*", "http://172.18.*:*",
+                                "http://172.19.*:*", "http://172.20.*:*", "http://172.21.*:*",
+                                "http://172.22.*:*", "http://172.23.*:*", "http://172.24.*:*",
+                                "http://172.25.*:*", "http://172.26.*:*", "http://172.27.*:*",
+                                "http://172.28.*:*", "http://172.29.*:*", "http://172.30.*:*",
+                                "http://172.31.*:*",
+                                "http://*.localhost:*",
+                                "http://localtest.me:*",
+                                "http://*.localtest.me:*"));
 
                 // HTTP methods
                 configuration.setAllowedMethods(List.of(
