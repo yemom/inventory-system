@@ -26,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    defaults:
+      run:
+        # The Maven project lives in backend/; without this every ./mvnw call
+        # runs from the repo root, where mvnw does not exist, and the job fails
+        # at the wrapper step with a confusing "not present"/exit-1.
+        working-directory: backend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -36,15 +43,16 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # Fail fast if the lockfile/POM drift, rather than discovering it mid-build.
-      - name: Verify Maven wrapper is present
-        run: test -x ./mvnw && chmod +x ./mvnw
+      # Git does not preserve the executable bit when the repo was authored on
+      # Windows, so make the wrapper executable first. Do NOT gate on
+      # `test -x` — that is the step that was failing.
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw
 
       - name: Compile
         run: ./mvnw -B -q clean compile
 
       - name: Run tests
-        # Testcontainers needs Docker; GitHub runners provide it.
         run: ./mvnw -B clean verify
 
       - name: Upload test reports
@@ -52,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-reports
-          path: backend/target/surefire-reports/
+          path: backend/target/surefire-reports/      # absolute from repo root
           retention-days: 7
           if-no-files-found: ignore
 
