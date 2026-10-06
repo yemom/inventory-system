@@ -1,6 +1,7 @@
 package com.inventory.backend.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
@@ -66,9 +67,26 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Verifies that {@code token} is a genuine, unexpired token for
+     * {@code userDetails}.
+     *
+     * <p>Returns {@code false} rather than propagating a parsing failure. A
+     * tampered or foreign-signed token is a routine event (a stale token after
+     * a key rotation, a client sending garbage), and it must be an ordinary
+     * "not authenticated" outcome. Letting {@code SignatureException} /
+     * {@code ExpiredJwtException} escape a method that answers a yes/no question
+     * invites the next caller to turn an invalid token into a 500. The
+     * signature is still genuinely verified — jjwt rejects a mismatch before
+     * this method can return {@code true}.
+     */
     public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+        try {
+            final String username = extractUsername(token);
+            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private Key getSigningKey() {

@@ -57,11 +57,51 @@ Copy `.env-example` → `.env`. **Never commit `.env`.**
 
 | Variable | Purpose | Notes |
 |----------|---------|-------|
-| `DATABASE_URL` | JDBC URL | e.g. `jdbc:postgresql://db:5432/stockflow_db` |
+| `DATABASE_URL` | PostgreSQL connection string | A `jdbc:postgresql://…` URL **or** a `postgres://user:pw@host:5432/db` URI — both work (see below) |
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | DB credentials | Use a dedicated least-privilege role |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis connection | Rate limiting degrades gracefully if unset/unreachable |
-| `JWT_SECRET` | JWT signing key | **Long random string.** Rotate → invalidates all sessions |
-| `SUPER_ADMIN_PASSWORD` | Bootstrap admin | Change immediately after first login |
+| `JWT_SECRET` | JWT signing key | **≥ 32 chars, random.** `openssl rand -hex 32`. Rotating → invalidates all sessions |
+| `SUPER_ADMIN_PASSWORD` | Bootstrap admin | **≥ 12 chars.** Change immediately after first login |
+
+`JWT_SECRET` and `SUPER_ADMIN_PASSWORD` have **no built-in defaults**. The backend
+refuses to start without them (`StartupConfigValidator`) and names the missing one.
+That is deliberate: both values used to live in `application.properties`, which made
+them public knowledge — a published JWT signing key lets anyone mint an admin token,
+and a published admin password is a working backdoor on every fresh deployment.
+
+#### `DATABASE_URL`: JDBC URL or URI — both are accepted
+
+Managed platforms usually hand you a **URI**, not a JDBC URL:
+
+```
+postgres://user:password@host:5432/dbname      # Render, Heroku, Neon, Supabase, …
+jdbc:postgresql://user:password@host:5432/db   # Docker Compose, local
+```
+
+`DataSourceUrlNormalizer` reconciles them at startup: it adds the `jdbc:` prefix the
+PostgreSQL driver requires, and lifts any percent-encoded `user:password@` out of the
+URI into `spring.datasource.username` / `spring.datasource.password`. Credentials
+embedded in the connection string win over separately configured ones, because both
+must belong to the same database — if you set `DATABASE_USERNAME` /
+`DATABASE_PASSWORD` too, keep them in agreement or expect them to be overridden.
+
+Without that translation the driver rejects the URL, Hibernate receives no JDBC
+metadata, and the service dies with `Unable to determine Dialect without JDBC metadata
+(please set 'jakarta.persistence.jdbc.url' …)` — a message that blames the URL setting
+even though you configured one correctly.
+
+If the service still will not boot, the log now names the real cause.
+`DataSourceReadinessVerifier` opens one real connection before JPA starts and reports:
+
+```
+Unable to connect to PostgreSQL at jdbc:postgresql://host:5432/db.
+Cause: java.net.ConnectException: Connection refused
+```
+
+followed by a short checklist (database asleep/expired, internal vs public hostname,
+credentials, IP allow list, TLS). HikariCP already retries for 60 s
+(`initialization-fail-timeout`) first, so a database that is merely still starting does
+not trip it.
 
 ### Performance tuning
 
@@ -270,6 +310,9 @@ and retention guidance in `docs/database-scaling.md`.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| `Unable to determine Dialect without JDBC metadata` | The DataSource could not open a connection, so Hibernate got no JDBC metadata. A **misleading symptom**, not a missing URL setting | Scroll up in the log for `Unable to connect to PostgreSQL at …` from `DataSourceReadinessVerifier` — it names the host and the real cause. Check: DB running, internal vs public hostname, credentials, IP allow list, TLS |
+| `Driver org.postgresql.Driver claims to not accept jdbcUrl, postgres://…` | A platform URI was used verbatim as a JDBC URL | Should be fixed automatically by `DataSourceUrlNormalizer`. If it still appears, the running image predates that fix — redeploy |
+| `Refusing to start: required secrets are missing or unsafe` | `JWT_SECRET` and/or `SUPER_ADMIN_PASSWORD` unset, too short, or still the old committed placeholder | `openssl rand -hex 32` for the signing key; set an admin password ≥ 12 chars |
 | `relation "users" does not exist` | Schema never created | `docker compose restart backend`; Hibernate uses `ddl-auto=update` |
 | All logins fail with 429 | Per-IP login limit hit | Expected behaviour. Raise `RATE_LIMIT_LOGIN` or investigate brute force |
 | Data disappeared | Someone ran `docker compose down -v` | Restore from backup; **that flag deletes the volume** |

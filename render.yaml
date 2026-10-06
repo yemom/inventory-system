@@ -21,6 +21,10 @@ databases:
     plan: free          # change to "starter" or higher for production
     region: oregon      # match your preferred region
     ipAllowList: []     # empty = allow all (Render services can always connect)
+    # NOTE: Render's free PostgreSQL plan EXPIRES after 30 days. When it does,
+    # the backend logs "Unable to connect to PostgreSQL at …" on the next
+    # request and the service will not boot again until the database is
+    # restored or a paid plan is attached. Use a paid plan for anything real.
 
 services:
   # ── Managed Redis ─────────────────────────────────────────────────────────
@@ -50,17 +54,14 @@ services:
         value: "8080"
 
       # ── Database ──────────────────────────────────────────────────────────
-      # Render provides `connectionString` as postgres://user:pass@host:port/db.
-      # Spring Boot requires jdbc:postgresql://host:port/db.
+      # Render's connection string is a URI (postgres://user:pass@host:port/db),
+      # not a JDBC URL. If Render injects DATABASE_URL (it does once the DB is
+      # linked in the dashboard), the backend's
+      # DataSourceUrlEnvironmentPostProcessor rewrites it to a JDBC URL and
+      # decodes any embedded credentials, so it works as-is.
       #
-      # The cleanest solution: Spring Boot's relaxed binding means
-      # SPRING_DATASOURCE_URL env var always overrides spring.datasource.url.
-      # We set it directly using Render's individual DB properties, assembled
-      # in a start command — OR we set it manually in the dashboard using the
-      # Internal DB URL from Render's PostgreSQL dashboard (just prepend jdbc:).
-      #
-      # Env vars below expose the DB parts; the application.properties
-      # assembles the JDBC URL from DB_HOST, DB_PORT, DB_NAME (see note).
+      # If DATABASE_URL is NOT injected, the parts below are used instead:
+      # spring.datasource.url assembles jdbc:postgresql://DB_HOST:DB_PORT/DB_NAME.
       - key: DB_HOST
         fromDatabase:
           name: stockflow-db

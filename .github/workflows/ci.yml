@@ -147,6 +147,16 @@ jobs:
     needs: docker-build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
 
+    # The backend refuses to boot without a real JWT signing key and a real
+    # super-admin password (StartupConfigValidator) — the development defaults
+    # that used to live in application.properties were removed on purpose. These
+    # are ephemeral, throwaway values for an ephemeral CI stack; configure real
+    # repository secrets to override them.
+    env:
+      JWT_SECRET: ${{ secrets.SMOKE_JWT_SECRET || 'ci-ephemeral-jwt-secret-4f6c46e0b32145b0a7019f39' }}
+      SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD || 'ci-ephemeral-admin-password' }}
+      SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || '12yemom@gmail.com' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -172,9 +182,6 @@ jobs:
           curl -fsS http://localhost:8081/api/v1/dashboard/health
 
       - name: Verify login + protected endpoint
-        env:
-          SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || '12yemom@gmail.com' }}
-          SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD || 'Fekerte@zegeye1221' }}
         run: |
           set -euo pipefail
           TOKEN=$(curl -fsS -X POST http://localhost:8081/api/v1/auth/login \

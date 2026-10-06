@@ -41,7 +41,7 @@ public abstract class BaseIntegrationTest {
     }
 
     protected String loginAsSuperAdmin() throws Exception {
-        return login("superadmin", "Admin@StockFlow2026!");
+        return login("superadmin", "TestsOnly-7f3a91c4-SuperAdmin");
     }
 
     protected HttpHeaders authHeader(String token) {

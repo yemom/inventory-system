@@ -30,13 +30,17 @@ public class DataInitializer implements CommandLineRunner {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
 
+    // No inline defaults for the password: it is a credential, and a fallback
+    // baked into source is a published credential. application.properties maps
+    // SUPER_ADMIN_PASSWORD, and StartupConfigValidator refuses to boot when the
+    // result is missing or still a known placeholder.
     @Value("${app.super-admin.username:${SUPER_ADMIN_USERNAME:superadmin}}")
     private String superAdminUsername;
 
     @Value("${app.super-admin.email:${SUPER_ADMIN_EMAIL:admin@stockflow.local}}")
     private String superAdminEmail;
 
-    @Value("${app.super-admin.password:${SUPER_ADMIN_PASSWORD:Admin@StockFlow2026!}}")
+    @Value("${app.super-admin.password}")
     private String superAdminPassword;
 
     @Value("${app.super-admin.first-name:${SUPER_ADMIN_FIRST_NAME:Super}}")

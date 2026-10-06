@@ -24,7 +24,7 @@ class AuthIntegrationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Integration: Login with seeded Super Admin credentials")
     void login_SeededSuperAdmin_Success() throws Exception {
-        AuthRequest req = new AuthRequest("superadmin", "Admin@StockFlow2026!");
+        AuthRequest req = new AuthRequest("superadmin", "TestsOnly-7f3a91c4-SuperAdmin");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
