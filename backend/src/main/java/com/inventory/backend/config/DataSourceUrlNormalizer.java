@@ -112,8 +112,33 @@ public class DataSourceUrlNormalizer implements BeanFactoryPostProcessor, Ordere
 
         Map<String, Object> overrides = new LinkedHashMap<>();
 
-        if (!configured.trim().equals(normalized.jdbcUrl())) {
-            overrides.put("spring.datasource.url", normalized.jdbcUrl());
+        String effectiveJdbcUrl = normalized.jdbcUrl();
+
+        // Check if the host in the URL is 'db' (Docker Compose default).
+        // Outside Docker Compose (e.g. deployed on Render or cloud PaaS), 'db' cannot resolve via DNS.
+        // If DB_HOST is configured and is NOT "localhost" / "db", fall back to DB_HOST so deployment
+        // succeeds even if a stale local DATABASE_URL (from .env) was set.
+        if ("db".equalsIgnoreCase(normalized.host()) && !isHostResolvable("db")) {
+            String dbHost = environment.getProperty("DB_HOST");
+            if (dbHost != null && !dbHost.isBlank() && !"localhost".equalsIgnoreCase(dbHost) && !"db".equalsIgnoreCase(dbHost)) {
+                String dbPortStr = environment.getProperty("DB_PORT");
+                int port = -1;
+                if (dbPortStr != null && !dbPortStr.isBlank()) {
+                    try {
+                        port = Integer.parseInt(dbPortStr.trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (port <= 0) {
+                    port = normalized.port() > 0 ? normalized.port() : 5432;
+                }
+                effectiveJdbcUrl = rebuildJdbcUrl(dbHost.trim(), port, normalized.path(), normalized.query());
+                log.warn("Database host 'db' in spring.datasource.url is unresolvable via DNS. "
+                        + "Falling back to DB_HOST: {}", dbHost);
+            }
+        }
+
+        if (!configured.trim().equals(effectiveJdbcUrl)) {
+            overrides.put("spring.datasource.url", effectiveJdbcUrl);
             // Never log the raw value: it may embed credentials.
             log.info("Normalised spring.datasource.url into a JDBC URL the PostgreSQL driver accepts");
         }
@@ -208,7 +233,28 @@ public class DataSourceUrlNormalizer implements BeanFactoryPostProcessor, Ordere
             jdbcUrl.append('?').append(uri.getQuery());
         }
 
-        return new NormalizedDataSource(jdbcUrl.toString(), username, password);
+        return new NormalizedDataSource(jdbcUrl.toString(), username, password, host, port, path, uri.getQuery());
+    }
+
+    static String rebuildJdbcUrl(String host, int port, String path, String query) {
+        StringBuilder sb = new StringBuilder(JDBC_PREFIX).append("postgresql://").append(host);
+        if (port > 0) {
+            sb.append(':').append(port);
+        }
+        sb.append(path == null || path.isEmpty() ? "/" : path);
+        if (query != null && !query.isEmpty()) {
+            sb.append('?').append(query);
+        }
+        return sb.toString();
+    }
+
+    static boolean isHostResolvable(String host) {
+        try {
+            java.net.InetAddress.getByName(host);
+            return true;
+        } catch (java.net.UnknownHostException | SecurityException e) {
+            return false;
+        }
     }
 
     /**
@@ -233,8 +279,15 @@ public class DataSourceUrlNormalizer implements BeanFactoryPostProcessor, Ordere
      * @param jdbcUrl   the URL rewritten for the JDBC driver
      * @param username  credentials lifted out of the URI, or {@code null}
      * @param password  credentials lifted out of the URI, or {@code null}
+     * @param host      the hostname extracted from the URI
+     * @param port      the port extracted from the URI, or -1 if omitted
+     * @param path      the path extracted from the URI
+     * @param query     the query string, or {@code null}
      */
-    record NormalizedDataSource(String jdbcUrl, String username, String password) {
+    record NormalizedDataSource(String jdbcUrl, String username, String password, String host, int port, String path, String query) {
+        NormalizedDataSource(String jdbcUrl, String username, String password) {
+            this(jdbcUrl, username, password, null, -1, null, null);
+        }
     }
 
     /**

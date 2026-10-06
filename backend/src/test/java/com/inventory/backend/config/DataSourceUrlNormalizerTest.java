@@ -201,4 +201,19 @@ class DataSourceUrlNormalizerTest {
         String url = environment.getProperty("spring.datasource.url");
         assertFalse(url.contains("sup3rs3cret"), "credentials must not survive in the URL: " + url);
     }
+
+    @Test
+    @DisplayName("when host in URL is unresolvable 'db', falls back to DB_HOST if configured")
+    void fallsBackToDbHostWhenDbUnresolvable() {
+        MockEnvironment environment = environment(
+                "spring.datasource.url", "jdbc:postgresql://db:5432/stockflow_db",
+                "DB_HOST", "dpg-cabc123-a.oregon-postgres.render.com",
+                "DB_PORT", "5432");
+
+        DataSourceUrlNormalizer.apply(environment);
+
+        assertEquals(
+                "jdbc:postgresql://dpg-cabc123-a.oregon-postgres.render.com:5432/stockflow_db",
+                environment.getProperty("spring.datasource.url"));
+    }
 }

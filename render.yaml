@@ -54,14 +54,13 @@ services:
         value: "8080"
 
       # ── Database ──────────────────────────────────────────────────────────
-      # Render's connection string is a URI (postgres://user:pass@host:port/db),
-      # not a JDBC URL. If Render injects DATABASE_URL (it does once the DB is
-      # linked in the dashboard), the backend's
-      # DataSourceUrlEnvironmentPostProcessor rewrites it to a JDBC URL and
-      # decodes any embedded credentials, so it works as-is.
-      #
-      # If DATABASE_URL is NOT injected, the parts below are used instead:
-      # spring.datasource.url assembles jdbc:postgresql://DB_HOST:DB_PORT/DB_NAME.
+      # Render's internal connection string is injected directly via
+      # fromDatabase: connectionString (format: postgres://user:pass@host:port/db).
+      # DataSourceUrlNormalizer converts it into a JDBC URL and extracts credentials.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockflow-db
+          property: connectionString
       - key: DB_HOST
         fromDatabase:
           name: stockflow-db
@@ -146,7 +145,7 @@ services:
       - key: SUPER_ADMIN_EMAIL
         value: 12yemom@gmail.com
       - key: SUPER_ADMIN_PASSWORD
-        sync: false   # set manually in Render dashboard — never commit passwords
+        generateValue: true   # generates a secure random password on first deploy (view in Render dashboard)
       - key: SUPER_ADMIN_FIRST_NAME
         value: Super
       - key: SUPER_ADMIN_LAST_NAME

@@ -80,11 +80,29 @@ public class DataSourceReadinessVerifier implements BeanPostProcessor {
                 ? root.getClass().getName()
                 : root.getClass().getSimpleName() + ": " + root.getMessage();
 
-        return """
-                Unable to connect to PostgreSQL at %s.
+        StringBuilder sb = new StringBuilder();
+        sb.append("Unable to connect to PostgreSQL at ").append(url).append(".\n\n");
+        sb.append("Cause: ").append(reason).append("\n\n");
 
-                Cause: %s
+        if (url.contains("//db:") || url.contains("//db/") || reason.contains("UnknownHostException: db")) {
+            sb.append("""
+                    DIAGNOSIS: The hostname 'db' could not be resolved!
+                    'db' is the Docker Compose service name for local development and only exists inside
+                    a local Docker Compose network. Cloud platforms like Render cannot resolve 'db'.
 
+                    HOW TO FIX ON RENDER:
+                      1. In your Render Dashboard, open your Web Service (stockflow-backend).
+                      2. Go to the 'Environment' tab.
+                      3. If DATABASE_URL is set to 'jdbc:postgresql://db:5432/...', either:
+                         - Delete it so render.yaml Blueprint can inject the managed database URL, OR
+                         - Set DATABASE_URL to your Render PostgreSQL 'Internal Database URL'
+                           (e.g., postgres://stockflow:<password>@dpg-...:5432/stockflow_db).
+                      4. Save and redeploy.
+
+                    """);
+        }
+
+        sb.append("""
                 spring.datasource.url IS configured, so Hibernate's
                 "Unable to determine Dialect without JDBC metadata" is a
                 misleading symptom of this connection failure, not a missing
@@ -96,7 +114,9 @@ public class DataSourceReadinessVerifier implements BeanPostProcessor {
                   3. Do DATABASE_USERNAME / DATABASE_PASSWORD match the database?
                   4. Does the database's IP allow list permit this service?
                   5. Does TLS need to be enabled (sslmode=require)?
-                """.formatted(url, reason);
+                """);
+
+        return sb.toString();
     }
 
     /**
