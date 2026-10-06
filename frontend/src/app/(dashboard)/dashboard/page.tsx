@@ -135,11 +135,7 @@ export default function DashboardPage() {
             </p>
           )}
           {dataErrors.length > 0 && (
-            <p>
-              Some data could not be loaded. Please reload the page, or{' '}
-              <code className="font-mono">docker compose up --build</code> if you
-              just started the app.
-            </p>
+            <p>Some data could not be loaded. Please reload the page.</p>
           )}
           <ul className="list-disc pl-5 space-y-0.5">
             {dataErrors.map((error) => (

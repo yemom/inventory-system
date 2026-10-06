@@ -110,11 +110,31 @@ public class DataInitializer implements CommandLineRunner {
         java.util.Optional<User> existingAdmin = userRepository.findByUsername(superAdminUsername);
         if (existingAdmin.isPresent()) {
             User u = existingAdmin.get();
-            u.setEmail(superAdminEmail);
+
+            // The password IS refreshed on every start: that is how an operator
+            // rotates the bootstrap credential, and it is why the value is never
+            // written to the log.
             u.setPasswordHash(passwordEncoder.encode(superAdminPassword));
             u.setStatus(UserStatus.ACTIVE);
+
+            // The email is NOT overwritten once set. It used to be, which meant
+            // any process starting the app without SUPER_ADMIN_EMAIL silently
+            // repointed the administrator's login — two instances with different
+            // values would fight over it, and a stray local run against a shared
+            // database could lock the real owner out. Moving the address is a
+            // deliberate act, so it is done in the UI, and a mismatch is reported
+            // instead of being applied.
+            if (u.getEmail() == null || u.getEmail().isBlank()) {
+                u.setEmail(superAdminEmail);
+                log.info("  Super Admin '{}' had no email; set it to the configured SUPER_ADMIN_EMAIL.", superAdminUsername);
+            } else if (!u.getEmail().equalsIgnoreCase(superAdminEmail)) {
+                log.warn("  Super Admin '{}' already exists with email {}; the configured SUPER_ADMIN_EMAIL ({}) "
+                                + "was NOT applied. Change the address in the UI if you intend to move it.",
+                        superAdminUsername, u.getEmail(), superAdminEmail);
+            }
+
             userRepository.save(u);
-            log.info("  Updated Super Admin credentials: {} ({})", superAdminUsername, superAdminEmail);
+            log.info("  Refreshed Super Admin password for '{}' ({}).", superAdminUsername, u.getEmail());
         } else if (!userRepository.existsByEmail(superAdminEmail)) {
             User u = User.builder()
                     .firstName(superAdminFirstName)

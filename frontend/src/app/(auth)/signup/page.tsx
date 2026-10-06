@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Package, Lock, User, Mail, AlertCircle, ArrowRight, CheckCircle2, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BACKEND_UNAVAILABLE } from '@/lib/api/apiErrors';
+import { backendUnavailableMessage } from '@/lib/api/apiErrors';
 
 const schema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
@@ -75,12 +75,15 @@ export default function SignupPage() {
 
   const onSubmit = async (data: FormData) => {
     setServerError('');
+    // Declared outside the try so the catch block can name the URL that was
+    // actually contacted when the request never reached the API.
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8081/api/v1';
+
     try {
       const nameParts = data.fullName.trim().split(/\s+/);
       const firstName = nameParts[0];
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : nameParts[0];
 
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8081/api/v1';
       const res = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,9 +113,7 @@ export default function SignupPage() {
     } catch (err: unknown) {
       // A thrown fetch() TypeError means the backend was never reached,
       // so name the dependency instead of echoing "Failed to fetch".
-      setServerError(
-        `${BACKEND_UNAVAILABLE}. Start the API with 'docker compose up --build' and try again.`
-      );
+      setServerError(backendUnavailableMessage(apiBase));
       console.error('Registration request failed', err);
     }
   };

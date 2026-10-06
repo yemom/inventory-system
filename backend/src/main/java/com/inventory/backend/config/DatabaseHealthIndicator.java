@@ -21,6 +21,9 @@ import java.sql.SQLException;
 @Component
 public class DatabaseHealthIndicator implements HealthIndicator {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(DatabaseHealthIndicator.class);
+
     private final DataSource dataSource;
 
     public DatabaseHealthIndicator(DataSource dataSource) {
@@ -37,12 +40,20 @@ public class DatabaseHealthIndicator implements HealthIndicator {
                         .build();
             }
         } catch (SQLException e) {
+            // /actuator/health is served with show-details=never, so the response
+            // body is only {"status":"DOWN"} — useless for telling a dead database
+            // apart from any other unhealthy component. Name the real cause in the
+            // log, where an operator reads it, instead of leaking it over an
+            // unauthenticated endpoint.
+            log.error("PostgreSQL is unreachable: {}", e.getMessage(), e);
             return Health.down()
                     .withDetail("database", "PostgreSQL")
                     .withDetail("status", "unreachable")
                     .withDetail("error", e.getMessage())
                     .build();
         }
+        log.error("PostgreSQL connection obtained but reported invalid (isValid() returned false). "
+                + "The instance will be taken out of rotation.");
         return Health.down()
                 .withDetail("database", "PostgreSQL")
                 .withDetail("status", "invalid")

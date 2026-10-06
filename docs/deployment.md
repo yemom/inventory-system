@@ -60,6 +60,7 @@ Copy `.env-example` → `.env`. **Never commit `.env`.**
 | `DATABASE_URL` | PostgreSQL connection string | A `jdbc:postgresql://…` URL **or** a `postgres://user:pw@host:5432/db` URI — both work (see below) |
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | DB credentials | Use a dedicated least-privilege role |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis connection | Rate limiting degrades gracefully if unset/unreachable |
+| `CORS_ALLOWED_ORIGINS` | Allowed browser origins | **Required in production.** Comma-separated exact origins the frontend is served from |
 | `JWT_SECRET` | JWT signing key | **≥ 32 chars, random.** `openssl rand -hex 32`. Rotating → invalidates all sessions |
 | `SUPER_ADMIN_PASSWORD` | Bootstrap admin | **≥ 12 chars.** Change immediately after first login |
 
@@ -68,6 +69,41 @@ refuses to start without them (`StartupConfigValidator`) and names the missing o
 That is deliberate: both values used to live in `application.properties`, which made
 them public knowledge — a published JWT signing key lets anyone mint an admin token,
 and a published admin password is a working backdoor on every fresh deployment.
+
+#### CORS: `CORS_ALLOWED_ORIGINS`
+
+The browser refuses any cross-origin API call whose origin the server has not
+allowed, and it reports that refusal as an **opaque network error** — never as a
+CORS message. A deployed frontend therefore looks exactly like a dead backend:
+`fetch` fails and the UI reports the API as unavailable.
+
+This was a real failure here. The allowed-origin list was hardcoded to localhost
+and private-LAN patterns, while a comment claimed production would supply a real
+domain "via an environment variable" — no such variable was ever read. A deployed
+frontend received `403` on its preflight with no `Access-Control-Allow-Origin`
+header, and the login screen told the user to run `docker compose up --build`.
+
+Set it to the exact origins the frontend is served from, comma-separated:
+
+```bash
+CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app,https://www.your-domain.com
+```
+
+The backend logs a warning at startup when no non-local origin is configured.
+
+**Do not use a wildcard** such as `https://*.vercel.app`. The API allows
+credentials, so a wildcard would let *any* deployment on that host make
+authenticated calls. List preview deployments individually.
+
+Verify from the command line:
+
+```bash
+curl -i -X OPTIONS "$API/api/v1/auth/login" \
+  -H "Origin: https://your-frontend.vercel.app" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+# expect: HTTP/1.1 200 and access-control-allow-origin: https://your-frontend.vercel.app
+```
 
 #### `DATABASE_URL`: JDBC URL or URI — both are accepted
 
@@ -102,6 +138,44 @@ followed by a short checklist (database asleep/expired, internal vs public hostn
 credentials, IP allow list, TLS). HikariCP already retries for 60 s
 (`initialization-fail-timeout`) first, so a database that is merely still starting does
 not trip it.
+
+`DATABASE_URL` also carries `connectTimeout=10` and `socketTimeout=30`. The latter
+matters more than it looks: a managed database that has stopped responding (a
+suspended or expired instance still completes the TCP handshake, then never
+replies) would otherwise block a request thread indefinitely. Enough hung requests
+exhaust the connection pool, after which *every* endpoint stops answering —
+including ones that never touch the database. With the socket timeout,
+database-dependent requests fail within 30s instead of hanging.
+
+#### Health checks and optional dependencies
+
+`/actuator/health` decides whether the platform routes traffic to an instance. When
+it reports `DOWN`, Render answers **503 to every request**, including ones that need
+no database — so one sick dependency can take the whole site offline.
+
+Only PostgreSQL is a hard dependency, and only it can mark the service `DOWN`. Redis
+deliberately is not: the rate limiter and cache both fail open, so an unreachable
+Redis is logged as a warning and reported as `UP` with `degraded: true`. Verified
+with Redis unreachable:
+
+```
+GET /actuator/health  ->  200  {"status":"UP"}
+WARN  Redis is unavailable (RedisConnectionFailureException) - rate limiting and
+      caching are degraded. The API remains fully available.
+```
+
+Because `show-details=never` keeps the response body to `{"status":"DOWN"}`, both the
+Redis and the PostgreSQL indicators log the concrete cause themselves — read the
+service logs rather than the endpoint.
+
+#### Super-admin bootstrap identity
+
+`DataInitializer` refreshes the super-admin **password** on every start (that is how
+it is rotated) but never overwrites an existing **email**. It used to overwrite both,
+which meant any process starting the app without `SUPER_ADMIN_EMAIL` silently
+repointed the administrator's login — two instances with different values would
+fight, and a stray local run against a shared database could lock the real owner
+out. A mismatch is now logged as a warning and ignored; move the address in the UI.
 
 ### Performance tuning
 
@@ -314,9 +388,13 @@ and retention guidance in `docs/database-scaling.md`.
 | `Unable to connect to PostgreSQL at jdbc:postgresql://db:5432… / UnknownHostException: db` | Hostname `db` is the Docker Compose container name, which only exists locally and cannot be resolved on Render | On Render, set `DATABASE_URL` in your Web Service's **Environment** tab to your Render PostgreSQL database's **Internal Database URL** (`postgres://stockflow:pw@dpg-…:5432/stockflow_db`). When using `render.yaml` Blueprint, `DATABASE_URL` is now linked automatically via `fromDatabase: connectionString` |
 | `Driver org.postgresql.Driver claims to not accept jdbcUrl, postgres://…` | A platform URI was used verbatim as a JDBC URL | Should be fixed automatically by `DataSourceUrlNormalizer`. If it still appears, the running image predates that fix — redeploy |
 | `Refusing to start: required secrets are missing or unsafe` | `JWT_SECRET` and/or `SUPER_ADMIN_PASSWORD` unset, too short, or still the old committed placeholder | `openssl rand -hex 32` for the signing key; set an admin password ≥ 12 chars |
+| Login shows "Backend unavailable" and DevTools shows no response / "Network Error" | Almost always CORS: the browser got a 403 preflight with no `Access-Control-Allow-Origin`. The browser deliberately hides this | Add this frontend's exact origin to `CORS_ALLOWED_ORIGINS` and restart. Verify with the `curl -i -X OPTIONS` command in §2 |
+| Every request returns 503, empty body | `/actuator/health` is `DOWN`, so the platform pulled the instance from rotation | Read the service logs — the failing component names itself. Most often the database is suspended/expired |
+| Requests hang, then the whole API stops responding | A database that completed the TCP handshake but never replies; each hung request pinned a pool thread | Fixed by `socketTimeout=30`. Check the database is running |
+| Admin login email changed unexpectedly | Older builds overwrote the super-admin's email on every start from `SUPER_ADMIN_EMAIL` | Now logged as a warning and ignored. Set the address in the UI |
 | `relation "users" does not exist` | Schema never created | `docker compose restart backend`; Hibernate uses `ddl-auto=update` |
 | All logins fail with 429 | Per-IP login limit hit | Expected behaviour. Raise `RATE_LIMIT_LOGIN` or investigate brute force |
 | Data disappeared | Someone ran `docker compose down -v` | Restore from backup; **that flag deletes the volume** |
 | Frontend 404s | Backend unhealthy | `docker compose logs backend`; check DB connectivity |
-| CORS errors in browser | Origin not allowed | Add the public origin to `SecurityConfig.corsConfigurationSource()` |
+| CORS errors in browser | Origin not listed in `CORS_ALLOWED_ORIGINS` | Set the exact frontend origin in the environment; do not edit `SecurityConfig` |
 | Rate limits not shared across instances | Redis unreachable | Check `REDIS_*`; the limiter fails open by design |

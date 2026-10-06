@@ -23,6 +23,31 @@ import axios from 'axios';
 /** Stable, human-readable message for an unreachable backend. */
 export const BACKEND_UNAVAILABLE = 'Backend unavailable';
 
+/**
+ * Explanation shown with {@link BACKEND_UNAVAILABLE}.
+ *
+ * Every caller must use this rather than inventing its own text. It previously
+ * appended "Start the API with 'docker compose up --build' and try again",
+ * which is meaningless on a deployed instance and actively misled whoever was
+ * diagnosing it — the real cause was a CORS origin the API had not been told
+ * about, and the instruction sent them to run Docker locally.
+ *
+ * The browser deliberately hides the underlying reason: a CORS preflight
+ * rejection, a DNS failure, a refused connection and a 503 from an unhealthy
+ * instance all surface as the identical opaque "Network Error". So the message
+ * names the URL that was actually contacted (which is the one thing the operator
+ * can check first) and lists the causes that are indistinguishable from here.
+ */
+export function backendUnavailableMessage(apiBaseUrl?: string): string {
+    const target = apiBaseUrl ? ` at ${apiBaseUrl}` : '';
+    return (
+        `${BACKEND_UNAVAILABLE}${target}. The API did not respond. ` +
+        'Check that the API service is running and healthy, that this frontend is ' +
+        'configured with the correct API URL, and that this page’s origin is listed ' +
+        'in the API’s CORS_ALLOWED_ORIGINS setting.'
+    );
+}
+
 export interface ApiError {
     /** HTTP status code, or null when the request never completed. */
     status: number | null;

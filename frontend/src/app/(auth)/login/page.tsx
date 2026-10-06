@@ -4,7 +4,8 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { toApiError } from '@/lib/api/apiErrors';
+import { toApiError, backendUnavailableMessage } from '@/lib/api/apiErrors';
+import { getApiBaseUrl } from '@/lib/api/apiClient';
 import { extractBackendMessage } from '@/lib/auth/authErrors';
 import { Eye, EyeOff, Package, Lock, User, AlertCircle, ArrowRight, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
@@ -38,7 +39,7 @@ export default function LoginPage() {
       const normalized = toApiError(err);
       setServerError(
         normalized.isNetworkError
-          ? `${normalized.message}. Start the API with 'docker compose up --build' and try again.`
+          ? backendUnavailableMessage(getApiBaseUrl())
           : extractBackendMessage(err) ?? 'Invalid credentials. Please try again.'
       );
     }
@@ -62,17 +63,24 @@ export default function LoginPage() {
             <span className="text-white text-3xl font-bold tracking-tight">StockFlow</span>
           </div>
 
-          {/* Stats cards */}
+          {/* Capability cards */}
+          {/*
+            These previously showed invented metrics ("12,400+ products",
+            "99.9% uptime", "8 stores"). They looked like live figures but were
+            literals in the JSX, which is both mock data and false advertising to
+            anyone evaluating the product. Real totals are only knowable after
+            authentication, so this lists capabilities instead of numbers.
+          */}
           <div className="grid grid-cols-2 gap-4 mb-10">
             {[
-              { label: 'Products Tracked', value: '12,400+' },
-              { label: 'Daily Transactions', value: '3,200+' },
-              { label: 'Active Branches', value: '8 Stores' },
-              { label: 'Uptime', value: '99.9%' },
+              { label: 'Products', value: 'Stock & pricing' },
+              { label: 'Sales', value: 'Point of sale' },
+              { label: 'Purchases', value: 'Suppliers & receiving' },
+              { label: 'Reports', value: 'Profit & loss' },
             ].map(item => (
               <div key={item.label} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-left">
                 <p className="text-blue-100 text-xs font-medium mb-1">{item.label}</p>
-                <p className="text-white text-xl font-bold">{item.value}</p>
+                <p className="text-white text-lg font-bold leading-tight">{item.value}</p>
               </div>
             ))}
           </div>

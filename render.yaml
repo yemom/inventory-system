@@ -99,6 +99,20 @@ services:
           type: redis
           property: password
 
+      # ── CORS ───────────────────────────────────────────────────────────────
+      # Comma-separated browser origins allowed to call this API. WITHOUT this
+      # the deployed frontend is blocked by the browser at the CORS preflight
+      # (403, no Access-Control-Allow-Origin), which surfaces as an opaque
+      # "Network Error" — the login looks like a dead backend.
+      #
+      # Must match the frontend deployment exactly, scheme included. List every
+      # origin separately; do NOT use https://*.vercel.app here, because
+      # allowCredentials(true) would then let any Vercel deployment make
+      # authenticated calls to this API. Vercel preview deployments each get a
+      # unique hostname, so add them explicitly if you need them.
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://inventory-system-blush-mu.vercel.app
+
       # ── JWT (set the real value in the Render dashboard) ──────────────────
       - key: JWT_SECRET
         generateValue: true   # generates a random 256-bit hex secret on first deploy
