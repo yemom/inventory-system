@@ -20,4 +20,9 @@ public class StockMovementDTO {
     private String createdBy;
     private LocalDateTime createdAt;
     private String date;       // formatted createdAt for frontend
+    /** APPROVED, PENDING or REJECTED. Null on rows written before approval existed. */
+    private String status;
+    private String approvedBy;
+    private LocalDateTime approvedAt;
+    private String reviewNote;
 }

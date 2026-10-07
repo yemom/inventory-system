@@ -10,80 +10,109 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthProvider';
 
-interface NavChild { label: string; href: string; roles?: string[]; }
+/**
+ * Navigation is gated on *permissions*, not role names.
+ *
+ * The previous shape was `roles?: string[]`, which had two problems: it
+ * duplicated the backend's authority rules in the UI (so they could disagree),
+ * and it could not express a rule like "may see sales but not profit" — the
+ * whole Reports group was one role list, so a Supervisor had to be shown the
+ * entire section or none of it.
+ *
+ * `anyOf` means "needs at least one of these". A Super Admin satisfies
+ * everything through `hasPermission`, so no item needs to name that role.
+ */
+interface NavChild {
+  label: string;
+  href: string;
+  /** Permissions that grant access to this entry. Empty means visible to all. */
+  anyOf?: string[];
+}
 interface NavItem {
   label: string;
   href?: string;
   icon: React.ReactNode;
-  roles?: string[];
+  anyOf?: string[];
   children?: NavChild[];
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} /> },
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} />, anyOf: ['DASHBOARD_VIEW'] },
   {
     label: 'Inventory', icon: <Warehouse size={18} />,
     children: [
-      { label: 'Products', href: '/products' },
-      { label: 'Categories', href: '/categories' },
-      { label: 'Stock Overview', href: '/inventory' },
-      { label: 'Stock Movements', href: '/inventory/movements' },
-      { label: 'Adjustments', href: '/inventory/adjustments' },
-      { label: 'Warehouses', href: '/warehouses' },
-      { label: 'Transfers', href: '/inventory/transfers' },
+      { label: 'Products', href: '/products', anyOf: ['PRODUCT_READ', 'INVENTORY_READ'] },
+      { label: 'Categories', href: '/categories', anyOf: ['PRODUCT_READ', 'INVENTORY_READ', 'CATEGORY_MANAGE'] },
+      { label: 'Stock Overview', href: '/inventory', anyOf: ['INVENTORY_READ'] },
+      { label: 'Stock Movements', href: '/inventory/movements', anyOf: ['INVENTORY_READ', 'STOCK_MOVEMENT_READ'] },
+      // Submitting an adjustment; the approval queue is a separate entry below.
+      { label: 'Adjustments', href: '/inventory/adjustments', anyOf: ['INVENTORY_ADJUST', 'STOCK_ADJUSTMENT_APPROVE'] },
+      { label: 'Approvals', href: '/inventory/approvals', anyOf: ['STOCK_ADJUSTMENT_APPROVE'] },
+      { label: 'Warehouses', href: '/warehouses', anyOf: ['WAREHOUSE_READ', 'INVENTORY_READ'] },
+      { label: 'Transfers', href: '/inventory/transfers', anyOf: ['INVENTORY_TRANSFER'] },
     ],
   },
   {
     label: 'Sales', icon: <ShoppingCart size={18} />,
     children: [
-      { label: 'New Sale / POS', href: '/sales/pos' },
-      { label: 'Sales Orders', href: '/sales' },
-      { label: 'Returns', href: '/sales/returns' },
-      { label: 'Customers', href: '/customers' },
+      { label: 'New Sale / POS', href: '/sales/pos', anyOf: ['SALE_CREATE'] },
+      { label: 'Sales Orders', href: '/sales', anyOf: ['SALE_READ'] },
+      { label: 'Approvals', href: '/sales/approvals', anyOf: ['SALE_VOID_APPROVE', 'SALE_REFUND_APPROVE'] },
+      { label: 'Customers', href: '/customers', anyOf: ['CUSTOMER_READ', 'CUSTOMER_CREATE'] },
     ],
   },
   {
     label: 'Purchases', icon: <TruckIcon size={18} />,
     children: [
-      { label: 'New Purchase', href: '/purchases/new' },
-      { label: 'Purchase Orders', href: '/purchases' },
-      { label: 'Returns', href: '/purchases/returns' },
-      { label: 'Suppliers', href: '/suppliers' },
+      { label: 'New Purchase', href: '/purchases/new', anyOf: ['PURCHASE_CREATE'] },
+      { label: 'Purchase Orders', href: '/purchases', anyOf: ['PURCHASE_READ'] },
+      { label: 'Returns', href: '/purchases/returns', anyOf: ['PURCHASE_READ'] },
+      { label: 'Suppliers', href: '/suppliers', anyOf: ['SUPPLIER_READ'] },
     ],
   },
   {
-    label: 'Finance', icon: <DollarSign size={18} />, roles: ['SUPER_ADMIN', 'ACCOUNTANT', 'MANAGER'],
+    // Split so that a Manager or Accountant sees money but not necessarily the
+    // P&L; previously the whole group shared one role list.
+    label: 'Finance', icon: <DollarSign size={18} />,
     children: [
-      { label: 'Payments', href: '/finance/payments' },
-      { label: 'Expenses', href: '/finance/expenses' },
-      { label: 'Receivables', href: '/finance/receivables' },
-      { label: 'Payables', href: '/finance/payables' },
-      { label: 'Profit & Loss', href: '/finance/profit-loss' },
+      { label: 'Payments', href: '/finance/payments', anyOf: ['PAYMENT_READ', 'PAYMENT_CREATE'] },
+      { label: 'Expenses', href: '/finance/expenses', anyOf: ['EXPENSE_READ', 'EXPENSE_CREATE'] },
+      { label: 'Receivables', href: '/finance/receivables', anyOf: ['RECEIVABLE_READ'] },
+      { label: 'Payables', href: '/finance/payables', anyOf: ['PAYABLE_READ'] },
+      // Profit is the single most sensitive figure, so it stands on its own.
+      { label: 'Profit & Loss', href: '/finance/profit-loss', anyOf: ['PROFIT_LOSS_READ'] },
     ],
   },
   {
-    label: 'Reports', icon: <BarChart3 size={18} />, roles: ['SUPER_ADMIN', 'ACCOUNTANT', 'MANAGER'],
+    label: 'Reports', icon: <BarChart3 size={18} />,
     children: [
-      { label: 'Sales Report', href: '/reports/sales' },
-      { label: 'Inventory Report', href: '/reports/inventory' },
-      { label: 'Financial Report', href: '/reports/financial' },
-      { label: 'Purchase Report', href: '/reports/purchases' },
+      { label: 'Sales Report', href: '/reports/sales', anyOf: ['SALES_REPORT_VIEW', 'REPORT_VIEW'] },
+      { label: 'Inventory Report', href: '/reports/inventory', anyOf: ['INVENTORY_REPORT_VIEW', 'LOW_STOCK_REPORT_VIEW', 'REPORT_VIEW'] },
+      { label: 'Inventory Value', href: '/reports/inventory-value', anyOf: ['INVENTORY_VALUE_VIEW'] },
+      { label: 'Purchase Report', href: '/reports/purchases', anyOf: ['PURCHASE_READ'] },
     ],
   },
-  { label: 'Staff Management', href: '/staff', icon: <Shield size={18} />, roles: ['SUPER_ADMIN'] },
-  { label: 'Audit Logs', href: '/audit-logs', icon: <Activity size={18} />, roles: ['SUPER_ADMIN', 'MANAGER'] },
-  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, roles: ['SUPER_ADMIN'] },
+  { label: 'Staff Management', href: '/staff', icon: <Shield size={18} />, anyOf: ['STAFF_VIEW', 'USER_READ'] },
+  { label: 'Audit Logs', href: '/audit-logs', icon: <Activity size={18} />, anyOf: ['AUDIT_LOG_VIEW'] },
+  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, anyOf: ['SYSTEM_SETTINGS_MANAGE', 'SETTINGS_VIEW'] },
 ];
 
 const DEFAULT_EXPANDED = ['Inventory', 'Sales', 'Finance', 'Purchases'];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<string[]>(DEFAULT_EXPANDED);
 
-  const canSee = (roles?: string[]) => !roles || (!!user && roles.includes(user.role));
+  /**
+   * Visible when the user holds at least one of the required permissions.
+   * Delegates to `hasPermission`, which grants everything to SUPER_ADMIN, so the
+   * backend stays the single source of truth for who may see what.
+   */
+  const canSee = (anyOf?: string[]) => !anyOf?.length || anyOf.some(permission => hasPermission(permission));
+  const visibleChildren = (item: NavItem): NavChild[] =>
+    item.children?.filter(child => canSee(child.anyOf)) ?? [];
   const toggleExpanded = (label: string) =>
     setExpanded(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
@@ -118,11 +147,16 @@ export default function Sidebar() {
       <nav className="flex-1 py-3 overflow-y-auto scrollbar-hide">
         <ul className="space-y-0.5 px-2">
           {navItems.map(item => {
-            if (!canSee(item.roles)) return null;
+            if (!canSee(item.anyOf)) return null;
 
             if (item.children) {
+              // A group whose children are all hidden must not render as an empty
+              // clickable header that expands to nothing.
+              const children = visibleChildren(item);
+              if (children.length === 0) return null;
+
               const isExp = expanded.includes(item.label);
-              const childActive = item.children.some(c => isActive(c.href));
+              const childActive = children.some(c => isActive(c.href));
               return (
                 <li key={item.label}>
                   <button
@@ -144,8 +178,7 @@ export default function Sidebar() {
                   </button>
                   {!collapsed && isExp && (
                     <ul className="mt-0.5 ml-6 space-y-0.5 border-l border-gray-700/40 pl-3">
-                      {item.children.map(child => {
-                        if (!canSee(child.roles)) return null;
+                      {children.map(child => {
                         const active = isActive(child.href);
                         return (
                           <li key={child.href}>

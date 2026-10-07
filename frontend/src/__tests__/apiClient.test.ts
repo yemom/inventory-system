@@ -20,8 +20,21 @@ const mockLocalStorage = {
   }),
 };
 
+/**
+ * Minimal window stand-in for the node test environment.
+ *
+ * `dispatchEvent` was missing, so the 401 branch of the response interceptor —
+ * which broadcasts SESSION_EXPIRED_EVENT so AuthProvider can clear its state —
+ * threw "window.dispatchEvent is not a function" and the 401 tests failed. The
+ * mock has to cover everything the interceptor calls, not just storage.
+ */
+const dispatchedEvents: string[] = [];
 const mockWindow = {
   location: { href: '' },
+  dispatchEvent: jest.fn((event: Event) => {
+    dispatchedEvents.push((event as CustomEvent).type ?? event.type);
+    return true;
+  }),
 };
 
 (global as any).window = mockWindow;
@@ -37,6 +50,7 @@ const responseErrorInterceptor = (apiClient.interceptors.response as any).handle
 beforeEach(() => {
   mockWindow.location.href = '';
   mockLocalStorage.clear();
+  dispatchedEvents.length = 0;
   jest.clearAllMocks();
 });
 
@@ -82,12 +96,17 @@ describe('apiClient — response error interceptor (401)', () => {
     expect(mockLocalStorage.getItem('auth_user')).toBeNull();
   });
 
-  it('redirects to /login on 401', async () => {
+  it('announces the expired session instead of forcing a hard redirect', async () => {
     const error = { response: { status: 401 } };
 
     await expect(responseErrorInterceptor(error)).rejects.toEqual(error);
 
-    expect(mockWindow.location.href).toBe('/login');
+    // A hard `window.location = '/login'` aborts the in-flight request and the
+    // user sees "AxiosError: Network Error" rather than "please log in". The
+    // interceptor therefore clears storage and broadcasts an event, leaving the
+    // router to the AuthProvider.
+    expect(dispatchedEvents).toContain('stockflow:session-expired');
+    expect(mockWindow.location.href).toBe('');
   });
 
   it('does NOT redirect or clear storage on 403 errors', async () => {

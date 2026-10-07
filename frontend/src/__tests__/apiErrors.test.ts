@@ -61,19 +61,26 @@ describe('toApiError — transport failures', () => {
 });
 
 describe('toApiError — responses from the backend', () => {
-  it('surfaces the backend status and message', () => {
+  it('translates a 403 into plain language rather than leaking authority names', () => {
     const result = toApiError(httpFailure(403, { message: 'Missing authority INVENTORY_READ' }));
 
     expect(result.isNetworkError).toBe(false);
+    // The status is preserved so callers can still branch on it.
     expect(result.status).toBe(403);
-    expect(result.message).toBe('403 — Missing authority INVENTORY_READ');
+    // The raw backend message names an internal permission, which means nothing
+    // to a user, so it is replaced with an actionable sentence.
+    expect(result.message).toMatch(/permission/i);
+    expect(result.message).not.toContain('INVENTORY_READ');
   });
 
-  it('falls back to a status-based message when the body has no message', () => {
+  it('falls back to a plain-language message when the body has none', () => {
     const result = toApiError(httpFailure(500, {}));
 
+    // The status is preserved for branching; the message is for a human, so the
+    // raw status code is replaced with something meaningful rather than shown.
     expect(result.status).toBe(500);
-    expect(result.message).toContain('500');
+    expect(result.message).toMatch(/went wrong|try again/i);
+    expect(result.message).not.toMatch(/^\s*500\s*$/);
   });
 });
 

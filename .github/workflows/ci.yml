@@ -96,6 +96,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The suite covers the opening-stock payload and the permission-gated
+      # navigation. It was not wired into CI before, which is how two suites had
+      # been failing unnoticed. `--ci` makes the run non-interactive and stops
+      # new snapshots being written on the fly.
+      - name: Unit tests
+        run: npm test -- --ci
+
       - name: Build
         run: npm run build
 

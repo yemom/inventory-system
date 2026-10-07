@@ -1,6 +1,8 @@
 package com.inventory.backend.repository;
 
 import com.inventory.backend.model.SaleOrder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -48,6 +50,46 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
             WHERE s.id IN :ids
             """)
     List<SaleOrder> findByIdsWithItems(@org.springframework.data.repository.query.Param("ids") List<Long> ids);
+
+    /**
+     * Sales carrying an unresolved void or refund request.
+     *
+     * <p>Used by the approval queue. The status is a parameter rather than a
+     * literal so the caller and the service agree on one constant instead of a
+     * string repeated in two files.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            WHERE s.voidStatus = :status OR s.refundStatus = :status
+            ORDER BY s.createdAt DESC
+            """)
+    Page<SaleOrder> findAwaitingApproval(
+            @org.springframework.data.repository.query.Param("status") String status,
+            Pageable pageable);
+
+    /**
+     * Sales recorded by one seller.
+     *
+     * <p>Used when the caller may read sales but not other people's takings —
+     * a Cashier on the till. Same fetch-join shape as {@link #findAllWithDetails}
+     * so the DTO mapper does not turn into an N+1.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            WHERE s.createdBy.id = :sellerId
+            ORDER BY s.createdAt DESC
+            """)
+    Page<SaleOrder> findBySellerWithDetails(
+            @org.springframework.data.repository.query.Param("sellerId") Long sellerId,
+            Pageable pageable);
 
     /**
      * Fetch all sale orders with their items, products, customers, and creators

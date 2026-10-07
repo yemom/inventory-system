@@ -4,6 +4,8 @@ import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.filter.RequestIdFilter;
 import io.jsonwebtoken.JwtException;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -76,6 +78,29 @@ public class GlobalExceptionHandler {
                 "The provided token is invalid or expired.");
     }
 
+    /**
+     * A request to a known path with the wrong verb.
+     *
+     * <p>Without this the catch-all {@code Exception} handler below would answer
+     * 500. A {@code @RestControllerAdvice} takes precedence over Spring's
+     * {@code DefaultHandlerExceptionResolver}, so without an explicit handler a
+     * caller that POSTed to a GET endpoint — or an old client hitting a moved
+     * route — was told the server had a fault rather than that its request was
+     * malformed. That misdirects an operator towards the server when the problem
+     * is in the caller.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
+                "That operation is not supported on this endpoint.");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePayloadTooLarge(MaxUploadSizeExceededException ex) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE",
+                "The uploaded file is too large.");
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(IllegalArgumentException ex) {
         // IllegalArgumentException is thrown deliberately by our services with a
@@ -96,10 +121,22 @@ public class GlobalExceptionHandler {
                 "That operation conflicts with existing data. Please check for duplicates.");
     }
 
+    /**
+     * Answers 403 for anything refused.
+     *
+     * <p>When the refusing code supplied a message it is used. Those messages
+     * describe the <em>caller's own</em> rights — "a MANAGER cannot assign the
+     * MANAGER role" — rather than disclosing anything about other records, so
+     * they are safe to return and are the difference between a user who
+     * understands the refusal and one who thinks the app is broken.
+     */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbidden(AccessDeniedException ex) {
+        String message = ex.getMessage();
         return build(HttpStatus.FORBIDDEN, "FORBIDDEN",
-                "Access denied. You do not have permission to perform this action.");
+                message == null || message.isBlank()
+                        ? "Access denied. You do not have permission to perform this action."
+                        : message);
     }
 
     @ExceptionHandler(DisabledException.class)

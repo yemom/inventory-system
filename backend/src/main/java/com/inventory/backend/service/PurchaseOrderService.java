@@ -22,6 +22,13 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
+
+    /** Raised but not yet received: no stock has moved. */
+    public static final String STATUS_DRAFT = "DRAFT";
+    /** Goods have arrived and stock has been increased. */
+    public static final String STATUS_RECEIVED = "RECEIVED";
     private final StockMovementRepository stockMovementRepository;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -42,9 +49,21 @@ public class PurchaseOrderService {
         // ── 1. Build order shell ──────────────────────────────────────────────
         PurchaseOrder order = new PurchaseOrder();
         order.setSupplierName(req.getSupplierName());
-        order.setOrderNumber("PO-" + System.currentTimeMillis());
+        // Derived from the saved id, like sale numbers. The previous
+        // "PO-" + currentTimeMillis() had no uniqueness retry against a unique
+        // column, so two orders created in the same millisecond collided.
+        order.setOrderNumber("PO-TMP-" + java.util.UUID.randomUUID());
 
-        String status = req.getStatus() != null ? req.getStatus().toUpperCase() : "RECEIVED";
+        // The status is decided here, not taken from the request.
+        //
+        // A caller used to be able to POST status:"PENDING" and get an order that
+        // could never receive stock, because nothing could later move it to
+        // RECEIVED; or POST status:"RECEIVED" and inflate stock with no approval.
+        // Stock is now added only when this method itself receives the goods, and
+        // that happens when the caller holds PURCHASE_APPROVE. Creating an order
+        // is proposing one, so the default is DRAFT and no stock moves.
+        boolean receiveNow = hasAuthority("PURCHASE_APPROVE");
+        String status = receiveNow ? STATUS_RECEIVED : STATUS_DRAFT;
         order.setStatus(status);
 
         BigDecimal total = BigDecimal.ZERO;
@@ -65,8 +84,8 @@ public class PurchaseOrderService {
 
             total = total.add(item.getSubtotal());
 
-            // ── 3. Increase stock only when purchase is RECEIVED ──────────────
-            if ("RECEIVED".equals(status)) {
+            // ── 3. Increase stock only when this order is being received ───────
+            if (receiveNow) {
                 int currentStock = p.getQuantity() != null ? p.getQuantity() : 0;
                 p.setQuantity(currentStock + i.getQuantity());
                 productRepository.save(p);
@@ -77,22 +96,94 @@ public class PurchaseOrderService {
         order.setItems(items);
 
         PurchaseOrder saved = purchaseOrderRepository.save(order);
+        saved.setOrderNumber(String.format("PO-%06d", saved.getId()));
+        saved = purchaseOrderRepository.save(saved);
 
-        // ── 4. Record stock movements when RECEIVED ───────────────────────────
-        if ("RECEIVED".equals(status)) {
+        // ── 4. Record stock movements when received ────────────────────────────
+        if (receiveNow) {
+            User actor = currentUser();
             for (PurchaseOrderItem item : saved.getItems()) {
-                StockMovement movement = StockMovement.builder()
+                stockMovementRepository.save(StockMovement.builder()
                         .product(item.getProduct())
                         .type("IN")
                         .quantity(item.getQuantity())
                         .reference(saved.getOrderNumber())
                         .notes("Purchase received: " + saved.getOrderNumber())
-                        .build();
-                stockMovementRepository.save(movement);
+                        .createdBy(actor)
+                        .status(StockMovement.Status.APPROVED)
+                        .approvedAt(java.time.LocalDateTime.now())
+                        .approvedBy(actor)
+                        .build());
             }
         }
 
         return toDTO(saved);
+    }
+
+    /**
+     * Receives a DRAFT purchase order: adds the stock and marks it RECEIVED.
+     *
+     * <p>Requires {@code PURCHASE_APPROVE}, so the person who raised the order is
+     * not the person who makes the goods appear on the shelf.
+     */
+    @Transactional
+    public PurchaseOrderDTO receivePurchase(Long id) {
+        PurchaseOrder order = purchaseOrderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase not found: id=" + id));
+        if (STATUS_RECEIVED.equals(order.getStatus())) {
+            throw new IllegalArgumentException("This purchase has already been received.");
+        }
+        if (!STATUS_DRAFT.equals(order.getStatus())) {
+            throw new IllegalArgumentException(
+                    "Only a DRAFT purchase can be received; this one is " + order.getStatus() + ".");
+        }
+
+        User actor = currentUser();
+        for (PurchaseOrderItem item : order.getItems()) {
+            Product product = productRepository.findByIdWithLock(item.getProduct().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+            int current = product.getQuantity() != null ? product.getQuantity() : 0;
+            product.setQuantity(current + item.getQuantity());
+            productRepository.save(product);
+
+            stockMovementRepository.save(StockMovement.builder()
+                    .product(product)
+                    .type("IN")
+                    .quantity(item.getQuantity())
+                    .reference(order.getOrderNumber())
+                    .notes("Purchase received: " + order.getOrderNumber())
+                    .createdBy(actor)
+                    .status(StockMovement.Status.APPROVED)
+                    .approvedAt(java.time.LocalDateTime.now())
+                    .approvedBy(actor)
+                    .build());
+        }
+
+        order.setStatus(STATUS_RECEIVED);
+        auditLogService.log(actor == null ? null : actor.getId(),
+                actor == null ? "system" : actor.getUsername(),
+                "PURCHASE_RECEIVED", "PURCHASE", String.valueOf(order.getId()),
+                "Received " + order.getOrderNumber());
+        return toDTO(purchaseOrderRepository.save(order));
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> authority.equals(a.getAuthority()));
+    }
+
+    private User currentUser() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        String principal = authentication.getName();
+        return userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElse(null);
     }
 
     public PurchaseOrderDTO toDTO(PurchaseOrder o) {

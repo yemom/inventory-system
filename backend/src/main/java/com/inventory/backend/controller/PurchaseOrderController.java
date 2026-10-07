@@ -34,4 +34,19 @@ public class PurchaseOrderController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Purchase recorded successfully", purchaseOrderService.createPurchase(request)));
     }
+
+    /**
+     * Receives a draft purchase order, increasing stock.
+     *
+     * <p>Split from creation on purpose. Creating an order is proposing one;
+     * letting the same request both propose it and make the goods appear on the
+     * shelf meant stock could be inflated by anyone who could raise an order, and
+     * a caller-supplied {@code status} could even mark one RECEIVED outright.
+     */
+    @PostMapping("/{id}/receive")
+    @PreAuthorize("hasAuthority('PURCHASE_APPROVE')")
+    public ResponseEntity<ApiResponse<PurchaseOrderDTO>> receive(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok("Purchase order received",
+                purchaseOrderService.receivePurchase(id)));
+    }
 }

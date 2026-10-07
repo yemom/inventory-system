@@ -3,6 +3,8 @@ package com.inventory.backend.service;
 import com.inventory.backend.dto.*;
 import com.inventory.backend.model.*;
 import com.inventory.backend.repository.*;
+import com.inventory.backend.security.RoleGrantPolicy;
+import com.inventory.backend.security.RolePermissionCatalog;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -23,6 +26,7 @@ public class UserService {
     private final RoleRepository roleRepo;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
+    private final RoleGrantPolicy roleGrantPolicy;
 
     public Page<UserDTO> listUsers(String search, Pageable pageable) {
         return listStaff(search, null, null, null, null, null, pageable);
@@ -59,11 +63,50 @@ public class UserService {
         return toDTO(findById(id));
     }
 
-    public UserDTO createUser(CreateUserRequest req) {
-        return createUser(req, null);
+    /**
+     * The roles the calling user may hand out, for populating the staff form.
+     *
+     * <p>Derived from {@link RolePermissionCatalog} so the UI can never offer a
+     * role the API would refuse. It is a convenience, not a control: the service
+     * layer re-checks on every write.
+     */
+    public List<String> assignableRoles(User actor) {
+        return List.copyOf(RolePermissionCatalog.assignableRoles(actorRoleName(actor)));
     }
 
+    /**
+     * Public self-registration. Always creates a {@code CASHIER} and nothing else.
+ *
+     * <p>Deliberately separate from {@link #createUser}: there is no caller, so
+     * the role-grant policy cannot be consulted, and the only safe answer is to
+     * refuse to accept a role from an anonymous request at all. The role is fixed
+ * *here* rather than read from the request body, so this endpoint can never be
+     * used to obtain a Manager, Super Admin or any other elevated role.
+     *
+     * <p>No audit entry is written either — there is no actor to attribute it to.
+     * The row itself records the origin, and {@code passwordResetRequired} is set
+     * so a human completes the account before it is useful.
+     */
+    public UserDTO registerSelfServiceUser(CreateUserRequest req) {
+        req.setRoleName(RolePermissionCatalog.CASHIER);
+        return createUser(req, null, false);
+    }
+
+    /**
+     * Every mutating method takes the acting {@code User}.
+     *
+     * <p>There used to be convenience overloads without it ({@code createUser(req)},
+     * {@code updateUser(id, req)}, {@code activateUser(id)},
+     * {@code changeRole(id, role)}). They are gone on purpose: an overload that
+     * drops the caller cannot apply the role-grant policy or write an audit entry,
+     * so leaving them in place would mean the anti-escalation rule could be
+     * bypassed by calling a different method.
+     */
     public UserDTO createUser(CreateUserRequest req, User actor) {
+        return createUser(req, actor, true);
+    }
+
+    private UserDTO createUser(CreateUserRequest req, User actor, boolean enforceRolePolicy) {
         String username = StringUtils.hasText(req.getUsername()) ? req.getUsername().trim() : req.getEmail().trim();
         if (userRepo.existsByUsername(username))
             throw new IllegalArgumentException("Username already exists");
@@ -72,8 +115,11 @@ public class UserService {
         if (StringUtils.hasText(req.getEmployeeId()) && userRepo.existsByEmployeeId(req.getEmployeeId()))
             throw new IllegalArgumentException("Employee ID already exists.");
         String requestedRole = normalizeRole(req.getRoleName());
-        if ("SUPER_ADMIN".equals(requestedRole)) {
-            throw new IllegalArgumentException("Super Admin staff accounts cannot be created from staff management.");
+        if (enforceRolePolicy) {
+            // Hiding MANAGER from a Manager's dropdown is not a control: the request
+            // body is attacker-controlled, so the rule is enforced here. Denied as
+            // access-denied so the API answers 403, consistent with a missing authority.
+            roleGrantPolicy.requireAssignable(actorRoleName(actor), requestedRole);
         }
         Role role = roleRepo.findByName(requestedRole)
                 .orElseThrow(() -> new IllegalArgumentException("Role not found: " + req.getRoleName()));
@@ -103,14 +149,16 @@ public class UserService {
         return toDTO(saved);
     }
 
-    public UserDTO updateUser(Long id, UpdateUserRequest req) {
-        return updateUser(id, req, null);
-    }
-
     public UserDTO updateUser(Long id, UpdateUserRequest req, User actor) {
         User user = findById(id);
         String previousRole = user.getRole() != null ? user.getRole().getName() : null;
-        protectSuperAdminRole(user, req.getRoleName());
+        // Same policy as creation: a role change is only allowed when the caller
+        // could have created the account with that role. This is what stops a
+        // Manager promoting an existing Cashier to Manager.
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), previousRole);
+        if (req.getRoleName() != null) {
+            roleGrantPolicy.requireChangeAllowed(actorRoleName(actor), previousRole, normalizeRole(req.getRoleName()));
+        }
         if (req.getEmail() != null && userRepo.existsByEmailAndIdNot(req.getEmail(), id))
             throw new IllegalArgumentException("Email address is already registered.");
         if (req.getEmployeeId() != null && userRepo.existsByEmployeeIdAndIdNot(req.getEmployeeId(), id))
@@ -142,28 +190,13 @@ public class UserService {
         return toDTO(saved);
     }
 
-    public void activateUser(Long id) {
-        changeStatus(id, UserStatus.ACTIVE, null);
-    }
-
-    public void deactivateUser(Long id) {
-        changeStatus(id, UserStatus.INACTIVE, null);
-    }
-
     public void changeStatus(Long id, UserStatus status, User actor) {
         User u = findById(id);
-        if ("SUPER_ADMIN".equals(roleName(u)) && status != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Super Admin accounts cannot be deactivated.");
-        }
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), roleName(u));
         u.setStatus(status);
         userRepo.save(u);
         log(actor, status == UserStatus.ACTIVE ? "STAFF_ACTIVATED" : "STAFF_DEACTIVATED",
                 u, "Changed staff status to " + status.name());
-    }
-
-    public void changeRole(Long id, String roleName) {
-        UpdateUserRequest req = UpdateUserRequest.builder().roleName(roleName).build();
-        updateUser(id, req, null);
     }
 
     public void softDeleteUser(Long id, User actor) {
@@ -171,9 +204,7 @@ public class UserService {
         if (actor != null && actor.getId().equals(u.getId())) {
             throw new IllegalArgumentException("You cannot remove your own account.");
         }
-        if ("SUPER_ADMIN".equals(roleName(u))) {
-            throw new IllegalArgumentException("Super Admin accounts cannot be removed from staff management.");
-        }
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), roleName(u));
         u.setIsDeleted(true);
         u.setDeletedAt(LocalDateTime.now());
         u.setDeletedBy(actor != null ? actor.getId() : null);
@@ -187,6 +218,7 @@ public class UserService {
             throw new IllegalArgumentException("Temporary password must be at least 8 characters.");
         }
         User u = findById(id);
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), roleName(u));
         u.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         u.setPasswordResetRequired(true);
         userRepo.save(u);
@@ -246,13 +278,13 @@ public class UserService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
-    private void protectSuperAdminRole(User user, String requestedRole) {
-        if ("SUPER_ADMIN".equals(roleName(user)) && requestedRole != null && !"SUPER_ADMIN".equals(normalizeRole(requestedRole))) {
-            throw new IllegalArgumentException("Super Admin role cannot be changed from staff management.");
-        }
-        if (requestedRole != null && "SUPER_ADMIN".equals(normalizeRole(requestedRole)) && !"SUPER_ADMIN".equals(roleName(user))) {
-            throw new IllegalArgumentException("Staff cannot be promoted to Super Admin from staff management.");
-        }
+    /**
+     * The acting user's role, or {@code null} when there is no authenticated
+     * caller. {@code RoleGrantPolicy} denies on a null role, so a code path that
+     * forgets to pass the actor fails closed rather than defaulting to allowed.
+     */
+    private String actorRoleName(User actor) {
+        return actor == null ? null : roleName(actor);
     }
 
     private String roleName(User user) {

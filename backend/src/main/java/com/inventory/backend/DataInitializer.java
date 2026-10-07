@@ -4,6 +4,7 @@ import com.inventory.backend.model.Permission;
 import com.inventory.backend.model.Role;
 import com.inventory.backend.model.User;
 import com.inventory.backend.model.UserStatus;
+import com.inventory.backend.security.RolePermissionCatalog;
 import com.inventory.backend.repository.PermissionRepository;
 import com.inventory.backend.repository.RoleRepository;
 import com.inventory.backend.repository.UserRepository;
@@ -14,9 +15,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -54,57 +53,31 @@ public class DataInitializer implements CommandLineRunner {
         log.info("=== DataInitializer: seeding permissions, roles and users ===");
 
         // 1. Create Permissions
-        List<String> allPermissionNames = Arrays.asList(
-                "USER_CREATE", "USER_READ", "USER_UPDATE", "USER_DEACTIVATE",
-                "ROLE_READ", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE", "PERMISSION_READ", "PERMISSION_ASSIGN",
-                "PRODUCT_CREATE", "PRODUCT_READ", "PRODUCT_UPDATE", "PRODUCT_DEACTIVATE",
-                "CATEGORY_MANAGE", "WAREHOUSE_CREATE", "WAREHOUSE_READ", "WAREHOUSE_UPDATE", "WAREHOUSE_MANAGE",
-                "INVENTORY_READ", "INVENTORY_ADJUST", "INVENTORY_TRANSFER", "INVENTORY_RECEIVE",
-                "SUPPLIER_CREATE", "SUPPLIER_READ", "SUPPLIER_UPDATE", "SUPPLIER_MANAGE",
-                "CUSTOMER_CREATE", "CUSTOMER_READ", "CUSTOMER_UPDATE", "CUSTOMER_MANAGE",
-                "PURCHASE_CREATE", "PURCHASE_READ", "PURCHASE_UPDATE", "PURCHASE_APPROVE", "PURCHASE_CANCEL",
-                "SALE_CREATE", "SALE_READ", "SALE_UPDATE", "SALE_CANCEL",
-                "RETURN_CREATE", "RETURN_READ", "RETURN_APPROVE",
-                "PAYMENT_CREATE", "PAYMENT_READ", "PAYMENT_UPDATE",
-                "EXPENSE_CREATE", "EXPENSE_READ", "EXPENSE_UPDATE", "EXPENSE_APPROVE",
-                "REPORT_VIEW", "REPORT_EXPORT", "AUDIT_LOG_VIEW", "SYSTEM_SETTINGS_MANAGE",
-                "DAMAGE_RECORD", "EXPIRY_RECORD", "STOCK_MOVEMENT_READ",
-                "SALES_RETURN_CREATE", "SALES_REPORT_VIEW", "INVENTORY_REPORT_VIEW",
-                "RECEIVABLE_READ", "PAYABLE_READ", "PROFIT_LOSS_READ", "FINANCIAL_REPORT_READ", "FINANCIAL_REPORT_EXPORT",
-                "DASHBOARD_VIEW", "STAFF_VIEW", "STAFF_CREATE", "STAFF_UPDATE", "STAFF_DELETE",
-                "SETTINGS_VIEW", "SETTINGS_UPDATE"
-        );
-
-        Set<Permission> allPermissions = allPermissionNames.stream()
+        //    The catalogue is the single source of truth for what exists, so a
+        //    permission cannot be enforced by an endpoint without a matching row.
+        Set<Permission> allPermissions = RolePermissionCatalog.ALL_PERMISSIONS.stream()
                 .map(this::ensurePermission)
                 .collect(Collectors.toSet());
 
         // 2. Create Roles
-        Role adminRole = ensureRole("SUPER_ADMIN", "Full system access", allPermissions);
-        Role managerRole = ensureRole("MANAGER", "Operational management", getPermissionsFor(allPermissions,
-                "DASHBOARD_VIEW", "USER_READ", "STAFF_VIEW", "PRODUCT_READ", "PRODUCT_CREATE", "PRODUCT_UPDATE", "PRODUCT_DEACTIVATE",
-                "CATEGORY_MANAGE", "WAREHOUSE_CREATE", "WAREHOUSE_READ", "WAREHOUSE_UPDATE", "WAREHOUSE_MANAGE",
-                "INVENTORY_READ", "INVENTORY_ADJUST", "INVENTORY_TRANSFER", "INVENTORY_RECEIVE", "STOCK_MOVEMENT_READ",
-                "PURCHASE_CREATE", "PURCHASE_READ", "PURCHASE_APPROVE", "SALE_READ", "SALE_CREATE",
-                "CUSTOMER_CREATE", "CUSTOMER_READ", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_READ", "SUPPLIER_UPDATE",
-                "PAYMENT_READ", "PAYMENT_CREATE", "EXPENSE_READ", "EXPENSE_CREATE",
-                "REPORT_VIEW", "REPORT_EXPORT", "SALES_REPORT_VIEW", "INVENTORY_REPORT_VIEW", "AUDIT_LOG_VIEW"
-        ));
-        Role supervisorRole = ensureRole("SUPERVISOR", "Inventory and sales supervision", getPermissionsFor(allPermissions,
-                "DASHBOARD_VIEW", "PRODUCT_READ", "INVENTORY_READ", "INVENTORY_ADJUST", "INVENTORY_TRANSFER", "INVENTORY_RECEIVE", "WAREHOUSE_READ", "STOCK_MOVEMENT_READ", "SALE_READ", "SALES_REPORT_VIEW", "INVENTORY_REPORT_VIEW", "USER_READ", "STAFF_VIEW"
-        ));
-        Role keeperRole = ensureRole("STOREKEEPER", "Inventory and receiving", getPermissionsFor(allPermissions,
-                "PRODUCT_READ", "INVENTORY_READ", "INVENTORY_RECEIVE", "INVENTORY_TRANSFER", "INVENTORY_ADJUST", "WAREHOUSE_READ", "STOCK_MOVEMENT_READ", "DAMAGE_RECORD", "EXPIRY_RECORD", "INVENTORY_REPORT_VIEW"
-        ));
-        Role inventoryStaffRole = ensureRole("INVENTORY_STAFF", "Inventory staff operations", getPermissionsFor(allPermissions,
-                "DASHBOARD_VIEW", "PRODUCT_READ", "INVENTORY_READ", "INVENTORY_RECEIVE", "INVENTORY_TRANSFER", "WAREHOUSE_READ", "STOCK_MOVEMENT_READ", "DAMAGE_RECORD", "EXPIRY_RECORD"
-        ));
-        Role cashierRole = ensureRole("CASHIER", "POS and sales", getPermissionsFor(allPermissions,
-                "DASHBOARD_VIEW", "PRODUCT_READ", "INVENTORY_READ", "CUSTOMER_CREATE", "CUSTOMER_READ", "CUSTOMER_UPDATE", "SALE_CREATE", "SALE_READ", "SALES_RETURN_CREATE", "PAYMENT_CREATE", "PAYMENT_READ", "SALES_REPORT_VIEW"
-        ));
-        Role accountRole = ensureRole("ACCOUNTANT", "Financial reports", getPermissionsFor(allPermissions,
-                "SALE_READ", "PURCHASE_READ", "PAYMENT_CREATE", "PAYMENT_READ", "EXPENSE_CREATE", "EXPENSE_READ", "EXPENSE_UPDATE", "CUSTOMER_READ", "SUPPLIER_READ", "RECEIVABLE_READ", "PAYABLE_READ", "PROFIT_LOSS_READ", "FINANCIAL_REPORT_READ", "FINANCIAL_REPORT_EXPORT", "REPORT_VIEW"
-        ));
+        //    The role -> permission matrix lives in RolePermissionCatalog, which is
+        //    asserted by RolePermissionCatalogTest. It used to be spelled out here,
+        //    which is how SUPERVISOR and INVENTORY_STAFF drifted into holding
+        //    PRODUCT_UPDATE / PRODUCT_DEACTIVATE and CASHIER into holding
+        //    SALES_REPORT_VIEW - permissions no endpoint should ever have given them.
+        Role adminRole = ensureRole(RolePermissionCatalog.SUPER_ADMIN, allPermissions);
+        // ensureRole persists as a side effect, so the remaining roles are called
+        // for that reason alone; only the super admin entity is needed below.
+        ensureRole(RolePermissionCatalog.MANAGER, allPermissions);
+        ensureRole(RolePermissionCatalog.SUPERVISOR, allPermissions);
+        ensureRole(RolePermissionCatalog.INVENTORY_STAFF, allPermissions);
+        ensureRole(RolePermissionCatalog.CASHIER, allPermissions);
+        ensureRole(RolePermissionCatalog.ACCOUNTANT, allPermissions);
+
+        // Legacy row: STOREKEEPER predates the rename to INVENTORY_STAFF. It gets
+        // the same permissions so existing accounts keep working, but it is not in
+        // the assignable set, so no new account is ever created with it.
+        ensureRole(RolePermissionCatalog.STOREKEEPER, allPermissions);
 
         // 3. Create or update initial Super Admin
         java.util.Optional<User> existingAdmin = userRepository.findByUsername(superAdminUsername);
@@ -159,21 +132,34 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    private Role ensureRole(String name, String description, Set<Permission> permissions) {
+    /**
+     * Creates or re-points a role at the permissions the catalogue says it has.
+     *
+     * <p>Permissions are <b>replaced</b>, not merged, so a permission removed from
+     * the matrix is also removed from the database on the next boot. That is the
+     * behaviour that makes the fix for the drifted roles take effect on an
+     * existing deployment instead of only on a fresh one.
+     */
+    private Role ensureRole(String name, Set<Permission> allPermissions) {
+        Set<Permission> permissions = allPermissions.stream()
+                .filter(p -> RolePermissionCatalog.permissionsFor(name).contains(p.getName()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
         return roleRepository.findByName(name).map(r -> {
-            r.setPermissions(permissions); // update permissions if they changed
+            if (!r.getPermissions().equals(permissions)) {
+                r.setPermissions(permissions);
+                r.setDescription(RolePermissionCatalog.descriptionFor(name));
+                log.info("  Updated role {} permissions ({} granted)", name, permissions.size());
+            }
             return roleRepository.save(r);
         }).orElseGet(() -> {
-            Role r = Role.builder().name(name).description(description).permissions(permissions).build();
-            log.info("  Created role: {}", name);
+            Role r = Role.builder()
+                    .name(name)
+                    .description(RolePermissionCatalog.descriptionFor(name))
+                    .permissions(permissions)
+                    .build();
+            log.info("  Created role: {} ({} permissions)", name, permissions.size());
             return roleRepository.save(r);
         });
-    }
-
-    private Set<Permission> getPermissionsFor(Set<Permission> allPermissions, String... names) {
-        Set<String> nameSet = new HashSet<>(Arrays.asList(names));
-        return allPermissions.stream()
-                .filter(p -> nameSet.contains(p.getName()))
-                .collect(Collectors.toSet());
     }
 }

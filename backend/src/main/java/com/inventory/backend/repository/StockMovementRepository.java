@@ -8,4 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface StockMovementRepository extends JpaRepository<StockMovement, Long> {
     Page<StockMovement> findByProductId(Long productId, Pageable pageable);
     Page<StockMovement> findByWarehouseId(Long warehouseId, Pageable pageable);
+
+    /** The approval queue. */
+    Page<StockMovement> findByStatusOrderByIdAsc(String status, Pageable pageable);
 }

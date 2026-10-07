@@ -8,12 +8,15 @@ import com.inventory.backend.model.User;
 import com.inventory.backend.model.UserStatus;
 import com.inventory.backend.repository.RoleRepository;
 import com.inventory.backend.repository.UserRepository;
+import com.inventory.backend.security.RoleGrantPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import com.inventory.backend.repository.AuditLogRepository;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -36,14 +39,31 @@ class UserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @InjectMocks
+    @Mock
+    private AuditLogRepository auditLogRepository;
+
+    // Built by hand rather than with @InjectMocks so the real RoleGrantPolicy is
+    // used: createUser must actually enforce the role-grant rule, and a mock
+    // would pass whether or not the rule works.
     private UserService userService;
 
     private Role cashierRole;
+    private Role managerRole;
+    private User managerActor;
     private User testUser;
 
     @BeforeEach
     void setUp() {
+        managerRole = Role.builder().id(9L).name("MANAGER").description("Manager Role").build();
+        // A Manager may create Cashiers, Supervisors and Inventory Staff, so this
+        // actor is what the create tests below exercise the happy path with.
+        managerActor = User.builder()
+                .id(99L).username("manager_actor").email("manager_actor@stockflow.test")
+                .role(managerRole).status(UserStatus.ACTIVE).build();
+
+        userService = new UserService(userRepository, roleRepository, passwordEncoder,
+                new AuditLogService(auditLogRepository), new RoleGrantPolicy());
+
         cashierRole = Role.builder().id(1L).name("CASHIER").description("Cashier Role").build();
         testUser = User.builder()
                 .id(1L)
@@ -79,7 +99,7 @@ class UserServiceTest {
             return u;
         });
 
-        UserDTO created = userService.createUser(req);
+        UserDTO created = userService.createUser(req, managerActor);
 
         assertThat(created).isNotNull();
         assertThat(created.getUsername()).isEqualTo("new_staff");
@@ -103,7 +123,7 @@ class UserServiceTest {
 
         when(userRepository.existsByUsername("john_doe")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.createUser(req))
+        assertThatThrownBy(() -> userService.createUser(req, managerActor))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Username already exists");
 
@@ -125,7 +145,7 @@ class UserServiceTest {
         when(userRepository.existsByUsername("unique_user")).thenReturn(false);
         when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.createUser(req))
+        assertThatThrownBy(() -> userService.createUser(req, managerActor))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Email address is already registered");
 
@@ -137,10 +157,10 @@ class UserServiceTest {
     void activateAndDeactivateUser() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
 
-        userService.deactivateUser(1L);
+        userService.changeStatus(1L, UserStatus.INACTIVE, managerActor);
         assertThat(testUser.getStatus()).isEqualTo(UserStatus.INACTIVE);
 
-        userService.activateUser(1L);
+        userService.changeStatus(1L, UserStatus.ACTIVE, managerActor);
         assertThat(testUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 }

@@ -90,7 +90,7 @@ public class AuthController {
                     .roleName("CASHIER")
                     .build();
 
-            userService.createUser(createReq);
+            userService.registerSelfServiceUser(createReq);
 
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())

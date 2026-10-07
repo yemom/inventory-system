@@ -56,12 +56,39 @@ interface StaffMember {
   createdAt?: string;
 }
 
-const roles = [
+/**
+ * Every role, with what the current user is allowed to assign it.
+ *
+ * This list used to be a flat constant offering "Manager" to anyone who reached
+ * the page, which is both wrong for a Manager (who may not create one) and
+ * silently empty for an existing Super Admin row being edited — its role had no
+ * matching <option>, so the select rendered blank.
+ *
+ * The backend enforces the real rule (`RoleGrantPolicy`): this is presentation
+ * only. Filtering here is for usability, not security.
+ */
+const ALL_ROLES = [
   { label: 'Manager', value: 'MANAGER' },
   { label: 'Supervisor', value: 'SUPERVISOR' },
   { label: 'Cashier', value: 'CASHIER' },
   { label: 'Inventory Staff', value: 'INVENTORY_STAFF' },
 ];
+
+/** Roles the given role may hand out, mirroring the backend's assignable set. */
+const ASSIGNABLE_BY_ROLE: Record<string, string[]> = {
+  SUPER_ADMIN: ['MANAGER', 'SUPERVISOR', 'CASHIER', 'INVENTORY_STAFF'],
+  MANAGER: ['SUPERVISOR', 'CASHIER', 'INVENTORY_STAFF'],
+};
+
+function assignableRolesFor(role: string | undefined): string[] {
+  // A Super Admin holds every permission, so hasPermission cannot express this;
+  // role is the right key here because assignment is a role-level decision.
+  return ASSIGNABLE_BY_ROLE[role ?? ''] ?? [];
+}
+
+function roleLabel(value: string): string {
+  return ALL_ROLES.find(r => r.value === value)?.label ?? value.replace(/_/g, ' ');
+}
 
 const sortOptions = [
   { label: 'Name', value: 'firstName,asc' },
@@ -82,7 +109,7 @@ const emptyForm = {
   employeeId: '',
   jobTitle: '',
   department: '',
-  roleName: 'CASHIER',
+  roleName: 'CASHIER',  // replaced on openCreate with an assignable role
   dateJoined: new Date().toISOString().slice(0, 10),
   branch: '',
   warehouse: '',
@@ -116,6 +143,17 @@ export default function StaffManagementPage() {
   const canManage = hasPermission('USER_CREATE') || hasPermission('STAFF_CREATE');
   const canUpdate = hasPermission('USER_UPDATE') || hasPermission('STAFF_UPDATE');
   const canRemove = hasPermission('USER_DEACTIVATE') || hasPermission('STAFF_DELETE');
+
+  // Options for the create form: only what this user may assign.
+  const assignableRoles = assignableRolesFor(user?.role);
+  const assignableOptions = ALL_ROLES.filter(r => assignableRoles.includes(r.value));
+
+  // When editing, the row's existing role must appear even if it is above this
+  // user's level — otherwise the select renders blank for a Super Admin and
+  // saving would silently try to demote them.
+  const roleOptions = editing
+    ? ALL_ROLES
+    : assignableOptions;
 
   const departments = useMemo(() => [...new Set(staff.map(item => item.department).filter(Boolean))] as string[], [staff]);
   const branches = useMemo(() => [...new Set(staff.map(item => item.branch).filter(Boolean))] as string[], [staff]);
@@ -154,7 +192,9 @@ export default function StaffManagementPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm);
+    // Default to a role this user may actually assign, rather than a hardcoded
+    // 'CASHIER' that is not in the option list for every caller.
+    setForm({ ...emptyForm, roleName: assignableRoles[0] ?? emptyForm.roleName });
     setModalOpen(true);
   };
 
@@ -312,7 +352,7 @@ export default function StaffManagementPage() {
         <CardContent className="p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
             <Input placeholder="Search name, ID, email, phone" value={filters.search} onChange={e => updateFilter('search', e.target.value)} leftIcon={<Search size={16} />} />
-            <Select placeholder="All roles" value={filters.role} onChange={e => updateFilter('role', e.target.value)} options={roles} />
+            <Select placeholder="All roles" value={filters.role} onChange={e => updateFilter('role', e.target.value)} options={roleOptions} />
             <Select placeholder="All departments" value={filters.department} onChange={e => updateFilter('department', e.target.value)} options={departments.map(value => ({ label: value, value }))} />
             <Select placeholder="All branches" value={filters.branch} onChange={e => updateFilter('branch', e.target.value)} options={branches.map(value => ({ label: value, value }))} />
             <Select placeholder="All warehouses" value={filters.warehouse} onChange={e => updateFilter('warehouse', e.target.value)} options={warehouses.map(value => ({ label: value, value }))} />
@@ -399,7 +439,12 @@ export default function StaffManagementPage() {
               <Input label="Employee ID *" value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })} />
               <Input label="Job Title" value={form.jobTitle} onChange={e => setForm({ ...form, jobTitle: e.target.value })} />
               <Input label="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} />
-              <Select label="Role *" value={form.roleName} onChange={e => setForm({ ...form, roleName: e.target.value })} options={roles} />
+              <Select
+              label="Role *"
+              value={form.roleName}
+              onChange={e => setForm({ ...form, roleName: e.target.value })}
+              options={roleOptions}
+            />
               <Input label="Date Joined *" type="date" value={form.dateJoined} onChange={e => setForm({ ...form, dateJoined: e.target.value })} />
               <Input label="Branch" value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })} />
               <Input label="Warehouse" value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} />

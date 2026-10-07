@@ -49,6 +49,52 @@ public class SaleOrder {
     @OneToMany(mappedBy = "saleOrder", cascade = CascadeType.ALL)
     private List<SaleOrderItem> items;
 
+
+    // ── Void / refund approval ──────────────────────────────────────────────
+    // A cashier may need to undo a sale but may not do so unilaterally: the goods
+    // are off the shelf and the money may be banked. They raise a request and a
+    // Supervisor or Manager decides. Null means "no request raised", which is also
+    // the state of every row written before this existed.
+
+    /** PENDING, APPROVED or REJECTED; null when no void was requested. */
+    @Column(length = 16)
+    private String voidStatus;
+
+    private String voidReason;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "void_requested_by_id")
+    private User voidRequestedBy;
+
+    private LocalDateTime voidRequestedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "void_approved_by_id")
+    private User voidApprovedBy;
+
+    private LocalDateTime voidApprovedAt;
+
+    private String voidReviewNote;
+
+    /** PENDING, APPROVED or REJECTED; null when no refund was requested. */
+    @Column(length = 16)
+    private String refundStatus;
+
+    private String refundReason;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "refund_requested_by_id")
+    private User refundRequestedBy;
+
+    private LocalDateTime refundRequestedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "refund_approved_by_id")
+    private User refundApprovedBy;
+
+    private LocalDateTime refundApprovedAt;
+
+    private String refundReviewNote;
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

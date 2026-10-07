@@ -5,10 +5,16 @@ import com.inventory.backend.dto.ProductDTO;
 import com.inventory.backend.dto.UpdateProductRequest;
 import com.inventory.backend.model.Category;
 import com.inventory.backend.model.Product;
+import com.inventory.backend.model.StockMovement;
+import com.inventory.backend.model.User;
 import com.inventory.backend.repository.CategoryRepository;
 import com.inventory.backend.repository.ProductRepository;
+import com.inventory.backend.repository.StockMovementRepository;
+import com.inventory.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+
+import java.math.BigDecimal;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +26,9 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final StockMovementRepository stockMovementRepository;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
     public Page<ProductDTO> listProducts(String search, Pageable pageable) {
         if (search != null && !search.trim().isEmpty()) {
@@ -33,6 +42,29 @@ public class ProductService {
                 .orElseThrow(() -> new IllegalArgumentException("Product not found"));
     }
 
+    /**
+     * Creates a product and, when an opening quantity was supplied, records that
+     * stock as a real movement.
+     *
+     * <p>The opening quantity has to do three things to be correct:
+     * <ol>
+     *   <li>become {@code Product.quantity}, so the product reads 50 on hand
+     *       instead of 0 and is not flagged out of stock;</li>
+     *   <li>appear in stock history — an opening balance that exists only as a
+     *       number on the product row cannot be reconciled against movements,
+     *       and an unexplained gap in the ledger is exactly what a stock count
+     *       is meant to find;</li>
+     *   <li>be attributable, so the ledger says who opened the product and when.</li>
+     * </ol>
+     *
+     * <p>All three happen in this one transaction, so a failure cannot leave a
+     * product with stock that no movement accounts for, or a movement for a
+     * product that was never saved.
+     *
+     * <p>A negative opening quantity is rejected rather than clamped: a request
+     * for -5 is a mistake, and silently turning it into 0 would hide it. An
+     * opening balance of 0 records no movement, since there is nothing to record.
+     */
     public ProductDTO createProduct(CreateProductRequest request) {
         if (productRepository.existsBySku(request.getSku())) {
             throw new IllegalArgumentException("Product with this SKU already exists");
@@ -40,6 +72,11 @@ public class ProductService {
 
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+
+        Integer openingQuantity = request.getInitialQuantity();
+        if (openingQuantity != null && openingQuantity < 0) {
+            throw new IllegalArgumentException("Opening quantity cannot be negative.");
+        }
 
         Product product = new Product();
         product.setSku(request.getSku());
@@ -57,19 +94,91 @@ public class ProductService {
         product.setBatchTracked(request.isBatchTracked());
         product.setExpiryTracked(request.isExpiryTracked());
         product.setActive(true);
-        // Set initial opening stock if provided
-        if (request.getInitialQuantity() != null && request.getInitialQuantity() > 0) {
-            product.setQuantity(request.getInitialQuantity());
-        } else {
-            product.setQuantity(0);
+        // Opening stock is the quantity on hand from the moment the product exists.
+        product.setQuantity(openingQuantity != null ? openingQuantity : 0);
+
+        Product saved = productRepository.save(product);
+
+        if (openingQuantity != null && openingQuantity > 0) {
+            User actor = currentUser();
+            stockMovementRepository.save(StockMovement.builder()
+                    .product(saved)
+                    .type(StockMovement.TYPE_OPENING)
+                    .quantity(openingQuantity)
+                    .reference(saved.getSku())
+                    .notes("Opening stock recorded when the product was created")
+                    .createdBy(actor)
+                    .status(StockMovement.Status.APPROVED)
+                    .approvedAt(java.time.LocalDateTime.now())
+                    .approvedBy(actor)
+                    .build());
+
+            auditLogService.log(actor == null ? null : actor.getId(),
+                    actor == null ? "system" : actor.getUsername(),
+                    "PRODUCT_OPENING_STOCK", "PRODUCT", String.valueOf(saved.getId()),
+                    "Created " + saved.getSku() + " with opening stock of " + openingQuantity
+                            + " " + (saved.getUnit() == null ? "units" : saved.getUnit()));
         }
 
-        return toDTO(productRepository.save(product));
+        return toDTO(saved);
     }
 
+    private boolean changesPricing(Product product, UpdateProductRequest request) {
+        return isDifferent(request.getSellingPrice(), product.getSellingPrice())
+                || isDifferent(request.getPurchasePrice(), product.getPurchasePrice())
+                || isDifferent(request.getMinSellingPrice(), product.getMinSellingPrice());
+    }
+
+    private boolean isDifferent(java.math.BigDecimal requested, java.math.BigDecimal current) {
+        return requested != null && (current == null || requested.compareTo(current) != 0);
+    }
+
+    private void requireAuthority(String authority, String message) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        boolean granted = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> authority.equals(a.getAuthority()));
+        if (!granted) {
+            throw new org.springframework.security.access.AccessDeniedException(message);
+        }
+    }
+
+    private User currentUser() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        String principal = authentication.getName();
+        return userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElse(null);
+    }
+
+    /**
+     * Updates a product.
+     *
+     * <p>Pricing is separated from the rest of the edit on purpose. Only roles
+     * holding {@code PRICE_CHANGE_APPROVE} (Manager, Super Admin) may change a
+     * price; editing a name or reorder level does not require it. The check is in
+     * the service rather than only on the endpoint so that adding a second route
+     * to update a product cannot quietly reopen the ability to re-price as a
+     * side effect.
+     */
     public ProductDTO updateProduct(Long id, UpdateProductRequest request) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+
+        if (changesPricing(product, request)) {
+            requireAuthority("PRICE_CHANGE_APPROVE",
+                    "You do not have permission to change prices.");
+            User actor = currentUser();
+            BigDecimal previousSelling = product.getSellingPrice();
+            auditLogService.log(actor == null ? null : actor.getId(),
+                    actor == null ? "system" : actor.getUsername(),
+                    "PRODUCT_PRICE_CHANGED", "PRODUCT", String.valueOf(id),
+                    "Selling price " + previousSelling + " -> " + request.getSellingPrice());
+        }
 
         if (request.getSku() != null) {
             if (!product.getSku().equals(request.getSku()) && productRepository.existsBySku(request.getSku())) {

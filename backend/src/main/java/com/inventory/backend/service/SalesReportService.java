@@ -109,6 +109,42 @@ public class SalesReportService {
         return report;
     }
 
+    /**
+     * Profit and loss for a period.
+     *
+     * <p>Derived from the same figures as the sales report but presented as the
+     * commercial view: what came in, what the goods cost, what is left. Kept as a
+     * separate method so the controller can gate it on {@code PROFIT_LOSS_READ}
+     * alone — a Supervisor is allowed the sales report and not this one.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> profitLossReport(LocalDateTime from, LocalDateTime to) {
+        Map<String, Object> sales = salesReport(from, to, null, null, null, null, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) sales.get("summary");
+
+        BigDecimal netSales = nz((BigDecimal) summary.get("netSales"));
+        BigDecimal cogs = nz((BigDecimal) summary.get("cogs"));
+        BigDecimal grossProfit = netSales.subtract(cogs);
+        BigDecimal tax = nz((BigDecimal) summary.get("tax"));
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("from", from);
+        report.put("to", to);
+        report.put("transactionCount", summary.get("transactionCount"));
+        report.put("itemsSold", summary.get("itemsSold"));
+        report.put("netSales", netSales);
+        report.put("cogs", cogs);
+        report.put("grossProfit", grossProfit);
+        report.put("grossMarginPercent", netSales.signum() == 0
+                ? BigDecimal.ZERO
+                : grossProfit.multiply(BigDecimal.valueOf(100))
+                        .divide(netSales, 2, java.math.RoundingMode.HALF_UP));
+        report.put("tax", tax);
+        report.put("discount", summary.get("discount"));
+        return report;
+    }
+
     private BigDecimal nz(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }

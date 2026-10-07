@@ -28,11 +28,38 @@ public class SaleOrderService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
+    private final AuditLogService auditLogService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    /**
+     * The sales the caller is allowed to see.
+     *
+     * <p>{@code SALE_READ} alone means \"sales you can look at\", not \"every sale
+     * in the business\". Holding {@code SALES_REPORT_VIEW} is what widens it: that
+     * permission exists precisely to see the whole picture, so a Cashier — who
+     * has the first but not the second — sees only their own transactions and
+     * everyone else's takings stay out of reach.
+     *
+     * <p>This is enforced here rather than by hiding the column in the UI,
+     * because a Cashier with a valid token can call this endpoint directly.
+     */
     @Transactional(readOnly = true)
     public Page<SaleOrderDTO> listSales(Pageable pageable) {
+        User actor = currentUser();
+
+        if (!canSeeEveryonesSales(actor)) {
+            // An anonymous caller sees nothing; a real one sees their own page,
+            // with a count computed over their own rows. Reusing the table-wide
+            // count would leak the size of the ledger through the pagination
+            // metadata even when every row is filtered out of the page.
+            if (actor == null) {
+                return new PageImpl<>(List.of(), pageable, 0);
+            }
+            return saleOrderRepository.findBySellerWithDetails(actor.getId(), pageable)
+                    .map(this::toDTO);
+        }
+
         // Use fetch join to avoid N+1 queries when accessing items, products, customers
         List<SaleOrder> orders = saleOrderRepository.findAllWithDetails(pageable);
         List<SaleOrderDTO> dtos = orders.stream().map(this::toDTO).collect(Collectors.toList());
@@ -42,11 +69,262 @@ public class SaleOrderService {
         return new PageImpl<>(dtos, pageable, total);
     }
 
+    /**
+     * Whether this caller may read sales recorded by other people.
+     *
+     * <p>Super Admin resolves to every permission, so it qualifies without a
+     * special case here.
+     */
+    private boolean canSeeEveryonesSales(User actor) {
+        return holdsAuthority("SALES_REPORT_VIEW") || holdsAuthority("REPORT_VIEW");
+    }
+
+    /** Whether the caller's token carries an authority, Super Admin included. */
+    private boolean holdsAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
+
+    /**
+     * One sale, if the caller is allowed to see it.
+     *
+     * <p>Same rule as {@link #listSales}: without the wider reporting
+     * permission, a sale that belongs to somebody else is reported as missing
+     * rather than returned. Saying \"not found\" rather than \"forbidden\" avoids
+     * confirming that a given order number exists to someone who may not see it.
+     */
     @Transactional(readOnly = true)
     public SaleOrderDTO getSale(Long id) {
         SaleOrder order = saleOrderRepository.findById(id)
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Sale not found: id=" + id));
+
+        requireVisibleSale(currentUser(), order);
         return toDTO(order);
+    }
+
+    // ── Void and refund approvals ──────────────────────────────────────────────
+    // A cashier may need to undo a sale, but may not do so unilaterally: the
+    // goods are already off the shelf and the money may already be banked. So the
+    // cashier raises a request and a Supervisor or Manager decides. The request
+    // state lives on the order rather than in a side table, because there is
+    // exactly one open void and one open refund per sale and both need to be
+    // visible on the order the cashier is looking at.
+
+    /**
+     * Sales awaiting a void or refund decision.
+     *
+     * <p>Read-only: this backs a screen, and the decision itself goes through
+     * {@link #approveVoid}/{@link #rejectVoid} and the refund equivalents, which
+     * re-check that the request is still pending. Listing is deliberately not an
+     * approval, so seeing the queue changes nothing.
+     */
+    @Transactional(readOnly = true)
+    public Page<SaleOrderDTO> listAwaitingApproval(Pageable pageable) {
+        return saleOrderRepository
+                .findAwaitingApproval(StockMovement.Status.PENDING, pageable)
+                .map(this::toDTO);
+    }
+
+    /**
+     * Raises a request to void a sale. Requires {@code SALE_VOID_REQUEST};
+     * accepting it requires {@code SALE_VOID_APPROVE}.
+     */
+
+    /**
+     * Raises a request to void a sale. Requires {@code SALE_VOID_REQUEST};
+     * accepting it requires {@code SALE_VOID_APPROVE}.
+     */
+    @Transactional
+    public SaleOrderDTO requestVoid(Long id, String reason) {
+        SaleOrder order = loadForApproval(id);
+        User actor = currentUser();
+        requireVisibleSale(actor, order);
+        order.setVoidStatus(StockMovement.Status.PENDING);
+        order.setVoidReason(reason);
+        order.setVoidRequestedBy(actor);
+        order.setVoidRequestedAt(java.time.LocalDateTime.now());
+        SaleOrder saved = saleOrderRepository.save(order);
+        logApproval(actor, "SALE_VOID_REQUESTED", saved, reason);
+        return toDTO(saved);
+    }
+
+    /**
+     * Accepts a pending void: the sale is cancelled and its stock goes back.
+     *
+     * <p>Restocking uses the same lock as a sale so a void cannot race a
+     * concurrent sale into a negative quantity.
+     */
+    @Transactional
+    public SaleOrderDTO approveVoid(Long id, String note) {
+        SaleOrder order = loadForApproval(id);
+        requirePending(order.getVoidStatus(), "void");
+        User actor = currentUser();
+
+        restock(order);
+
+        order.setStatus("CANCELLED");
+        order.setPaymentStatus("REFUNDED");
+        order.setVoidStatus(StockMovement.Status.APPROVED);
+        order.setVoidApprovedBy(actor);
+        order.setVoidApprovedAt(java.time.LocalDateTime.now());
+        order.setVoidReviewNote(note);
+        SaleOrder saved = saleOrderRepository.save(order);
+
+        logApproval(actor, "SALE_VOID_APPROVED", saved, note);
+        return toDTO(saved);
+    }
+
+    /** Refuses a pending void. The sale and its stock are untouched. */
+    @Transactional
+    public SaleOrderDTO rejectVoid(Long id, String note) {
+        SaleOrder order = loadForApproval(id);
+        requirePending(order.getVoidStatus(), "void");
+        User actor = currentUser();
+        order.setVoidStatus(StockMovement.Status.REJECTED);
+        order.setVoidApprovedBy(actor);
+        order.setVoidApprovedAt(java.time.LocalDateTime.now());
+        order.setVoidReviewNote(note);
+        SaleOrder saved = saleOrderRepository.save(order);
+        logApproval(actor, "SALE_VOID_REJECTED", saved, note);
+        return toDTO(saved);
+    }
+
+    /** Raises a request to refund a sale. Requires {@code SALE_REFUND_REQUEST}. */
+    @Transactional
+    public SaleOrderDTO requestRefund(Long id, String reason) {
+        SaleOrder order = loadForApproval(id);
+        User actor = currentUser();
+        requireVisibleSale(actor, order);
+        order.setRefundStatus(StockMovement.Status.PENDING);
+        order.setRefundReason(reason);
+        order.setRefundRequestedBy(actor);
+        order.setRefundRequestedAt(java.time.LocalDateTime.now());
+        SaleOrder saved = saleOrderRepository.save(order);
+        logApproval(actor, "SALE_REFUND_REQUESTED", saved, reason);
+        return toDTO(saved);
+    }
+
+    /**
+     * Accepts a pending refund: stock goes back and the payment is marked
+     * refunded. The sale itself stays on record rather than being deleted —
+     * a refunded sale is still a sale that happened.
+     */
+    @Transactional
+    public SaleOrderDTO approveRefund(Long id, String note) {
+        SaleOrder order = loadForApproval(id);
+        requirePending(order.getRefundStatus(), "refund");
+        User actor = currentUser();
+
+        restock(order);
+
+        order.setPaymentStatus("REFUNDED");
+        order.setRefundStatus(StockMovement.Status.APPROVED);
+        order.setRefundApprovedBy(actor);
+        order.setRefundApprovedAt(java.time.LocalDateTime.now());
+        order.setRefundReviewNote(note);
+        SaleOrder saved = saleOrderRepository.save(order);
+
+        logApproval(actor, "SALE_REFUND_APPROVED", saved, note);
+        return toDTO(saved);
+    }
+
+    /** Refuses a pending refund. Nothing changes. */
+    @Transactional
+    public SaleOrderDTO rejectRefund(Long id, String note) {
+        SaleOrder order = loadForApproval(id);
+        requirePending(order.getRefundStatus(), "refund");
+        User actor = currentUser();
+        order.setRefundStatus(StockMovement.Status.REJECTED);
+        order.setRefundApprovedBy(actor);
+        order.setRefundApprovedAt(java.time.LocalDateTime.now());
+        order.setRefundReviewNote(note);
+        SaleOrder saved = saleOrderRepository.save(order);
+        logApproval(actor, "SALE_REFUND_REJECTED", saved, note);
+        return toDTO(saved);
+    }
+
+    /**
+     * Refuses a sale the caller is not entitled to see.
+     *
+     * <p>Both request endpoints return the whole order DTO. Without this a
+     * Cashier who guessed or was handed an id could read a colleague's customer
+     * name and takings through the void-request response — the very data
+     * {@link #listSales} withholds from them.
+     */
+    private void requireVisibleSale(User actor, SaleOrder order) {
+        if (canSeeEveryonesSales(actor)) {
+            return;
+        }
+        boolean ownSale = actor != null
+                && order.getCreatedBy() != null
+                && order.getCreatedBy().getId().equals(actor.getId());
+        if (!ownSale) {
+            throw new jakarta.persistence.EntityNotFoundException(
+                    "Sale not found: id=" + order.getId());
+        }
+    }
+
+    private SaleOrder loadForApproval(Long id) {
+        return saleOrderRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Sale not found: id=" + id));
+    }
+
+    private void requirePending(String currentStatus, String what) {
+        if (!StockMovement.Status.PENDING.equals(currentStatus)) {
+            throw new IllegalArgumentException(
+                    "This sale has no pending " + what + " request (status: " + currentStatus + ").");
+        }
+    }
+
+    /** Returns each sold item to stock, never below zero, and records why. */
+    private void restock(SaleOrder order) {
+        if (order.getItems() == null) {
+            return;
+        }
+        for (SaleOrderItem item : order.getItems()) {
+            if (item.getProduct() == null || item.getQuantity() == null) {
+                continue;
+            }
+            Product product = productRepository.findByIdWithLock(item.getProduct().getId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Product not found: id=" + item.getProduct().getId()));
+            int current = product.getQuantity() != null ? product.getQuantity() : 0;
+            product.setQuantity(current + item.getQuantity());
+            productRepository.save(product);
+
+            stockMovementRepository.save(StockMovement.builder()
+                    .product(product)
+                    .type("IN")
+                    .quantity(item.getQuantity())
+                    .reference(order.getOrderNumber())
+                    .notes("Returned to stock — sale " + order.getOrderNumber() + " voided or refunded")
+                    .createdBy(currentUser())
+                    .status(StockMovement.Status.APPROVED)
+                    .approvedAt(java.time.LocalDateTime.now())
+                    .build());
+        }
+    }
+
+    private User currentUser() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        String principal = authentication.getName();
+        return userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElse(null);
+    }
+
+    private void logApproval(User actor, String action, SaleOrder order, String note) {
+        auditLogService.log(actor == null ? null : actor.getId(),
+                actor == null ? "system" : actor.getUsername(),
+                action, "SALE", String.valueOf(order.getId()),
+                order.getOrderNumber() + (note == null || note.isBlank() ? "" : " — " + note));
     }
 
     @Transactional
@@ -192,6 +470,12 @@ public class SaleOrderService {
         dto.setStatus(o.getStatus());
         dto.setPaymentMethod(o.getPaymentMethod());
         dto.setCreatedAt(o.getCreatedAt());
+        dto.setVoidStatus(o.getVoidStatus());
+        dto.setVoidReason(o.getVoidReason());
+        dto.setVoidReviewNote(o.getVoidReviewNote());
+        dto.setRefundStatus(o.getRefundStatus());
+        dto.setRefundReason(o.getRefundReason());
+        dto.setRefundReviewNote(o.getRefundReviewNote());
         dto.setTax(o.getTax() != null ? o.getTax() : BigDecimal.ZERO);
         if (o.getCustomer() != null) {
             dto.setCustomerId(o.getCustomer().getId());

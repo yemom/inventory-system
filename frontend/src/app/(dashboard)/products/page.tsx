@@ -39,12 +39,15 @@ export default function ProductsPage() {
   const [purchasePrice, setPurchasePrice] = useState('0');
   const [sellingPrice, setSellingPrice] = useState('0');
   const [reorderLevel, setReorderLevel] = useState('10');
+  const [initialQuantity, setInitialQuantity] = useState('0');
   const [active, setActive] = useState('true');
 
   const openCreate = () => { 
     setEditing(null); 
     setName(''); setSku(''); setBarcode(''); setCategoryId(''); 
-    setPurchasePrice('0'); setSellingPrice('0'); setReorderLevel('10'); setActive('true');
+    setPurchasePrice('0'); setSellingPrice('0'); setReorderLevel('10');
+    setInitialQuantity('0');
+    setActive('true');
     setModalOpen(true); 
   };
   
@@ -52,8 +55,14 @@ export default function ProductsPage() {
     setEditing(p); 
     setName(p.name); setSku(p.sku); setBarcode(p.barcode || ''); 
     setCategoryId(p.categoryId ? String(p.categoryId) : ''); 
-    setPurchasePrice(String(p.purchasePrice)); setSellingPrice(String(p.sellingPrice)); 
-    setReorderLevel(String(p.reorderLevel || 0)); setActive(p.active ? 'true' : 'false');
+    // `!= null` rather than `|| 0`: an absent price used to render as "NaN".
+    setPurchasePrice(p.purchasePrice != null ? String(p.purchasePrice) : '0');
+    setSellingPrice(p.sellingPrice != null ? String(p.sellingPrice) : '0');
+    setReorderLevel(p.reorderLevel != null ? String(p.reorderLevel) : '0');
+    // Read-only reference while editing. Quantity on hand moves through stock
+    // movements, never by editing the product row.
+    setInitialQuantity(String(p.quantity ?? 0));
+    setActive(p.active ? 'true' : 'false');
     setModalOpen(true); 
   };
 
@@ -63,10 +72,19 @@ export default function ProductsPage() {
       toast('error', 'Validation Error', 'Please select a category');
       return;
     }
+    const openingQuantity = Number(initialQuantity);
+    if (!Number.isFinite(openingQuantity) || openingQuantity < 0) {
+      toast('error', 'Validation Error', 'Opening quantity cannot be negative');
+      return;
+    }
+
     const payload = {
       name, sku, barcode, categoryId: Number(categoryId),
       purchasePrice: Number(purchasePrice), sellingPrice: Number(sellingPrice),
-      reorderLevel: Number(reorderLevel), active: active === 'true'
+      reorderLevel: Number(reorderLevel), active: active === 'true',
+      // Create only. The backend turns this into quantity on hand and records an
+      // OPENING movement; after that quantity moves only via stock movements.
+      ...(editing ? {} : { initialQuantity: openingQuantity }),
     };
 
     try {
@@ -75,7 +93,10 @@ export default function ProductsPage() {
         toast('success', 'Product updated successfully');
       } else {
         await createProduct.mutateAsync(payload);
-        toast('success', 'Product created successfully');
+        toast('success',
+          openingQuantity > 0
+            ? `Product created with ${openingQuantity} unit${openingQuantity === 1 ? '' : 's'} in stock`
+            : 'Product created successfully');
       }
       setModalOpen(false);
     } catch (err: any) {
@@ -110,6 +131,17 @@ export default function ProductsPage() {
     { key: 'categoryName', label: 'Category' },
     { key: 'purchasePrice', label: 'Cost Price', render: v => formatCurrency(Number(v)) },
     { key: 'sellingPrice', label: 'Selling Price', render: v => formatCurrency(Number(v)) },
+    {
+      key: 'quantity',
+      label: 'Qty On Hand',
+      render: (_: unknown, row: Product) => {
+        const qty = Number(row.quantity ?? 0);
+        const reorder = row.reorderLevel != null ? Number(row.reorderLevel) : null;
+        if (qty <= 0) return <Badge variant="danger">Out of Stock</Badge>;
+        if (reorder !== null && qty <= reorder) return <Badge variant="warning">Low Stock</Badge>;
+        return <Badge variant="success">{qty} on hand</Badge>;
+      },
+    },
     { key: 'active', label: 'Status', render: v => <Badge variant={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Badge> },
   ];
 
@@ -131,10 +163,24 @@ export default function ProductsPage() {
         searchPlaceholder="Search products..."
         actions={(row) => (
           <div className="flex items-center justify-end gap-1">
-            <button onClick={() => openEdit(row as unknown as Product)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-600 transition-colors">
+            {/* Icon-only buttons need an accessible name; they had none, so a
+                screen reader announced them as bare buttons. */}
+            <button
+              type="button"
+              title="Edit product"
+              aria-label={`Edit ${(row as unknown as Product).name ?? 'product'}`}
+              onClick={() => openEdit(row as unknown as Product)}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-600 transition-colors"
+            >
               <Edit size={15} />
             </button>
-            <button onClick={() => setDeleteTarget(row as unknown as Product)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600 transition-colors">
+            <button
+              type="button"
+              title="Delete product"
+              aria-label={`Delete ${(row as unknown as Product).name ?? 'product'}`}
+              onClick={() => setDeleteTarget(row as unknown as Product)}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600 transition-colors"
+            >
               <Trash2 size={15} />
             </button>
           </div>
@@ -156,7 +202,19 @@ export default function ProductsPage() {
             <Input label="Selling Price (ETB)" type="number" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} required />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Reorder Level" type="number" value={reorderLevel} onChange={e => setReorderLevel(e.target.value)} />
+            <Input
+  label={editing ? 'Quantity on Hand' : 'Opening Quantity (Initial Stock)'}
+  type="number"
+  min="0"
+  step="1"
+  value={initialQuantity}
+  onChange={e => setInitialQuantity(e.target.value)}
+  disabled={!!editing}
+  hint={editing
+    ? 'Stock moves through stock movements (receive, adjust, count) — not by editing the product.'
+    : 'Stock on hand from day one. Saved as quantity on hand and recorded as an opening movement.'}
+ />
+ <Input label="Reorder Level" type="number" value={reorderLevel} onChange={e => setReorderLevel(e.target.value)} />
             <Select label="Status" options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} value={active} onChange={e => setActive(e.target.value)} required />
           </div>
           

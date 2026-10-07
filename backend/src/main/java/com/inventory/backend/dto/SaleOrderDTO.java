@@ -28,6 +28,13 @@ public class SaleOrderDTO {
     // "date" mirrors createdAt date for frontend convenience
     private String date;
     private LocalDateTime createdAt;
+    // Void / refund approval state. Null means no request has been raised.
+    private String voidStatus;
+    private String voidReason;
+    private String voidReviewNote;
+    private String refundStatus;
+    private String refundReason;
+    private String refundReviewNote;
     private Long customerId;
     private BigDecimal tax;
     private String createdBy;
