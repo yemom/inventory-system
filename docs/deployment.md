@@ -393,8 +393,57 @@ and retention guidance in `docs/database-scaling.md`.
 | Requests hang, then the whole API stops responding | A database that completed the TCP handshake but never replies; each hung request pinned a pool thread | Fixed by `socketTimeout=30`. Check the database is running |
 | Admin login email changed unexpectedly | Older builds overwrote the super-admin's email on every start from `SUPER_ADMIN_EMAIL` | Now logged as a warning and ignored. Set the address in the UI |
 | `relation "users" does not exist` | Schema never created | `docker compose restart backend`; Hibernate uses `ddl-auto=update` |
+| One endpoint returns **500** while every other screen works, and the service reports healthy | A column added by `ddl-auto=update` to a table that **already had rows**, declared `NOT NULL`. PostgreSQL refuses the `ALTER`, Hibernate logs it as a **warning and boots anyway**, so the column silently does not exist and only the endpoints that read it fail | Search the startup log for `contains null values`. New columns on live tables must be nullable, with the legacy rows backfilled — see [Adding a column to a live table](#adding-a-column-to-a-live-table) |
 | All logins fail with 429 | Per-IP login limit hit | Expected behaviour. Raise `RATE_LIMIT_LOGIN` or investigate brute force |
 | Data disappeared | Someone ran `docker compose down -v` | Restore from backup; **that flag deletes the volume** |
 | Frontend 404s | Backend unhealthy | `docker compose logs backend`; check DB connectivity |
 | CORS errors in browser | Origin not listed in `CORS_ALLOWED_ORIGINS` | Set the exact frontend origin in the environment; do not edit `SecurityConfig` |
 | Rate limits not shared across instances | Redis unreachable | Check `REDIS_*`; the limiter fails open by design |
+
+---
+
+## Adding a column to a live table
+
+The schema is owned by `spring.jpa.hibernate.ddl-auto=update`. That is fine for
+adding tables and nullable columns. It fails in a specific, quiet way the moment
+you add a **`NOT NULL`** column to a table that already holds rows:
+
+```sql
+ALTER TABLE stock_movements ADD COLUMN status varchar(16) NOT NULL;
+-- ERROR: column "status" of relation "stock_movements" contains null values
+```
+
+Hibernate treats that as a warning, not a fatal error. **The application starts,
+passes its health check, and looks completely healthy** — but the column was
+never created, so every endpoint that reads or writes it returns 500 at request
+time and nothing else in the app is affected. It is genuinely hard to diagnose
+from the outside, because the health check is green.
+
+This is not hypothetical: it is what broke `/inventory/movements/pending` on the
+deployed instance.
+
+### The rule
+
+1. Declare the new column **nullable**. Never `nullable = false` on a column
+   added after the table already exists.
+2. Decide what the legacy rows mean and **backfill them**. A column that is
+   `NULL` on rows nobody will ever revisit is a silent hole — invisible to every
+   filter built on that column, while the rows still exist.
+3. Backfill with a `@EventListener(ApplicationReadyEvent.class)` component using
+   `JdbcTemplate`, as `StockMovementStatusBackfill` does. `ApplicationReadyEvent`
+   rather than `@PostConstruct`, because `ddl-auto=update` runs while the
+   `SessionFactory` is built — the column may not exist yet at construction time.
+4. Make the backfill idempotent, and let it log and continue on failure. It
+   should never be the reason the service refuses to start.
+
+### Why the tests did not catch it
+
+The test profile uses `ddl-auto=create-drop`, which builds the schema **from
+scratch**. A `NOT NULL` column is then created *with* the table instead of added
+to a populated one, so the failing `ALTER` never runs. A green suite says
+nothing about migrations.
+
+The only way to catch this class of bug is to assert the migration itself —
+`StockMovementStatusBackfillTest` checks the column is nullable and that a row
+with a `NULL` status is backfilled — or to run against a database that already
+has the old shape.

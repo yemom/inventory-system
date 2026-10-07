@@ -50,8 +50,17 @@ public class StockMovement {
      *
      * <p>A String rather than an enum so ddl-auto=update adds a plain VARCHAR
      * without an ordinal conversion on an existing table.
+     *
+     * <p><b>Must stay nullable.</b> This column was added to a table that
+     * already held rows, and {@code ddl-auto=update} emits
+     * {@code ALTER TABLE stock_movements ADD COLUMN status varchar(16) NOT NULL}.
+     * On a populated table PostgreSQL rejects that with "column status contains
+     * null values" — and Hibernate only logs the failure and carries on booting,
+     * so the service comes up healthy with the column missing and every query
+     * that touches it fails at runtime. Nullable lets the ALTER succeed;
+     * {@code StockMovementStatusBackfill} then fills the legacy rows in.
      */
-    @Column(nullable = false, length = 16)
+    @Column(length = 16)
     @Builder.Default
     private String status = Status.APPROVED;
 
