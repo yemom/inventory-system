@@ -17,7 +17,9 @@ import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import { useAuth } from '@/lib/auth/AuthProvider';
 
-jest.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
+// A module-level value so a test can move the app between routes.
+let currentPath = '/dashboard';
+jest.mock('next/navigation', () => ({ usePathname: () => currentPath }));
 jest.mock('@/lib/auth/AuthProvider', () => ({ useAuth: jest.fn() }));
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
@@ -158,5 +160,72 @@ describe('Sidebar — permission gating', () => {
     expect(screen.queryByText('Finance')).not.toBeInTheDocument();
     expect(screen.queryByText('Purchases')).not.toBeInTheDocument();
     expect(screen.queryByText('Reports')).not.toBeInTheDocument();
+  });
+});
+
+describe('Sidebar — highlighting the current page', () => {
+  beforeEach(() => {
+    currentPath = '/dashboard';
+    asSuperAdmin();
+  });
+
+  /**
+   * Labels of the nav entries the sidebar is currently highlighting.
+   *
+   * Two styles mark an active entry - a child link gets `bg-blue-600/15`, a
+   * top-level one gets solid `bg-blue-600` - so match the shared prefix and
+   * restrict to anchors, which excludes the logo and avatar divs.
+   */
+  function highlightedLabels(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll('a'))
+      .filter(a => a.className.includes('bg-blue-600'))
+      .map(a => a.textContent?.trim() ?? '');
+  }
+
+  it('highlights exactly one entry on a nested route', async () => {
+    currentPath = '/inventory/movements';
+    const user = userEvent.setup();
+    const { container } = render(<Sidebar />);
+    await expandAll(user);
+
+    // "Stock Overview" is /inventory, so a plain prefix test matched it as well
+    // as "Stock Movements" and two entries looked selected at once.
+    const highlighted = highlightedLabels(container);
+    expect(highlighted).toHaveLength(1);
+    expect(highlighted[0]).toBe('Stock Movements');
+  });
+
+  it('highlights the parent entry when you are on the parent route', async () => {
+    currentPath = '/inventory';
+    const user = userEvent.setup();
+    const { container } = render(<Sidebar />);
+    await expandAll(user);
+
+    expect(highlightedLabels(container)).toEqual(['Stock Overview']);
+  });
+
+  it('highlights the deepest match, not the ancestor', async () => {
+    currentPath = '/finance/profit-loss';
+    const user = userEvent.setup();
+    const { container } = render(<Sidebar />);
+    await expandAll(user);
+
+    expect(highlightedLabels(container)).toEqual(['Profit & Loss']);
+  });
+
+  it('highlights nothing on a route with no entry', async () => {
+    currentPath = '/somewhere-else';
+    const { container } = render(<Sidebar />);
+    expect(highlightedLabels(container)).toHaveLength(0);
+  });
+
+  it('does not treat a sibling with a shared prefix as the current page', async () => {
+    // /sales and /sales/approvals share a prefix; the shorter one must not win.
+    currentPath = '/sales/approvals';
+    const user = userEvent.setup();
+    const { container } = render(<Sidebar />);
+    await expandAll(user);
+
+    expect(highlightedLabels(container)).toEqual(['Approvals']);
   });
 });

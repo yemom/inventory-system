@@ -297,6 +297,7 @@ export default function TransfersPage() {
   if (error || warehousesError) {
     return (
       <ErrorState
+        error={error ?? warehousesError}
         retry={() => {
           void refetch();
           void refetchWarehouses();

@@ -43,7 +43,7 @@ export default function InventoryReportPage() {
     return acc;
   }, {});
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div className="space-y-6">

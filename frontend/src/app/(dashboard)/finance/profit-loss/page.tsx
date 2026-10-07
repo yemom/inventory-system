@@ -98,7 +98,7 @@ export default function ProfitLossPage() {
   }, {});
 
   if (salesError || productsError || expensesError) {
-    return <ErrorState retry={() => { refetchSales(); refetchProducts(); refetchExpenses(); }} />;
+    return <ErrorState error={salesError ?? productsError ?? expensesError} retry={() => { refetchSales(); refetchProducts(); refetchExpenses(); }} />;
   }
 
   return (

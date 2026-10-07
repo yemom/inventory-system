@@ -55,7 +55,7 @@ export default function AdjustmentsPage() {
     { key: 'reorderLevel', label: 'Reorder At' },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

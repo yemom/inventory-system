@@ -31,7 +31,7 @@ export default function InventoryMovementsPage() {
     { key: 'notes', label: 'Note', render: v => v ? String(v) : '-' },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

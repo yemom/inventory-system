@@ -145,7 +145,7 @@ export default function ProductsPage() {
     { key: 'active', label: 'Status', render: v => <Badge variant={v ? 'success' : 'default'}>{v ? 'Active' : 'Inactive'}</Badge> },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

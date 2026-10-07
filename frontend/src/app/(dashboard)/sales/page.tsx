@@ -63,7 +63,7 @@ export default function SalesPage() {
     { key: 'status', label: 'Status', render: v => <Badge variant={statusVariant[String(v)] ?? 'default'}>{String(v)}</Badge> },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

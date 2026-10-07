@@ -22,7 +22,7 @@ export default function AuditLogsPage() {
     { key: 'ip', label: 'IP Address', render: v => <span className="text-xs text-gray-500">{String(v)}</span> },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

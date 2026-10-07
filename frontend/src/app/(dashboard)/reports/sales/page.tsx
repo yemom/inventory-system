@@ -120,7 +120,7 @@ export default function SalesReportPage() {
   const topProductsData = useMemo(() => buildTopProducts(activeSales), [activeSales]);
   const maxRevenue = topProductsData[0]?.revenue || 1;
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div className="space-y-6">

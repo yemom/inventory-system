@@ -488,6 +488,7 @@ export default function ReceivablesPage() {
   if (customersError || salesError) {
     return (
       <ErrorState
+        error={customersError ?? salesError}
         retry={() => {
           void fetchCustomers();
           void refetchSales();

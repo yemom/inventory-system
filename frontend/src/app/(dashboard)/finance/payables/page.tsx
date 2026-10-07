@@ -122,7 +122,8 @@ export default function PayablesPage() {
     },
   ];
 
-  if (error || purchasesError) return <ErrorState retry={() => { refetch(); refetchPurchases(); }} />;
+  if (error || purchasesError)
+    return <ErrorState error={error ?? purchasesError} retry={() => { refetch(); refetchPurchases(); }} />;
 
   return (
     <div className="space-y-6">

@@ -50,7 +50,7 @@ export default function ExpensesPage() {
     { key: 'amount', label: 'Amount', render: v => <span className="text-red-600 font-semibold">{formatCurrency(Number(v))}</span> },
   ];
 
-  if (error) return <ErrorState retry={refetch} />;
+  if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
     <div>

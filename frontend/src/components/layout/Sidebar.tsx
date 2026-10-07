@@ -115,7 +115,31 @@ export default function Sidebar() {
     item.children?.filter(child => canSee(child.anyOf)) ?? [];
   const toggleExpanded = (label: string) =>
     setExpanded(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+
+  /**
+   * The one entry that represents the current page, or null.
+   *
+   * <p>A plain prefix test lights up every ancestor: on `/inventory/movements`
+   * both "Stock Overview" (`/inventory`) and "Stock Movements"
+   * (`/inventory/movements`) matched, so two entries appeared selected at once
+   * and neither looked wrong on its own. Only the longest match is the page you
+   * are actually on, so that is the only one that gets highlighted.
+   *
+   * <p>Computed once per render rather than inside `isActive`, since answering
+   * "which entry wins" for each candidate in turn would give the same answer
+   * every time.
+   */
+  const activeHref = (() => {
+    const hrefs = [
+      ...navItems.flatMap(item => [item.href, ...(item.children ?? []).map(c => c.href)]),
+    ].filter((href): href is string => Boolean(href));
+
+    return hrefs
+      .filter(href => pathname === href || pathname.startsWith(href + '/'))
+      .sort((a, b) => b.length - a.length)[0] ?? null;
+  })();
+
+  const isActive = (href: string) => activeHref === href;
 
   return (
     <aside className={cn(

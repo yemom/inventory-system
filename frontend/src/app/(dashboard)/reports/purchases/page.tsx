@@ -53,7 +53,7 @@ export default function PurchasesReportPage() {
   }).length;
 
   if (purchasesError || suppliersError) {
-    return <ErrorState retry={() => { refetchPurchases(); refetchSuppliers(); }} />;
+    return <ErrorState error={purchasesError ?? suppliersError} retry={() => { refetchPurchases(); refetchSuppliers(); }} />;
   }
 
   return (
