@@ -86,9 +86,6 @@ function assignableRolesFor(role: string | undefined): string[] {
   return ASSIGNABLE_BY_ROLE[role ?? ''] ?? [];
 }
 
-function roleLabel(value: string): string {
-  return ALL_ROLES.find(r => r.value === value)?.label ?? value.replace(/_/g, ' ');
-}
 
 const sortOptions = [
   { label: 'Name', value: 'firstName,asc' },
@@ -143,6 +140,21 @@ export default function StaffManagementPage() {
   const canManage = hasPermission('USER_CREATE') || hasPermission('STAFF_CREATE');
   const canUpdate = hasPermission('USER_UPDATE') || hasPermission('STAFF_UPDATE');
   const canRemove = hasPermission('USER_DEACTIVATE') || hasPermission('STAFF_DELETE');
+
+  /**
+   * Whether this user may act on that particular row.
+   *
+   * <p>A Manager cannot administer another Manager, so the button is not
+   * offered: RoleGrantPolicy would refuse the call, and an action that always
+   * fails is worse than one that is simply absent. Super Admin may act on
+   * anyone, which is why the check is on the viewer's role rather than the
+   * target's alone.
+   */
+  const mayTouch = (member: StaffMember) => {
+    if (member.role === 'SUPER_ADMIN') return user?.role === 'SUPER_ADMIN';
+    if (member.role === 'MANAGER') return user?.role === 'SUPER_ADMIN';
+    return true;
+  };
 
   // Options for the create form: only what this user may assign.
   const assignableRoles = assignableRolesFor(user?.role);
@@ -395,10 +407,10 @@ export default function StaffManagementPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setViewing(member)} title="View staff details"><Eye size={15} /></Button>
-                        {canUpdate && <Button variant="ghost" size="sm" onClick={() => openEdit(member)} title="Edit staff"><Pencil size={15} /></Button>}
-                        {canUpdate && member.role !== 'SUPER_ADMIN' && <Button variant="ghost" size="sm" onClick={() => statusAction(member)} title="Activate or deactivate">{member.status === 'ACTIVE' ? <UserX size={15} /> : <UserCheck size={15} />}</Button>}
+                        {canUpdate && mayTouch(member) && <Button variant="ghost" size="sm" onClick={() => openEdit(member)} title="Edit staff"><Pencil size={15} /></Button>}
+                        {canUpdate && mayTouch(member) && <Button variant="ghost" size="sm" onClick={() => statusAction(member)} title="Activate or deactivate">{member.status === 'ACTIVE' ? <UserX size={15} /> : <UserCheck size={15} />}</Button>}
                         {canUpdate && <Button variant="ghost" size="sm" onClick={() => setResetting(member)} title="Reset password"><KeyRound size={15} /></Button>}
-                        {canRemove && member.role !== 'SUPER_ADMIN' && member.id !== user?.id && <Button variant="ghost" size="sm" onClick={() => removeAction(member)} title="Remove staff"><Trash2 size={15} className="text-red-500" /></Button>}
+                        {canRemove && mayTouch(member) && member.id !== user?.id && <Button variant="ghost" size="sm" onClick={() => removeAction(member)} title="Remove staff"><Trash2 size={15} className="text-red-500" /></Button>}
                       </div>
                     </td>
                   </tr>
