@@ -87,6 +87,15 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # Pin npm to the version that wrote package-lock.json. npm 10 and npm 11
+      # disagree about the shape of the lockfile: a lockfile written by npm 11
+      # omits hoisted optional native deps (@emnapi/*), and `npm ci` under npm 10
+      # then refuses with "package.json and package-lock.json are not in sync —
+      # Missing: @emnapi/runtime from lock file". The Dockerfile pins the same
+      # version for the same reason; this keeps CI and the image in agreement.
+      - name: Pin npm to match the lockfile
+        run: npm install -g npm@10.8.2
+
       - name: Install dependencies (npm ci)
         run: npm ci --no-audit --no-fund
 
