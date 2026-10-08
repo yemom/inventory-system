@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ErrorState from '@/components/ui/ErrorState';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useSales, useDeleteSale } from '@/hooks/useSales';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -18,6 +19,15 @@ const statusVariant: Record<string, 'success' | 'info' | 'default' | 'danger'> =
   delivered: 'success', confirmed: 'info', draft: 'default', cancelled: 'danger',
   PAID: 'success', PENDING: 'info', CANCELLED: 'danger',
 };
+/**
+ * Placeholder for a value the record does not carry.
+ *
+ * A visible dash rather than an empty cell: an empty cell is indistinguishable
+ * from a rendering bug, so a reader cannot tell "nobody was recorded" from "the
+ * column is broken".
+ */
+const Dash = () => <span className="text-gray-400 dark:text-gray-500">—</span>;
+
 const payVariant: Record<string, 'success' | 'warning' | 'danger'> = {
   paid: 'success', partial: 'warning', unpaid: 'danger',
   PAID: 'success', PARTIAL: 'warning', UNPAID: 'danger',
@@ -55,7 +65,26 @@ export default function SalesPage() {
 
   const columns: Column<any>[] = [
     { key: 'reference', label: 'Reference', render: v => <span className="font-mono text-xs font-semibold text-blue-600">{String(v)}</span> },
-    { key: 'customerName', label: 'Customer' },
+    { key: 'customerName', label: 'Customer', render: v => v ? String(v) : <Dash /> },
+    {
+      key: 'cashier',
+      label: 'Cashier',
+      // Rendered from the reference the API already sent. An order with no
+      // recorded creator (imported, seeded, or created before the field
+      // existed) shows a dash rather than a blank cell that reads as a bug.
+      render: (_v, row) => {
+        const name = row?.cashier?.name;
+        return name ? <span className="text-sm">{name}</span> : <Dash />;
+      },
+    },
+    {
+      key: 'branch',
+      label: 'Branch',
+      render: (_v, row) => {
+        const name = row?.branch?.name;
+        return name ? <span className="text-sm">{name}</span> : <Dash />;
+      },
+    },
     { key: 'date', label: 'Date', render: v => formatDate(String(v || '')) },
     { key: 'total', label: 'Total', render: v => <span className="font-semibold">{formatCurrency(Number(v))}</span> },
     { key: 'paid', label: 'Paid', render: v => formatCurrency(Number(v)) },
@@ -66,6 +95,7 @@ export default function SalesPage() {
   if (error) return <ErrorState error={error} retry={refetch} />;
 
   return (
+    <ErrorBoundary label="Sales">
     <div>
       <PageHeader
         title="Sales"
@@ -81,10 +111,24 @@ export default function SalesPage() {
         searchPlaceholder="Search orders..."
         actions={row => (
           <div className="flex items-center justify-end gap-1">
-            <button onClick={() => setViewOrder(row as unknown as SaleOrder)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-600">
+            {/* Icon-only buttons need an accessible name; without one a screen
+                reader announces a bare button and the action is undiscoverable. */}
+            <button
+              type="button"
+              title="View order"
+              aria-label={`View order ${row.reference}`}
+              onClick={() => setViewOrder(row as unknown as SaleOrder)}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-600"
+            >
               <Eye size={15} />
             </button>
-            <button onClick={() => setDeleteTarget(row as unknown as SaleOrder)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600">
+            <button
+              type="button"
+              title="Delete order"
+              aria-label={`Delete order ${row.reference}`}
+              onClick={() => setDeleteTarget(row as unknown as SaleOrder)}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600"
+            >
               <Trash2 size={15} />
             </button>
           </div>
@@ -96,27 +140,41 @@ export default function SalesPage() {
         {viewOrder && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><p className="text-gray-500">Customer</p><p className="font-medium">{viewOrder.customerName}</p></div>
+              <div><p className="text-gray-500">Customer</p><p className="font-medium">{viewOrder.customerName ?? '—'}</p></div>
               <div><p className="text-gray-500">Date</p><p className="font-medium">{formatDate(viewOrder.date || '')}</p></div>
-              <div><p className="text-gray-500">Status</p><Badge variant={statusVariant[viewOrder.status] ?? 'default'}>{viewOrder.status}</Badge></div>
+              <div>
+                <p className="text-gray-500">Cashier</p>
+                <p className="font-medium">{viewOrder.cashier?.name ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Branch</p>
+                <p className="font-medium">{viewOrder.branch?.name ?? '—'}</p>
+              </div>
+              <div><p className="text-gray-500">Status</p><Badge variant={statusVariant[viewOrder.status ?? ''] ?? 'default'}>{viewOrder.status}</Badge></div>
               <div><p className="text-gray-500">Payment</p><Badge variant={payVariant[viewOrder.paymentStatus || ''] ?? 'default'}>{viewOrder.paymentStatus}</Badge></div>
             </div>
             <table className="w-full text-sm border rounded-lg overflow-hidden">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>{['Product', 'Qty', 'Unit Price', 'Discount', 'Total'].map((h: any) => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>)}</tr>
               </thead>
-              <tbody>{viewOrder.items.map((item: any, i: number) => (
+              {/* Guarded: an order with no lines is a valid record, and the
+                  backend omits `items` entirely in that case. `viewOrder.items.map`
+                  threw and took the whole page down with it. */}
+              <tbody>{(viewOrder.items ?? []).map((item, i) => (
                 <tr key={i} className="border-t">
-                  <td className="px-3 py-2">{item.productName}</td>
+                  <td className="px-3 py-2">{item.productName ?? '—'}</td>
                   <td className="px-3 py-2">{item.quantity}</td>
-                  <td className="px-3 py-2">{formatCurrency(item.unitPrice || 0)}</td>
-                  <td className="px-3 py-2">{formatCurrency(item.discount)}</td>
+                  <td className="px-3 py-2">{formatCurrency(item.unitPrice ?? 0)}</td>
+                  <td className="px-3 py-2">{formatCurrency(item.discount ?? 0)}</td>
                   <td className="px-3 py-2 font-semibold">{formatCurrency(item.total || 0)}</td>
                 </tr>
               ))}</tbody>
             </table>
             <div className="flex justify-end gap-6 text-sm border-t pt-3">
-              <span className="text-gray-500">Subtotal: <strong>{formatCurrency(viewOrder.subtotal || 0)}</strong></span>
+              {/* `totalAmount` is the pre-discount subtotal; there is no
+                  `subtotal` field, so reading one rendered ETB 0.00 on every
+                  order. Typing the response caught it. */}
+              <span className="text-gray-500">Subtotal: <strong>{formatCurrency(viewOrder.totalAmount ?? 0)}</strong></span>
               <span className="text-gray-500">Discount: <strong>{formatCurrency(viewOrder.discount || 0)}</strong></span>
               <span className="text-gray-900 dark:text-gray-100 font-bold text-base">Total: {formatCurrency(viewOrder.total || 0)}</span>
             </div>
@@ -127,5 +185,6 @@ export default function SalesPage() {
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete}
         title="Delete Order" message={`Delete order ${deleteTarget?.reference}?`} confirmLabel="Delete" loading={deleteSale.isPending} />
     </div>
+    </ErrorBoundary>
   );
 }

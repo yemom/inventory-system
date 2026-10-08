@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { toApiError, backendUnavailableMessage } from '@/lib/api/apiErrors';
+import { toApiError, describeFailure } from '@/lib/api/apiErrors';
 import { getApiBaseUrl } from '@/lib/api/apiClient';
 import { extractBackendMessage } from '@/lib/auth/authErrors';
 import { Eye, EyeOff, Package, Lock, User, AlertCircle, ArrowRight, BarChart3 } from 'lucide-react';
@@ -33,13 +33,19 @@ export default function LoginPage() {
     try {
       await login(data.username, data.password);
     } catch (err) {
-      // A transport failure means the API is not reachable at all;
-      // saying "invalid credentials" there would send the user down
-      // the wrong path. Auth failures still keep their own message.
+      // A transport failure means the API never answered, so saying
+      // "invalid credentials" would send the user down the wrong path.
+      //
+      // `describeFailure` decides the wording rather than this page. It used to
+      // collapse every network failure into the CORS explanation, which is how a
+      // login that merely timed out while the backend was booting reported a
+      // misconfigured origin — a plausible-sounding cause, and the wrong one.
+      // A timeout and an unreachable host need different advice, so the choice
+      // lives in one place.
       const normalized = toApiError(err);
       setServerError(
         normalized.isNetworkError
-          ? backendUnavailableMessage(getApiBaseUrl())
+          ? describeFailure(err, getApiBaseUrl())
           : extractBackendMessage(err) ?? 'Invalid credentials. Please try again.'
       );
     }

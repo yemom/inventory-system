@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 /**
  * ------------------------------------------------------------
@@ -41,6 +41,33 @@ export const getApiBaseUrl = (): string =>
  */
 export const SESSION_EXPIRED_EVENT = 'stockflow:session-expired';
 
+/**
+ * How long a single request may take before it is abandoned.
+ *
+ * This was 15s, which is fine locally and wrong in production. The deployed
+ * backend runs on a platform that scales instances to zero when idle, so the
+ * first request after a pause waits for the instance to boot, which routinely
+ * takes 30-60s. At 15s the client gave up and cancelled the request — exactly
+ * what the browser showed: a login "cancelled" at 15.1s with no response at all,
+ * reported as "Backend unavailable … check CORS_ALLOWED_ORIGINS".
+ *
+ * The connection was fine; we simply stopped waiting for it.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Methods that may be sent again after a failed attempt.
+ *
+ * Only requests that change nothing. A timed-out `POST /sales` may well have
+ * been committed before the response was lost, and re-sending it would sell the
+ * customer's basket twice — so writes are never retried automatically, however
+ * tempting it looks.
+ */
+function isRetryable(config?: { method?: string }): boolean {
+  const method = (config?.method ?? 'get').toLowerCase();
+  return method === 'get' || method === 'head' || method === 'options';
+}
+
 const apiClient = axios.create({
   // Resolved per environment; `undefined` keeps axios' default
   // same-origin behaviour for the (currently unused) server path.
@@ -48,7 +75,7 @@ const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
   // Distinguishes a genuine transport failure from an HTTP error,
   // so the UI can say "Backend unavailable" instead of "Network Error".
-  timeout: 15000,
+  timeout: REQUEST_TIMEOUT_MS,
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -61,7 +88,7 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       // Never swallow the error — it propagates so callers can label
       // it with the resource they were fetching. Clear the stale token
@@ -74,6 +101,31 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('auth_user');
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
+
+    // Typed as an Axios config plus our two flags, rather than as an object
+    // carrying only the flags — the latter has no overlap with AxiosRequestConfig
+    // and so cannot be passed back to `apiClient.request`.
+    const config = error.config as
+        | (AxiosRequestConfig & { __retried?: boolean; __timedOut?: boolean })
+        | undefined;
+
+    // A timeout is not the same as "the backend is down", and the two used to
+    // share one message that pointed the operator at CORS. Tagged here so the
+    // error layer can say what actually happened.
+    if ((error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') && config) {
+      config.__timedOut = true;
+    }
+
+    // One retry for a safe request that produced no response. Either the
+    // connection never established or it was dropped — which is what a platform
+    // waking a cold instance looks like from here. The second attempt lands on a
+    // server that is up by then, so the user is not shown an error for something
+    // that has already recovered on its own.
+    if (config && !config.__retried && !error.response && isRetryable(config)) {
+      config.__retried = true;
+      return apiClient.request(config);
+    }
+
     return Promise.reject(error);
   }
 );

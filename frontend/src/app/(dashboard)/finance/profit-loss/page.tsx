@@ -64,7 +64,7 @@ export default function ProfitLossPage() {
   }, [products]);
 
   const filteredSales = useMemo(
-    () => sales.filter(s => !isCancelled(s) && inPeriod(s.createdAt || s.date, period)),
+    () => sales.filter(s => !isCancelled(s) && inPeriod(s.createdAt ?? s.date ?? undefined, period)),
     [sales, period]
   );
   const filteredExpenses = useMemo(

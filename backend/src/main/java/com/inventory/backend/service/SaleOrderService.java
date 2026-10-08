@@ -457,6 +457,28 @@ public class SaleOrderService {
         return toDTO(saved);
     }
 
+    /**
+     * A person's name for display, falling back to their username.
+     *
+     * <p>{@code User.getFullName()} concatenates unconditionally, so a user with
+     * no first or last name yields the literal string "null null" — which would
+     * then be rendered in a sales report as though it were a name. Falls back
+     * through first+last, then either one, then the username, so a row always
+     * identifies a person.
+     */
+    private String displayName(User user) {
+        if (user == null) {
+            return null;
+        }
+        String first = user.getFirstName() == null ? "" : user.getFirstName().trim();
+        String last = user.getLastName() == null ? "" : user.getLastName().trim();
+        String full = (first + " " + last).trim();
+        if (!full.isEmpty() && !full.equals("null")) {
+            return full;
+        }
+        return user.getUsername();
+    }
+
     public SaleOrderDTO toDTO(SaleOrder o) {
         SaleOrderDTO dto = new SaleOrderDTO();
         dto.setId(o.getId());
@@ -482,6 +504,18 @@ public class SaleOrderService {
         }
         if (o.getCreatedBy() != null) {
             dto.setCreatedBy(o.getCreatedBy().getUsername());
+            // Cashier and branch travel together because branch is an attribute
+            // of the user, not of the order: whoever rang it up is where it was
+            // rung. Sending the name with the order keeps the list screen from
+            // having to resolve either one per row.
+            dto.setCashier(new RefDTO(o.getCreatedBy().getId(),
+                    displayName(o.getCreatedBy())));
+            String branch = o.getCreatedBy().getBranch();
+            if (branch != null && !branch.isBlank()) {
+                // No id: branch is free text on the user row, so there is no
+                // surrogate key to report until it becomes an entity.
+                dto.setBranch(new RefDTO(null, branch.trim()));
+            }
         }
         // derive date string for frontend
         if (o.getCreatedAt() != null) {

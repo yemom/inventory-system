@@ -48,6 +48,53 @@ export function backendUnavailableMessage(apiBaseUrl?: string): string {
     );
 }
 
+/**
+ * Message for a request that was abandoned before the server replied.
+ *
+ * Kept separate from {@link backendUnavailableMessage} because the advice is
+ * completely different and the old shared text sent people to the wrong place.
+ * A timeout is not a CORS rejection and not a wrong API URL: it means the
+ * connection was established and then went quiet for longer than we waited,
+ * which is what a backend booting from cold looks like from the browser. The
+ * previous copy told the reader to check `CORS_ALLOWED_ORIGINS`, which is
+ * plausible, unnecessary, and not the cause.
+ */
+export function backendTimeoutMessage(apiBaseUrl?: string, seconds?: number): string {
+    const target = apiBaseUrl ? ` at ${apiBaseUrl}` : '';
+    const waited = seconds ? ` after ${seconds}s` : '';
+    return (
+        `The server did not respond${waited}${target}. It may be starting up or ` +
+        'overloaded — wait a moment and try again. If it keeps happening, check the ' +
+        'API service logs for a slow start or a failing health check.'
+    );
+}
+
+/**
+ * The message to show for any failure, in one call.
+ *
+ * <p>This exists because callers were assembling this themselves and getting it
+ * wrong. The login page, for instance, collapsed every network-class failure
+ * into {@link backendUnavailableMessage}, discarding the timeout diagnosis that
+ * {@link toApiError} had already made — which is how a request that merely ran
+ * out of patience was reported as a CORS misconfiguration.
+ *
+ * <p>Compose the message here rather than at each call site, so a new failure
+ * mode is described once and every screen benefits.
+ */
+export function describeFailure(error: unknown, apiBaseUrl?: string): string {
+    const normalized = toApiError(error);
+
+    if (!normalized.isNetworkError) {
+        return normalized.message;
+    }
+
+    // BACKEND_UNAVAILABLE is a short sentinel so callers can compare against it;
+    // expand it into the full explanation when that is what happened.
+    return normalized.message === BACKEND_UNAVAILABLE
+        ? backendUnavailableMessage(apiBaseUrl)
+        : normalized.message;
+}
+
 export interface ApiError {
     /** HTTP status code, or null when the request never completed. */
     status: number | null;
@@ -77,9 +124,34 @@ export function toApiError(error: unknown): ApiError {
     if (axios.isAxiosError(error)) {
         const status = error.response?.status ?? null;
 
-        // No response at all: DNS failure, connection refused, CORS
-        // preflight failure, or the container simply is not up yet.
+        // No response at all. A timeout is the one case with genuinely different
+        // advice, so it is separated out: the old code reported it as
+        // "Backend unavailable" and pointed the reader at CORS, which sent them
+        // looking for an origin problem that did not exist.
         if (!error.response) {
+            const cfg = error.config as
+                | ({ __timedOut?: boolean; timeout?: number } & {
+                    method?: string;
+                    url?: string;
+                })
+                | undefined;
+            const timedOut =
+                cfg?.__timedOut === true ||
+                error.code === 'ECONNABORTED' ||
+                error.code === 'ETIMEDOUT';
+
+            if (timedOut) {
+                return {
+                    status: null,
+                    isNetworkError: true,
+                    message: backendTimeoutMessage(
+                        undefined,
+                        cfg?.timeout ? Math.round(cfg.timeout / 1000) : undefined,
+                    ),
+                    endpoint: describeEndpoint(error.config),
+                };
+            }
+
             return {
                 status: null,
                 isNetworkError: true,

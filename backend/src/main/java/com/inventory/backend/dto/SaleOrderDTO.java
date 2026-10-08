@@ -38,5 +38,24 @@ public class SaleOrderDTO {
     private Long customerId;
     private BigDecimal tax;
     private String createdBy;
+
+    /**
+     * The cashier who rang the sale, as a reference rather than an id.
+     *
+     * <p>Resolved from {@code createdBy} on the order. Null when the sale has no
+     * recorded creator — imported or seeded orders legitimately have none, so
+     * this is an expected state and the UI renders an em dash.
+     */
+    private RefDTO cashier;
+
+    /**
+     * The branch the sale was rung in.
+     *
+     * <p>Derived from {@code createdBy.branch}. Note that branch is free text on
+     * the user record, not a row in its own table, so {@code id} is null — see
+     * {@link RefDTO}. The name is what a branch column displays.
+     */
+    private RefDTO branch;
+
     private List<SaleOrderItemDTO> items;
 }
