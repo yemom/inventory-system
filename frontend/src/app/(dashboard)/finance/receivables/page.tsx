@@ -72,13 +72,71 @@ function daysSince(sale: any): number {
 }
 
 /**
- * Get customer's outstanding balance.
+ * Identifies the customer a sale belongs to.
  *
- * Different backend versions may call this field:
- * - outstandingBalance
- * - balance
+ * Walk-in sales carry a name but no `customerId`, so the name is the only way to
+ * attribute them. Returning the name for those is what keeps an unpaid walk-in
+ * sale from disappearing from the receivables report entirely.
  */
-function balanceOf(customer: Customer): number {
+function customerKeyOf(sale: any): string | null {
+  const id = sale?.customerId;
+  if (id !== undefined && id !== null && id !== "") return `id:${id}`;
+  const name = String(sale?.customerName ?? "").trim();
+  return name ? `name:${name.toLowerCase()}` : null;
+}
+
+/**
+ * Outstanding balance per customer, derived from their unpaid sales.
+ *
+ * <p>The `outstandingBalance` column on a customer is **never written by any
+ * code path in this application** — it is a stored column defaulting to zero, so
+ * reading it returns 0 forever. Every receivable figure on this page derived
+ * from it, which is why the page reported ETB 0.00 with a populated sales list:
+ * not because nothing was owed, but because the field it was reading could never
+ * hold anything.
+ *
+ * <p>The sales themselves are the source of truth: a sale that is not PAID in
+ * full leaves an amount outstanding. Kept keyed by customer so the table, the
+ * totals and the payment modal all agree.
+ */
+function deriveOutstandingByCustomer(sales: any[]): Map<string, number> {
+  const totals = new Map<string, number>();
+
+  for (const sale of sales) {
+    const unpaid = unpaidOfSale(sale);
+    if (unpaid <= 0) continue;
+
+    const key = customerKeyOf(sale);
+    if (!key) continue;
+
+    totals.set(key, (totals.get(key) ?? 0) + unpaid);
+  }
+
+  return totals;
+}
+
+/**
+ * A customer's outstanding balance.
+ *
+ * <p>Derived from sales, falling back to the stored column only when nothing has
+ * been derived — so if the backend later starts computing that column properly,
+ * this keeps working rather than going blank.
+ */
+function balanceOf(
+  customer: Customer,
+  derived?: Map<string, number>,
+): number {
+  if (derived) {
+    const key =
+      customer?.id !== undefined && customer?.id !== null
+        ? `id:${customer.id}`
+        : String(customer?.name ?? "")
+            .trim()
+            .toLowerCase();
+    const fromSales = derived.get(key.startsWith("id:") ? key : `name:${key}`);
+    if (fromSales !== undefined) return fromSales;
+  }
+
   return Number(
     customer?.outstandingBalance ?? (customer as any)?.balance ?? 0,
   );
@@ -206,17 +264,27 @@ export default function ReceivablesPage() {
   /* Debtors                                                                  */
   /* ------------------------------------------------------------------------ */
 
+  const outstandingByCustomer = useMemo(
+    () => deriveOutstandingByCustomer(sales as any[]),
+    [sales],
+  );
+
   const debtors = useMemo(() => {
-    return customers.filter((customer) => balanceOf(customer) > 0);
-  }, [customers]);
+    return customers.filter(
+      (customer) => balanceOf(customer, outstandingByCustomer) > 0,
+    );
+  }, [customers, outstandingByCustomer]);
 
   /* ------------------------------------------------------------------------ */
   /* Total receivables                                                        */
   /* ------------------------------------------------------------------------ */
 
   const totalReceivables = useMemo(() => {
-    return debtors.reduce((sum, customer) => sum + balanceOf(customer), 0);
-  }, [debtors]);
+    return debtors.reduce(
+      (sum, customer) => sum + balanceOf(customer, outstandingByCustomer),
+      0,
+    );
+  }, [debtors, outstandingByCustomer]);
 
   /* ------------------------------------------------------------------------ */
   /* Aging                                                                    */
@@ -257,7 +325,7 @@ export default function ReceivablesPage() {
   /* ------------------------------------------------------------------------ */
 
   const openRecordPayment = (customer: Customer) => {
-    const balance = balanceOf(customer);
+    const balance = balanceOf(customer, outstandingByCustomer);
 
     setSelectedCustomer(customer);
 
@@ -295,7 +363,7 @@ export default function ReceivablesPage() {
 
     const numericAmount = Number.parseFloat(amount);
 
-    const outstanding = balanceOf(selectedCustomer);
+    const outstanding = balanceOf(selectedCustomer, outstandingByCustomer);
 
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       toast(
@@ -422,7 +490,7 @@ export default function ReceivablesPage() {
 
       render: (_, row) => (
         <span className="font-bold text-amber-600 dark:text-amber-400">
-          {formatCurrency(balanceOf(row))}
+          {formatCurrency(balanceOf(row, outstandingByCustomer))}
         </span>
       ),
     },
@@ -434,7 +502,7 @@ export default function ReceivablesPage() {
       render: (_, row) => {
         const limit = Number((row as any)?.creditLimit) || 0;
 
-        const balance = balanceOf(row);
+        const balance = balanceOf(row, outstandingByCustomer);
 
         /*
          * If there is no credit limit,
@@ -468,7 +536,7 @@ export default function ReceivablesPage() {
       label: "Status",
 
       render: (_, row) => {
-        const balance = balanceOf(row);
+        const balance = balanceOf(row, outstandingByCustomer);
 
         const limit = Number((row as any)?.creditLimit) || 0;
 
@@ -593,7 +661,9 @@ export default function ReceivablesPage() {
 
               <strong className="text-amber-600 dark:text-amber-400">
                 {formatCurrency(
-                  selectedCustomer ? balanceOf(selectedCustomer) : 0,
+                  selectedCustomer
+                    ? balanceOf(selectedCustomer, outstandingByCustomer)
+                    : 0,
                 )}
               </strong>
             </div>

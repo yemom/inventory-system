@@ -21,7 +21,46 @@ function supplierName(s: Supplier) {
   return s.companyName || (s as any).name || '';
 }
 
-function balanceOf(s: Supplier) {
+/**
+ * Outstanding balance per supplier, derived from their unsettled purchases.
+ *
+ * <p>`Supplier.outstandingBalance` is a stored column that no code path ever
+ * writes — it defaults to zero and stays there. Reading it, as this page did,
+ * means the creditor list is empty forever regardless of what was bought on
+ * credit. For the current data the two happen to agree (every purchase order is
+ * fully paid), but the page could never have shown a creditor.
+ *
+ * <p>The purchase orders are the source of truth. Purchase orders carry a free
+ * -text `supplierName` rather than a supplier foreign key, so suppliers are
+ * matched by name.
+ */
+function deriveOutstandingBySupplier(purchases: any[]): Map<string, number> {
+  const totals = new Map<string, number>();
+
+  for (const purchase of purchases) {
+    const unpaid = unpaidOfPurchase(purchase);
+    if (unpaid <= 0) continue;
+
+    const name = String(purchase?.supplierName ?? '').trim().toLowerCase();
+    if (!name) continue;
+
+    totals.set(name, (totals.get(name) ?? 0) + unpaid);
+  }
+
+  return totals;
+}
+
+/**
+ * A supplier's outstanding balance.
+ *
+ * <p>Derived from purchases, falling back to the stored column only when nothing
+ * was derived, so a backend that starts computing it properly keeps working.
+ */
+function balanceOf(s: Supplier, derived?: Map<string, number>) {
+  if (derived) {
+    const fromPurchases = derived.get(supplierName(s).trim().toLowerCase());
+    if (fromPurchases !== undefined) return fromPurchases;
+  }
   return Number(s.outstandingBalance ?? (s as any).balance ?? 0);
 }
 
@@ -47,8 +86,16 @@ export default function PayablesPage() {
   const [method, setMethod] = useState<'cash' | 'bank' | 'mobile'>('bank');
   const [ref, setRef] = useState('');
 
-  const creditors = suppliers.filter(s => balanceOf(s) > 0);
-  const totalPayables = creditors.reduce((sum, s) => sum + balanceOf(s), 0);
+  const outstandingBySupplier = useMemo(
+    () => deriveOutstandingBySupplier(purchases as any[]),
+    [purchases]
+  );
+
+  const creditors = suppliers.filter(s => balanceOf(s, outstandingBySupplier) > 0);
+  const totalPayables = creditors.reduce(
+    (sum, s) => sum + balanceOf(s, outstandingBySupplier),
+    0
+  );
 
   const unpaidPurchaseTotal = useMemo(
     () => purchases.reduce((sum, p) => sum + unpaidOfPurchase(p), 0),
@@ -61,7 +108,7 @@ export default function PayablesPage() {
 
   const openPaySupplier = (s: Supplier) => {
     setSelectedSupplier(s);
-    setAmount(String(balanceOf(s)));
+    setAmount(String(balanceOf(s, outstandingBySupplier)));
     setRef(`PAY-${Date.now().toString().slice(-8)}`);
     setPaymentModalOpen(true);
   };
@@ -108,7 +155,7 @@ export default function PayablesPage() {
       label: 'Amount Owed (Payable)',
       render: (_, row) => (
         <span className="font-bold text-red-600 dark:text-red-400">
-          {formatCurrency(balanceOf(row as Supplier))}
+          {formatCurrency(balanceOf(row as Supplier, outstandingBySupplier))}
         </span>
       )
     },
@@ -176,7 +223,7 @@ export default function PayablesPage() {
           <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-400">Total Payable Balance:</span>
-              <strong className="text-red-600">{formatCurrency(selectedSupplier ? balanceOf(selectedSupplier) : 0)}</strong>
+              <strong className="text-red-600">{formatCurrency(selectedSupplier ? balanceOf(selectedSupplier, outstandingBySupplier) : 0)}</strong>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Supplier Address:</span>
