@@ -95,6 +95,27 @@ public class PurchaseOrderService {
         order.setTotalAmount(total);
         order.setItems(items);
 
+        // ── 3b. Persist payment status ─────────────────────────────────────────
+        //
+        // The caller may declare that goods were received on credit (UNPAID) or
+        // partially paid (PARTIAL) even though the order will be marked RECEIVED.
+        // When the field is absent we default to PAID to keep the existing
+        // behaviour for callers that do not send it.
+        String requestedPaymentStatus = req.getPaymentStatus();
+        if (requestedPaymentStatus == null || requestedPaymentStatus.isBlank()) {
+            requestedPaymentStatus = "PAID";
+        }
+        order.setPaymentStatus(requestedPaymentStatus.toUpperCase());
+
+        // Store how much has already been paid when the order is only partial.
+        if ("PARTIAL".equalsIgnoreCase(requestedPaymentStatus) && req.getAmountPaid() != null) {
+            order.setAmountPaid(req.getAmountPaid());
+        } else if ("PAID".equalsIgnoreCase(requestedPaymentStatus)) {
+            order.setAmountPaid(total); // fully paid
+        } else {
+            order.setAmountPaid(java.math.BigDecimal.ZERO);
+        }
+
         PurchaseOrder saved = purchaseOrderRepository.save(order);
         saved.setOrderNumber(String.format("PO-%06d", saved.getId()));
         saved = purchaseOrderRepository.save(saved);
@@ -201,13 +222,20 @@ public class PurchaseOrderService {
             dto.setDate(o.getCreatedAt().format(DATE_FMT));
         }
 
-        // Simple payment status: assume PAID for RECEIVED orders in this version
-        if ("RECEIVED".equals(o.getStatus())) {
+        // Use the stored payment status. A purchase can be RECEIVED (goods
+        // have arrived) but UNPAID (bought on credit), so we must not infer
+        // the payment status from the order status.
+        //
+        // Fall back to legacy logic only for rows that predate the column:
+        // those have a null paymentStatus.
+        String storedPaymentStatus = o.getPaymentStatus();
+        if (storedPaymentStatus != null && !storedPaymentStatus.isBlank()) {
+            dto.setPaymentStatus(storedPaymentStatus.toLowerCase());
+            dto.setPaid(o.getAmountPaid() != null ? o.getAmountPaid() : BigDecimal.ZERO);
+        } else if ("RECEIVED".equals(o.getStatus())) {
+            // Legacy row: RECEIVED → assume it was paid at the time.
             dto.setPaymentStatus("paid");
             dto.setPaid(o.getTotalAmount());
-        } else if ("CANCELLED".equals(o.getStatus())) {
-            dto.setPaymentStatus("unpaid");
-            dto.setPaid(BigDecimal.ZERO);
         } else {
             dto.setPaymentStatus("unpaid");
             dto.setPaid(BigDecimal.ZERO);

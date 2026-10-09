@@ -401,6 +401,7 @@ export default function NewPurchasePage() {
     const payload = {
       supplierName,
       status: "RECEIVED",
+      paymentStatus: paymentStatus.toUpperCase(), // PAID | PARTIAL | UNPAID
 
       items: lines.map((line) => ({
         productId: Number(line.productId),

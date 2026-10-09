@@ -196,6 +196,7 @@ export default function PayablesPage() {
         <StatCard
           title="Unpaid Purchase Orders"
           value={formatCurrency(unpaidPurchaseTotal)}
+          change={0}
           changeLabel={`${unpaidPurchaseCount} open PO(s)`}
           color="blue"
           icon={<Clock size={20} />}
