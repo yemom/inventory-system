@@ -15,6 +15,26 @@ public interface WarehouseStockRepository extends JpaRepository<WarehouseStock, 
     Optional<WarehouseStock> findByProductIdAndWarehouseId(Long productId, Long warehouseId);
 
     /**
+     * The balance implied by the movement ledger, per warehouse.
+     *
+     * <p>Rows are {@code (warehouseId, quantity)}; a null warehouse id means the
+     * movements predate warehouse attribution and the caller decides where they
+     * belong. Only APPROVED movements count — a pending or rejected movement is
+     * not a fact about stock.
+     *
+     * <p>Aggregated in SQL rather than by loading the movements, because this
+     * runs across the whole catalogue and the ledger is the largest table here.
+     */
+    @Query("""
+            SELECT m.warehouse.id, SUM(m.quantity)
+            FROM StockMovement m
+            WHERE m.product.id = :productId
+              AND m.status = com.inventory.backend.model.StockMovement$Status.APPROVED
+            GROUP BY m.warehouse.id
+            """)
+    List<Object[]> ledgerBalanceForProduct(@Param("productId") Long productId);
+
+    /**
      * Takes a row lock before reading, which is what makes a concurrent sale and
      * a concurrent delivery of the same product safe: the second transaction
      * blocks until the first has committed and then reads the updated quantity,

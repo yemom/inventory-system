@@ -15,6 +15,7 @@ import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } fro
 import { useToast } from '@/components/ui/ToastProvider';
 import { categoriesApi, Category } from '@/lib/api/categoriesApi';
 import type { Product } from '@/lib/api/productsApi';
+import { warehousesApi, type Warehouse } from '@/lib/api/warehousesApi';
 
 export default function ProductsPage() {
   const { data: products = [], isLoading, error, refetch } = useProducts();
@@ -26,9 +27,37 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesFailed, setCategoriesFailed] = useState(false);
+  // Set while a save is in flight. The submit button is disabled while this is
+  // true, so a second click cannot send a second POST: the mutation is async,
+  // so two clicks arrive before the first resolves and create two products with
+  // the same name. (The sale and purchase forms already guarded this.)
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    categoriesApi.list().then(setCategories).catch(console.error);
+    categoriesApi.list()
+      .then(setCategories)
+      .catch(() => setCategoriesFailed(true));
+  }, []);
+
+  // Only matters when there is a choice to make. A failure is silent: the form
+  // still works, and the backend resolves a single warehouse on its own.
+  useEffect(() => {
+    let mounted = true;
+    warehousesApi
+      .list()
+      .then((data) => {
+        if (!mounted) return;
+        const active = (Array.isArray(data) ? data : []).filter((w) => w.active);
+        setWarehouses(active);
+        setOpeningWarehouseId(active.length === 1 ? active[0].id : null);
+      })
+      .catch(() => {
+        if (mounted) setWarehouses([]);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Form states
@@ -40,6 +69,14 @@ export default function ProductsPage() {
   const [sellingPrice, setSellingPrice] = useState('0');
   const [reorderLevel, setReorderLevel] = useState('10');
   const [initialQuantity, setInitialQuantity] = useState('0');
+
+  /*
+   * Where a new product's opening stock lives. Only shown when the business has
+   * more than one warehouse; with a single location the backend resolves it and
+   * the question would have no answer to give.
+   */
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [openingWarehouseId, setOpeningWarehouseId] = useState<number | null>(null);
   const [active, setActive] = useState('true');
 
   const openCreate = () => { 
@@ -68,8 +105,14 @@ export default function ProductsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!categoryId) {
-      toast('error', 'Validation Error', 'Please select a category');
+      // The categories themselves may have failed to load, in which case the
+      // list is empty and "select a category" is the wrong thing to say.
+      toast('error', 'Validation Error',
+        categoriesFailed
+          ? 'The category list could not be loaded. Reload the page and try again.'
+          : 'Please select a category');
       return;
     }
     const openingQuantity = Number(initialQuantity);
@@ -84,9 +127,19 @@ export default function ProductsPage() {
       reorderLevel: Number(reorderLevel), active: active === 'true',
       // Create only. The backend turns this into quantity on hand and records an
       // OPENING movement; after that quantity moves only via stock movements.
-      ...(editing ? {} : { initialQuantity: openingQuantity }),
+      //
+      // The warehouse is sent when there is more than one to choose from.
+      // Without it the opening balance is recorded unattributed, and the new
+      // product starts life with stock no till can draw on.
+      ...(editing
+        ? {}
+        : {
+            initialQuantity: openingQuantity,
+            ...(openingWarehouseId ? { warehouseId: openingWarehouseId } : {}),
+          }),
     };
 
+    setSaving(true);
     try {
       if (editing) {
         await updateProduct.mutateAsync({ id: String(editing.id), data: payload });
@@ -101,6 +154,8 @@ export default function ProductsPage() {
       setModalOpen(false);
     } catch (err: any) {
       toast('error', 'Operation failed', err.message || 'Please try again');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -217,10 +272,30 @@ export default function ProductsPage() {
  <Input label="Reorder Level" type="number" value={reorderLevel} onChange={e => setReorderLevel(e.target.value)} />
             <Select label="Status" options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} value={active} onChange={e => setActive(e.target.value)} required />
           </div>
+
+          {/*
+            Only when there is more than one location. Left out with a single
+            warehouse because the backend resolves it, and asking a question
+            that has only one answer is noise.
+          */}
+          {!editing && warehouses.length > 1 && (
+            <Select
+              label="Opening Stock Warehouse"
+              options={[
+                { value: '', label: 'Choose a warehouse…' },
+                ...warehouses.map((w) => ({ value: String(w.id), label: w.name })),
+              ]}
+              value={openingWarehouseId === null ? '' : String(openingWarehouseId)}
+              onChange={(e) =>
+                setOpeningWarehouseId(e.target.value ? Number(e.target.value) : null)
+              }
+              hint="Without this the opening stock is recorded with no location, and no till will be able to sell it."
+            />
+          )}
           
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Save Product</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Product'}</Button>
           </div>
         </form>
       </Modal>

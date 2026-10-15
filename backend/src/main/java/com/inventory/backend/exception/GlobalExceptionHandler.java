@@ -4,6 +4,7 @@ import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.filter.RequestIdFilter;
 import io.jsonwebtoken.JwtException;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -110,6 +111,28 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage());
     }
 
+    /**
+     * A query parameter that cannot be read as the type the endpoint declares.
+     *
+     * <p>{@code ?from=not-a-date}, {@code ?id=abc}, {@code ?size=huge} — these
+     * reach the dispatcher as a conversion failure and used to fall through to
+     * the catch-all, which reports a server fault for what is a client mistake.
+     * That is how {@code GET /api/v1/reports/sales?from=2026-07-01} answered 500
+     * on a perfectly ordinary date: that endpoint alone wanted a timestamp.
+     *
+     * <p>The response names the offending parameter and nothing about its
+     * internals — no expected type is echoed back with the conversion machinery's
+     * message, which can quote class names and patterns.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        log.debug("Unreadable query parameter (requestId={}): {}",
+                MDC.get(RequestIdFilter.MDC_REQUEST_ID_KEY), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "INVALID_PARAMETER",
+                "'" + ex.getName() + "' is not a valid value for this request.");
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(EntityNotFoundException ex) {
         return build(HttpStatus.NOT_FOUND, "NOT_FOUND", ex.getMessage());
@@ -138,8 +161,25 @@ public class GlobalExceptionHandler {
                         : "No endpoint matches /" + path + ".");
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConflict(DataIntegrityViolationException ex) {
+    /**
+ * Answers 409 for a business rule the caller has to resolve.
+ *
+ * <p>"Choose a warehouse", "there is no active warehouse", "not enough stock" —
+ * these are ordinary outcomes of a real system, not faults. Reporting them as
+ * 500 told a cashier the application had crashed at the moment they were trying
+ * to take money, and put a red stack-trace page in front of the till.
+ *
+ * <p>The message is returned because it is written for the person holding the
+ * till and says what to do next; it carries no internals.
+ */
+@ExceptionHandler(BusinessRuleViolationException.class)
+public ResponseEntity<ApiResponse<Void>> handleBusinessRule(BusinessRuleViolationException ex) {
+    log.info("Business rule refused the request ({}): {}", ex.getCode(), ex.getMessage());
+    return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+}
+
+@ExceptionHandler(DataIntegrityViolationException.class)
+public ResponseEntity<ApiResponse<Void>> handleConflict(DataIntegrityViolationException ex) {
         // Never leak the SQL / constraint internals.
         log.warn("Data integrity violation: {}", ex.getMessage());
         return build(HttpStatus.CONFLICT, "CONFLICT",

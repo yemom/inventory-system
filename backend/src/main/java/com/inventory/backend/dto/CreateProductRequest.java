@@ -24,6 +24,18 @@ public class CreateProductRequest {
     private Integer maxStockLevel;
     private Integer reorderLevel;
     private Integer initialQuantity; // optional opening stock
+
+    /**
+     * Where the opening stock sits, when the business has more than one
+     * warehouse.
+     *
+     * <p>Optional, and omitting it is still valid — but in a multi-warehouse
+     * business an unnamed opening balance cannot be sold from any location, so
+     * the product is created with stock that no till can draw on. Naming the
+     * warehouse here is what makes a new product immediately sellable.
+     */
+    private Long warehouseId;
+
     private boolean batchTracked;
     private boolean expiryTracked;
 }

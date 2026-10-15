@@ -4,6 +4,7 @@ import com.inventory.backend.dto.CreateProductRequest;
 import com.inventory.backend.dto.ProductDTO;
 import com.inventory.backend.dto.UpdateProductRequest;
 import com.inventory.backend.model.Category;
+import com.inventory.backend.exception.BusinessRuleViolationException;
 import com.inventory.backend.model.Product;
 import com.inventory.backend.model.StockMovement;
 import com.inventory.backend.model.User;
@@ -106,7 +107,8 @@ public class ProductService {
 
         if (openingQuantity != null && openingQuantity > 0) {
             User actor = currentUser();
-            recordOpeningStock(saved, openingQuantity, request.getPurchasePrice(), actor);
+            recordOpeningStock(saved, openingQuantity, request.getPurchasePrice(), actor,
+                    request.getWarehouseId());
         }
 
         return toDTO(saved);
@@ -126,14 +128,22 @@ public class ProductService {
      * configured — but it carries no warehouse, and the note says so rather than
      * pretending the stock has a home it does not.
      */
-    private void recordOpeningStock(Product product, int quantity, BigDecimal unitCost, User actor) {
+    private void recordOpeningStock(Product product, int quantity, BigDecimal unitCost, User actor,
+                                     Long requestedWarehouseId) {
         Warehouse warehouse = null;
         try {
-            warehouse = warehouseStockService.resolveDefaultWarehouse(null);
-        } catch (IllegalStateException undecided) {
+            warehouse = warehouseStockService.resolveDefaultWarehouse(requestedWarehouseId);
+        } catch (BusinessRuleViolationException | IllegalStateException undecided) {
             // Several warehouses exist and none was named. Recorded unassigned
             // rather than guessed at — putting the stock in the wrong place is
             // worse than leaving it unattributed and visible as such.
+            //
+            // Both exception types are caught deliberately: resolveDefaultWarehouse
+            // signals "ambiguous" with BusinessRuleViolationException, while
+            // "no warehouse exists at all" is still an IllegalStateException.
+            // Catching only one of them lets an unresolvable location abort the
+            // whole product creation, which is how adding a second warehouse
+            // silently stopped new products from being creatable.
         }
 
         if (warehouse != null) {

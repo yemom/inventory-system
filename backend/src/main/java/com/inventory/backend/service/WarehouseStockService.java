@@ -1,5 +1,6 @@
 package com.inventory.backend.service;
 
+import com.inventory.backend.exception.BusinessRuleViolationException;
 import com.inventory.backend.model.Product;
 import com.inventory.backend.model.User;
 import com.inventory.backend.model.Warehouse;
@@ -278,11 +279,11 @@ public class WarehouseStockService {
         }
         List<Warehouse> active = warehouseRepository.findByActiveTrueOrderByIdAsc();
         if (active.isEmpty()) {
-            throw new IllegalStateException(
+            throw new BusinessRuleViolationException("NO_ACTIVE_WAREHOUSE",
                     "No active warehouse exists. Stock cannot be attributed to a location.");
         }
         if (active.size() > 1) {
-            throw new IllegalStateException(
+            throw new BusinessRuleViolationException("WAREHOUSE_REQUIRED",
                     "This business has " + active.size() + " active warehouses. "
                             + "Choose the warehouse this transaction belongs to.");
         }

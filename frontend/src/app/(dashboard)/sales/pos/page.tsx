@@ -15,6 +15,9 @@ import {
   RefreshCw,
   CheckCircle,
   User,
+  // Aliased: the `Warehouse` type from the API module is imported below, and
+  // two bindings with the same name in one module is a redeclaration error.
+  Warehouse as WarehouseIcon,
 } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -30,6 +33,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { customersApi, type Customer } from "@/lib/api/customersApi";
 
 import { salesApi } from "@/lib/api/salesApi";
+import { warehousesApi, type Warehouse } from "@/lib/api/warehousesApi";
 
 import type { Product } from "@/lib/api/productsApi";
 
@@ -87,6 +91,18 @@ export default function POSPage() {
 
   const [tenderedAmount, setTenderedAmount] = useState<string>("");
 
+  /*
+   * Where the goods come from.
+   *
+   * With one active warehouse the backend picks it, and there is nothing to
+   * choose here. With two or more it refuses the sale rather than taking stock
+   * from an arbitrary location — correct, but it used to surface as a 500 and a
+   * "Sale failed" toast with no way forward. The picker below is what turns
+   * that refusal into a one-click answer.
+   */
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+
   const [receiptOrder, setReceiptOrder] = useState<ReceiptOrder | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +119,40 @@ export default function POSPage() {
       ? crypto.randomUUID()
       : `sale-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
+
+  /*
+   * Load the warehouses a sale can be taken from.
+   *
+   * Inactive warehouses are filtered out here rather than sent and rejected:
+   * offering a location that cannot hold stock would trade one dead end for
+   * another. A failure is deliberately silent — a cashier who cannot load the
+   * list can still sell when the business has only one warehouse, which is the
+   * common case, and the backend will resolve it.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    warehousesApi
+      .list()
+      .then((data) => {
+        if (!mounted) return;
+        const active = (Array.isArray(data) ? data : []).filter(
+          (w) => w.active,
+        );
+        setWarehouses(active);
+        // Pre-select when there is no real choice to make. With several, the
+        // cashier picks — defaulting silently would put stock somewhere nobody
+        // chose.
+        setWarehouseId(active.length === 1 ? active[0].id : null);
+      })
+      .catch(() => {
+        if (mounted) setWarehouses([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /*
    * Load customers.
@@ -372,6 +422,7 @@ export default function POSPage() {
     const payload = {
       customerName: customerObj?.name ?? "Walk-in Customer",
       customerId: customerObj ? Number(customerObj.id) : undefined,
+      warehouseId: warehouseId ?? undefined,
       discount: discountAmount,
       tax: taxAmount,
       paymentMethod: paymentMethodMap[paymentMethod],
@@ -534,6 +585,22 @@ export default function POSPage() {
                   <div
                     key={product.id}
                     onClick={() => !isOutOfStock && addToCart(product)}
+                    // The whole till grid is this one handler on a <div>, which
+                    // made the primary point-of-sale interaction unreachable by
+                    // keyboard and invisible to assistive technology. As a button
+                    // it is focusable, activatable with Enter/Space, and
+                    // announced with its name and whether it is sellable.
+                    role="button"
+                    tabIndex={isOutOfStock ? -1 : 0}
+                    aria-disabled={isOutOfStock}
+                    aria-label={`${product.name}${isOutOfStock ? ' — out of stock' : ''}`}
+                    onKeyDown={(event) => {
+                      if (isOutOfStock) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        addToCart(product);
+                      }
+                    }}
                     className={`relative flex cursor-pointer flex-col justify-between rounded-xl border bg-white p-3.5 transition-all dark:bg-gray-800 ${
                       isOutOfStock
                         ? "cursor-not-allowed border-gray-200 opacity-50 dark:border-gray-700"
@@ -625,6 +692,57 @@ export default function POSPage() {
               </select>
             </div>
           </div>
+
+          {/*
+            Only shown when the choice exists. One warehouse is resolved by the
+            backend and a picker for it would be noise; several is a real
+            decision, because stock leaves a specific location and the
+            movement is recorded against it.
+          */}
+          {warehouses.length > 1 && (
+            <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-amber-50 px-4 py-2 dark:border-gray-700 dark:bg-amber-900/20">
+              <label
+                htmlFor="pos-warehouse"
+                className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-200"
+              >
+                <WarehouseIcon size={13} aria-hidden="true" />
+                Sell from
+              </label>
+
+              <select
+                id="pos-warehouse"
+                name="warehouseId"
+                value={warehouseId ?? ""}
+                onChange={(event) =>
+                  setWarehouseId(
+                    event.target.value ? Number(event.target.value) : null,
+                  )
+                }
+                aria-describedby="pos-warehouse-help"
+                className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none dark:border-amber-700 dark:bg-gray-700 dark:text-gray-200"
+              >
+                <option value="">Choose a warehouse…</option>
+
+                {warehouses.map((w) => (
+                  <option key={w.id} value={String(w.id)}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {warehouses.length === 1 && (
+            <p
+              id="pos-warehouse-help"
+              className="border-b border-gray-200 bg-gray-50 px-4 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-700/40 dark:text-gray-400"
+            >
+              Selling from{" "}
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                {warehouses[0].name}
+              </span>
+            </p>
+          )}
 
           {/* Cart items */}
           <div className="flex-1 space-y-2.5 divide-y divide-gray-100 overflow-y-auto p-4 dark:divide-gray-700/50">
@@ -829,7 +947,19 @@ export default function POSPage() {
             {/* Checkout */}
             <Button
               onClick={handleCheckout}
-              disabled={cart.length === 0 || submitting}
+              // Blocked when a warehouse is required but not chosen: the
+              // backend would refuse the sale anyway, and refusing it here
+              // says why before the till is left hanging.
+              disabled={
+                cart.length === 0 ||
+                submitting ||
+                (warehouses.length > 1 && warehouseId === null)
+              }
+              title={
+                warehouses.length > 1 && warehouseId === null
+                  ? "Choose a warehouse to sell from"
+                  : undefined
+              }
               className="w-full gap-2 py-2.5 text-sm font-bold shadow-md"
             >
               <CheckCircle size={16} />
