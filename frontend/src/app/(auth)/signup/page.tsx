@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Package, Lock, User, Mail, AlertCircle, ArrowRight, CheckCircle2, Phone } from 'lucide-react';
 import Link from 'next/link';
+import { getApiBaseUrl } from '@/lib/api/apiClient';
 import { useRouter } from 'next/navigation';
 import { backendUnavailableMessage } from '@/lib/api/apiErrors';
 
@@ -77,7 +78,11 @@ export default function SignupPage() {
     setServerError('');
     // Declared outside the try so the catch block can name the URL that was
     // actually contacted when the request never reached the API.
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8081/api/v1';
+    //
+    // Falls back to the shared resolver rather than repeating the literal:
+    // a browser that is not on the API's own machine cannot reach
+    // `localhost:8081`, and hard-coding it here produced exactly that.
+    const apiBase = getApiBaseUrl();
 
     try {
       const nameParts = data.fullName.trim().split(/\s+/);

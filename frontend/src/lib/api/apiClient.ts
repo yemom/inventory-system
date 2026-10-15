@@ -18,12 +18,43 @@ import axios, { AxiosRequestConfig } from 'axios';
  *
  * The `backend` hostname is NOT resolvable by the user's browser,
  * so it is never used as the public URL.
+ *
+ * When no URL is configured, one is derived from the page's own origin rather
+ * than assumed to be `localhost`. The assumption is wrong whenever the browser
+ * is not on the machine running the API — a colleague opening the app from
+ * their own desk, or a phone on the shop network — and the symptom is
+ * `ERR_CONNECTION_REFUSED` on every request with no hint as to why, because
+ * `localhost` in the browser means *the browser's own machine*. Deriving from
+ * `location.hostname` reaches the same server in every one of those cases.
  */
+const DEFAULT_API_PORT = '8081';
+
+function derivedBrowserBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return `http://localhost:${DEFAULT_API_PORT}/api/v1`;
+  }
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:${DEFAULT_API_PORT}/api/v1`;
+}
+
+/**
+ * Reads an env var, treating an empty string as absent.
+ *
+ * <p>`??` only catches null and undefined, so an env var that is present but
+ * blank — `NEXT_PUBLIC_API_BASE_URL=` in a compose file or shell export — would
+ * win and produce requests against the empty string. Every request would then
+ * fail with an error that names no host at all.
+ */
+function envUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 const PUBLIC_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8081/api/v1';
+  envUrl(process.env.NEXT_PUBLIC_API_BASE_URL) ?? derivedBrowserBaseUrl();
 
 const SERVER_API_BASE_URL =
-  process.env.API_INTERNAL_BASE_URL ?? PUBLIC_API_BASE_URL;
+  envUrl(process.env.API_INTERNAL_BASE_URL) ?? PUBLIC_API_BASE_URL;
 
 export const getApiBaseUrl = (): string =>
   typeof window === 'undefined' ? SERVER_API_BASE_URL : PUBLIC_API_BASE_URL;
