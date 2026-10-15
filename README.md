@@ -1043,6 +1043,22 @@ browser uses the public URL. It falls back to `NEXT_PUBLIC_API_BASE_URL` when
 unset. Neither variable should ever carry a secret: both are inlined into the
 client bundle, which is why they carry URLs and nothing else.
 
+> **Set `NEXT_PUBLIC_API_BASE_URL` for anyone who is not on the API's own
+> machine.** The value is compiled into the browser bundle, so `localhost`
+> means *the browser's machine*, not the server. A colleague opening the app
+> from their own desk, or a phone on the shop network, gets
+> `net::ERR_CONNECTION_REFUSED` on every request and no explanation, because
+> nothing about the page looks wrong.
+>
+> Set it to the address that machine can actually reach — the host's LAN IP
+> (`http://192.168.x.x:8081/api/v1`) for local network use, or the public API
+> URL for a deployed frontend — and restart the frontend so the new value is
+> rebuilt into the bundle. Editing the value without rebuilding changes
+> nothing.
+>
+> When it is left unset entirely, the client derives the API address from the
+> page's own origin, which works from any machine on the same host.
+
 The client automatically attaches the JWT token to authenticated requests.
 
 Example:

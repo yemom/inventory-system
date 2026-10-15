@@ -229,11 +229,19 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
                         >
                           {order.orderNumber ?? order.reference ?? `#${order.id}`}
                         </Link>
-                        {order.branch?.name && (
+                        {order.branch?.name ? (
                           <span className="block text-xs font-normal text-gray-400">
                             {order.branch.name}
                           </span>
-                        )}
+                        ) : order.warehouseName ? (
+                          // The branch is free text on the cashier's account and
+                          // is often blank on older records. The warehouse the
+                          // stock left is always there for a sale that moved
+                          // goods, so it is what fills the line instead.
+                          <span className="block text-xs font-normal text-gray-400">
+                            {order.warehouseName}
+                          </span>
+                        ) : null}
                       </th>
                       <td className="py-2 pr-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                         {order.createdAt ? formatDateTime(order.createdAt) : '—'}

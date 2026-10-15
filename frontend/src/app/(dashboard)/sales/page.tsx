@@ -81,7 +81,11 @@ export default function SalesPage() {
       key: 'branch',
       label: 'Branch',
       render: (_v, row) => {
-        const name = row?.branch?.name;
+        // Prefer the branch recorded on the cashier: it is the shop. Fall back
+        // to the warehouse stock actually left, which every sale that moved
+        // goods has — a blank cell otherwise reads as missing data when it is
+        // simply recorded under a different name.
+        const name = row?.branch?.name ?? row?.warehouseName;
         return name ? <span className="text-sm">{name}</span> : <Dash />;
       },
     },
@@ -148,7 +152,7 @@ export default function SalesPage() {
               </div>
               <div>
                 <p className="text-gray-500">Branch</p>
-                <p className="font-medium">{viewOrder.branch?.name ?? '—'}</p>
+                <p className="font-medium">{viewOrder.branch?.name ?? viewOrder.warehouseName ?? '-'}</p>
               </div>
               <div><p className="text-gray-500">Status</p><Badge variant={statusVariant[viewOrder.status ?? ''] ?? 'default'}>{viewOrder.status}</Badge></div>
               <div><p className="text-gray-500">Payment</p><Badge variant={payVariant[viewOrder.paymentStatus || ''] ?? 'default'}>{viewOrder.paymentStatus}</Badge></div>

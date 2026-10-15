@@ -151,6 +151,22 @@ describe('SalesOrderTable', () => {
     expect(within(row).getByText(/500\.00/)).toBeInTheDocument();
   });
 
+  it('falls back to the warehouse when the cashier has no branch recorded', async () => {
+    // Branch is free text on the user account and is genuinely often absent.
+    // The warehouse the stock left is always there for a sale that moved goods,
+    // so it is what the row shows rather than a blank line.
+    grantPermissions(['SALE_READ', 'SALES_REPORT_VIEW']);
+    mockedList.mockResolvedValue(
+      pageOf([order({ branch: null, warehouseName: 'Main Warehouse' })]),
+    );
+
+    renderTable();
+
+    await screen.findByText('SO-000013');
+    const row = screen.getByRole('row', { name: /SO-000013/ });
+    expect(within(row).getByText('Main Warehouse')).toBeInTheDocument();
+  });
+
   it('distinguishes a pending order from an unpaid one', async () => {
     grantPermissions(['SALE_READ']);
     mockedList.mockResolvedValue(

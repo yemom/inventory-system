@@ -67,6 +67,16 @@ export const saleOrderSchema = z.object({
   cashier: refSchema,
   /** Where it was rung. Absent when the cashier has no branch recorded. */
   branch: refSchema,
+  /**
+   * The warehouse the goods left, named on the order.
+   *
+   * <p>Separate from {@link branch}, which is free text on the user row and is
+   * often blank on accounts created before it was recorded. A sale that moved
+   * stock always has a warehouse, so this is the one that is actually present —
+   * and it is what a "where" column falls back to when the branch is empty.
+   */
+  warehouseId: z.number().nullable().optional(),
+  warehouseName: z.string().nullable().optional(),
 
   voidStatus: z.string().nullable().optional(),
   refundStatus: z.string().nullable().optional(),
