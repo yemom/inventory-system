@@ -111,6 +111,15 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     List<Payment> findBySaleOrderIdOrderByCreatedAtAsc(Long saleOrderId);
 
+    /**
+     * Payments for a set of sales, in one round trip.
+     *
+     * <p>A dashboard that summarises a day's takings must not ask the database
+     * once per order; this is the single query that answers "what was collected
+     * against these orders".
+     */
+    List<Payment> findBySaleOrderIdIn(java.util.Collection<Long> saleOrderIds);
+
     List<Payment> findByPurchaseOrderIdOrderByCreatedAtAsc(Long purchaseOrderId);
 
     @Query("""

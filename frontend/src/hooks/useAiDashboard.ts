@@ -34,6 +34,23 @@ export function useDashboardFinancial(range: DateRangeParams, enabled = true) {
 }
 
 /**
+ * Sales totals for the period, as the server sees them for this caller.
+ *
+ * <p>Not gated on a reporting permission: the endpoint answers for everyone, and
+ * for a cashier it answers with their own orders alone. That is the point of it —
+ * the scoping happens server-side, so nothing here decides whose data to show.
+ */
+export function useSalesSummary(range: DateRangeParams, enabled = true) {
+  return useQuery({
+    queryKey: ['dashboard', 'sales-summary', range.from, range.to],
+    queryFn: () => dashboardApi.salesSummary(range),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/**
  * The whole AI dashboard in one request.
  *
  * <p>One request rather than five so the page renders from a single consistent
@@ -112,6 +129,7 @@ export function useModelHistory(modelKey?: string, enabled = true) {
 
 export default {
   useDashboardFinancial,
+  useSalesSummary,
   useAiDashboard,
   useAiInsights,
   useReorderRecommendations,

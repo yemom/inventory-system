@@ -7,6 +7,7 @@ import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.finance.FinancialCalculationService;
 import com.inventory.backend.finance.FinancialSummary;
 import com.inventory.backend.repository.*;
+import com.inventory.backend.service.SalesSummaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +47,7 @@ public class DashboardController {
     private final FinancialInsightService insightService;
     private final InventoryOptimizationService inventoryService;
     private final AnomalyDetectionService anomalyService;
+    private final SalesSummaryService salesSummaryService;
 
     /**
      * Operational figures only: counts and stock alerts.
@@ -145,6 +147,31 @@ public class DashboardController {
      * dashboard still works — the intelligence section is an addition to the
      * page, not a precondition for rendering it.
      */
+    /**
+     * Sales totals for a dashboard, scoped by the server to the caller.
+     *
+     * <p>Requires {@code DASHBOARD_VIEW}, which every role holds, because the
+     * figures it returns are a count of somebody's own work — not the business's
+     * financial picture. A caller holding {@code SALES_REPORT_VIEW} gets every
+     * seller; anyone else, a cashier included, gets only the orders they
+     * recorded. There is no parameter to widen that: the scope comes from the
+     * authenticated user, so the browser cannot ask for another cashier's
+     * takings.
+     *
+     * <p>Cancelled and voided orders are counted and returned separately rather
+     * than dropped, and collected cash comes only from completed payments — an
+     * order existing is not the same as it having been paid.
+     */
+    @GetMapping("/sales-summary")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> salesSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long warehouseId) {
+        return ResponseEntity.ok(ApiResponse.ok("Sales summary",
+                salesSummaryService.summarise(from, to, warehouseId)));
+    }
+
     @GetMapping("/insights")
     @PreAuthorize("hasAuthority('AI_INSIGHT_VIEW')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> insights(

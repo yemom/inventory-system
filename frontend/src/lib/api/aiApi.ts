@@ -390,11 +390,53 @@ export const financeApi = {
   },
 };
 
+/**
+ * Sales totals for the caller's dashboard.
+ *
+ * <p>The scope is decided by the server: `OWN_SALES` for anyone without
+ * SALES_REPORT_VIEW, `ALL_SALES` for those who hold it. There is no parameter
+ * to widen it, so a browser cannot ask for another cashier's takings.
+ */
+export interface SalesSummary {
+  from: string;
+  to: string;
+  scope: 'OWN_SALES' | 'ALL_SALES';
+  ordersCreated: number;
+  completedSales: number;
+  cancelledOrders: number;
+  voidedOrders: number;
+  grossSales: number;
+  discounts: number;
+  returns: number;
+  netSales: number;
+  amountCollected: number;
+  outstanding: number;
+  unitsSold: number;
+  averageOrderValue: number;
+  /** Net sales per payment method. */
+  paymentMethods: Record<string, number>;
+  /** Net sales per hour of the day, keyed "0".."23". */
+  hourlySales: Record<string, number>;
+  basis: string;
+}
+
 export const dashboardApi = {
   /** Operational counts. No revenue, no cost, no margin. */
   stats: async () => {
     const response = await apiClient.get('/dashboard/stats');
     return unwrap<Record<string, unknown>>(response);
+  },
+
+  /**
+   * Sales for the period, scoped on the server to whoever is asking.
+   *
+   * <p>Orders are counted apart from completed sales, and cancelled or voided
+   * orders are reported separately: an order existing is not the same as it
+   * having been sold or paid for.
+   */
+  salesSummary: async (params: DateRangeParams & { warehouseId?: number } = {}) => {
+    const response = await apiClient.get('/dashboard/sales-summary', { params });
+    return unwrap<SalesSummary>(response);
   },
 
   /** The financial picture. Gated on FINANCIAL_REPORT_VIEW. */
@@ -426,6 +468,7 @@ export const reportsApi = {
       | 'profit-loss-detail'
       | 'product-profitability'
       | 'inventory-valuation'
+      | 'inventory'
       | 'movements'
       | 'transfers'
       | 'shrinkage'
