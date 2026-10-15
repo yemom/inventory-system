@@ -89,11 +89,18 @@ public class PerformanceIndexInitializer {
             try (var in = new ClassPathResource(SCRIPT).getInputStream()) {
                 content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
+            // Comments are stripped per *line* before the emptiness check, not
+            // per statement. Dropping any statement whose text happened to start
+            // with "--" silently discarded every index written underneath a
+            // comment — the file documents each index with one — so roughly a
+            // third of them never ran and nothing said so: the log counted only
+            // what survived the filter and reported no failures.
             return Arrays.stream(content.split(";"))
-                    .map(String::trim)
+                    .map(chunk -> chunk.lines()
+                            .filter(line -> !line.trim().startsWith("--"))
+                            .collect(java.util.stream.Collectors.joining("\n"))
+                            .trim())
                     .filter(s -> !s.isEmpty())
-                    // strip comment-only lines
-                    .filter(s -> !s.startsWith("--"))
                     .toList();
         } catch (Exception e) {
             log.warn("Performance index script {} not found: {}", SCRIPT, e.getMessage());

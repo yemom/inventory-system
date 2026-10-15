@@ -120,20 +120,29 @@ public class ReportService {
         for (Object[] r : rows) {
             long id = ((Number) r[0]).longValue();
             Product product = products.get(id);
-            double soldUnits = ((Number) r[1]).doubleValue();
-            double revenue = ((Number) r[2]).doubleValue();
-            double cost = ((Number) r[3]).doubleValue();
+
+            // The aggregates arrive from SQL as exact NUMERIC. They are read as
+            // BigDecimal and stay in it: routing money through double loses
+            // cents (1234.56 can come back as 1234.5600000000001), and this
+            // figure then disagrees with the dashboard and the finance reports,
+            // which derive the same number in decimal arithmetic. unitsSold is a
+            // count, so a long is the honest type for it too.
+            long soldUnits = ((Number) r[1]).longValue();
+            BigDecimal revenue = (BigDecimal) r[2];
+            BigDecimal cost = (BigDecimal) r[3];
+            BigDecimal grossProfit = revenue.subtract(cost);
+
             lines.add(row(
                     "sku", product == null ? "—" : product.getSku(),
                     "product", product == null ? "Product " + id : product.getName(),
-                    "unitsSold", (long) soldUnits,
-                    "revenue", BigDecimal.valueOf(revenue),
-                    "costOfGoodsSold", BigDecimal.valueOf(cost),
-                    "grossProfit", BigDecimal.valueOf(revenue - cost),
-                    "marginPercent", revenue == 0 ? BigDecimal.ZERO
-                            : BigDecimal.valueOf(revenue - cost)
+                    "unitsSold", soldUnits,
+                    "revenue", revenue,
+                    "costOfGoodsSold", cost,
+                    "grossProfit", grossProfit,
+                    "marginPercent", revenue.signum() == 0 ? BigDecimal.ZERO
+                            : grossProfit
                             .multiply(BigDecimal.valueOf(100))
-                            .divide(BigDecimal.valueOf(revenue), 1, java.math.RoundingMode.HALF_UP)));
+                            .divide(revenue, 1, java.math.RoundingMode.HALF_UP)));
         }
         lines.sort((a, b) -> ((BigDecimal) b.get("grossProfit")).compareTo((BigDecimal) a.get("grossProfit")));
 

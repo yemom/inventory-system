@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Map;
 
 /**
@@ -38,19 +40,27 @@ public class SalesReportController {
      *
      * <p>{@code SALE_READ} is deliberately not accepted: reading your own sale is
      * not the same authority as reading everyone's.
+     *
+     * <p>{@code from}/{@code to} are whole dates, like every other report
+     * endpoint. They used to be {@code LocalDateTime} with
+     * {@code ISO.DATE_TIME}, which made this the only endpoint in the API that
+     * rejected {@code from=2026-07-01} — the format the date filters and every
+     * other report use — and answered 500 instead of treating it as the bad
+     * request it was.
      */
     @GetMapping("/sales")
     @PreAuthorize("hasAnyAuthority('SALES_REPORT_VIEW','REPORT_VIEW')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> salesReport(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) Long productId,
             @RequestParam(required = false) Long sellerId,
             @RequestParam(required = false) String paymentMethod,
             @RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.ok("Sales report retrieved successfully",
-                salesReportService.salesReport(from, to, customerId, productId, sellerId, paymentMethod, status)));
+                salesReportService.salesReport(startOf(from), endOf(to), customerId, productId,
+                        sellerId, paymentMethod, status)));
     }
 
     /** Low-stock and out-of-stock lines. A Supervisor may read this. */
@@ -91,9 +101,24 @@ public class SalesReportController {
     @GetMapping("/profit-loss")
     @PreAuthorize("hasAuthority('PROFIT_LOSS_READ')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> profitLossReport(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ResponseEntity.ok(ApiResponse.ok("Profit and loss retrieved successfully",
-                salesReportService.profitLossReport(from, to)));
+                salesReportService.profitLossReport(startOf(from), endOf(to))));
+    }
+
+    /**
+     * The requested day as the first instant of it, and the last.
+     *
+     * <p>Reports are read in whole days: a caller asking for "the 1st" means
+     * everything that happened on the 1st, not the nanosecond it began. An
+     * absent bound stays absent, which the services read as "no limit".
+     */
+    private static LocalDateTime startOf(LocalDate date) {
+        return date == null ? null : date.atStartOfDay();
+    }
+
+    private static LocalDateTime endOf(LocalDate date) {
+        return date == null ? null : date.atTime(LocalTime.MAX);
     }
 }

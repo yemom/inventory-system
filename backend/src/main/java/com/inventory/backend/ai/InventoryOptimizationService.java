@@ -93,6 +93,7 @@ public class InventoryOptimizationService {
                         .mapToDouble(Double::doubleValue).toArray());
 
         List<ReorderRecommendation> recommendations = new ArrayList<>();
+        Map<Long, Integer> onOrderByProduct = stockOnOrderByProduct();
 
         for (Product product : products) {
             double velocity = forecastingService.averageDailyUnits(product.getId());
@@ -114,7 +115,7 @@ public class InventoryOptimizationService {
             // Already on order counts against what still needs buying. Recommending
             // a second order for goods already in transit is the classic way a
             // reorder system creates overstock.
-            int onOrder = stockOnOrder(product.getId());
+            int onOrder = onOrderByProduct.getOrDefault(product.getId(), 0);
 
             double daysOfCover = onHand <= 0 ? 0 : onHand / velocity;
             int suggested = (int) Math.ceil(Math.max(
@@ -163,9 +164,10 @@ public class InventoryOptimizationService {
                 .toList();
 
         List<StockoutRisk> risks = new ArrayList<>();
+        Map<Long, Integer> onOrderByProduct = stockOnOrderByProduct();
         for (Product product : products) {
             int onHand = warehouseStockRepository.totalQuantityForProduct(product.getId());
-            int onOrder = stockOnOrder(product.getId());
+            int onOrder = onOrderByProduct.getOrDefault(product.getId(), 0);
             double velocity = forecastingService.averageDailyUnits(product.getId());
             if (velocity <= 0) {
                 continue;
@@ -294,28 +296,34 @@ public class InventoryOptimizationService {
     }
 
     /**
-     * Units already ordered against this product that have not arrived.
-     *
-     * <p>Computed from the outstanding quantity on each open purchase line, not
-     * from the order status, so a partially received order contributes only what
-     * is still missing.
-     */
-    private int stockOnOrder(Long productId) {
-        int total = 0;
-        for (PurchaseOrder order : purchaseOrderRepository.findNotFullyReceived(
-                org.springframework.data.domain.Pageable.unpaged()).getContent()) {
-            if (order.getItems() == null) {
-                continue;
-            }
-            for (var item : order.getItems()) {
-                if (item.getProduct() != null
-                        && productId.equals(item.getProduct().getId())) {
-                    total += item.getQuantityOutstanding();
-                }
+ * Units already ordered against each product that have not arrived.
+ *
+ * <p>Computed from the outstanding quantity on each open purchase line, not
+ * from the order status, so a partially received order contributes only what
+ * is still missing.
+ *
+ * <p>Read once per request and returned as a map. It used to be a method taking
+ * a product id, called inside the loop over the catalogue, and each call loaded
+ * <em>every</em> open purchase order with all of its lines and products — so a
+ * 1,000-product catalogue against 200 open purchase orders materialised
+ * 200,000 purchase-order rows to answer one request, and then the next product
+ * did it again. The figures are identical; they are simply read once.
+ */
+private Map<Long, Integer> stockOnOrderByProduct() {
+    Map<Long, Integer> byProduct = new HashMap<>();
+    for (PurchaseOrder order : purchaseOrderRepository.findNotFullyReceived(
+            org.springframework.data.domain.Pageable.unpaged()).getContent()) {
+        if (order.getItems() == null) {
+            continue;
+        }
+        for (var item : order.getItems()) {
+            if (item.getProduct() != null) {
+                byProduct.merge(item.getProduct().getId(), item.getQuantityOutstanding(), Integer::sum);
             }
         }
-        return total;
     }
+    return byProduct;
+}
 
     /**
      * Lead time to assume for a product.

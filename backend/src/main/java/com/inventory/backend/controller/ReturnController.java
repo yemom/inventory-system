@@ -1,7 +1,7 @@
 package com.inventory.backend.controller;
 
 import com.inventory.backend.dto.ApiResponse;
-import com.inventory.backend.model.ReturnOrder;
+import com.inventory.backend.dto.ReturnOrderDTO;
 import com.inventory.backend.service.ReturnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,7 +32,7 @@ public class ReturnController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('RETURN_READ')")
-    public ResponseEntity<ApiResponse<Page<ReturnOrder>>> list(
+    public ResponseEntity<ApiResponse<Page<ReturnOrderDTO>>> list(
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
@@ -44,7 +44,7 @@ public class ReturnController {
     /** Returns awaiting a decision. */
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('RETURN_APPROVE')")
-    public ResponseEntity<ApiResponse<Page<ReturnOrder>>> pending(
+    public ResponseEntity<ApiResponse<Page<ReturnOrderDTO>>> pending(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.ok("Returns awaiting approval",
@@ -59,10 +59,10 @@ public class ReturnController {
      */
     @PostMapping("/sales/{saleOrderId}")
     @PreAuthorize("hasAuthority('RETURN_CREATE')")
-    public ResponseEntity<ApiResponse<ReturnOrder>> salesReturn(
+    public ResponseEntity<ApiResponse<ReturnOrderDTO>> salesReturn(
             @PathVariable Long saleOrderId,
             @RequestBody Map<String, Object> body) {
-        ReturnOrder created = returnService.createSalesReturn(
+        ReturnOrderDTO created = returnService.createSalesReturn(
                 saleOrderId, lines(body), text(body, "reason"), text(body, "notes"));
         return ResponseEntity.ok(ApiResponse.ok(
                 "Sales return recorded (awaiting approval)", created));
@@ -71,10 +71,10 @@ public class ReturnController {
     /** Raises a return of goods back to a supplier. */
     @PostMapping("/purchases/{purchaseOrderId}")
     @PreAuthorize("hasAuthority('RETURN_CREATE')")
-    public ResponseEntity<ApiResponse<ReturnOrder>> purchaseReturn(
+    public ResponseEntity<ApiResponse<ReturnOrderDTO>> purchaseReturn(
             @PathVariable Long purchaseOrderId,
             @RequestBody Map<String, Object> body) {
-        ReturnOrder created = returnService.createPurchaseReturn(
+        ReturnOrderDTO created = returnService.createPurchaseReturn(
                 purchaseOrderId, lines(body), text(body, "reason"), text(body, "notes"));
         return ResponseEntity.ok(ApiResponse.ok(
                 "Purchase return recorded (awaiting approval)", created));
@@ -90,7 +90,7 @@ public class ReturnController {
      */
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('RETURN_APPROVE')")
-    public ResponseEntity<ApiResponse<ReturnOrder>> approve(
+    public ResponseEntity<ApiResponse<ReturnOrderDTO>> approve(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body) {
         return ResponseEntity.ok(ApiResponse.ok("Return approved",
@@ -99,7 +99,7 @@ public class ReturnController {
 
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority('RETURN_APPROVE')")
-    public ResponseEntity<ApiResponse<ReturnOrder>> reject(
+    public ResponseEntity<ApiResponse<ReturnOrderDTO>> reject(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body) {
         return ResponseEntity.ok(ApiResponse.ok("Return rejected",

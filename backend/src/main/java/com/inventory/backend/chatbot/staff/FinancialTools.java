@@ -283,9 +283,7 @@ public class FinancialTools {
      * staff information, and the permission on the tool is what keeps it staff's.
      */
     public Map<String, Object> searchSale(String orderNumber) {
-        return saleOrderRepository.findAllWithDetails(Pageable.unpaged()).stream()
-                .filter(sale -> orderNumber.equalsIgnoreCase(sale.getOrderNumber()))
-                .findFirst()
+        return saleOrderRepository.findByOrderNumberWithDetails(orderNumber)
                 .map(order -> {
                     Map<String, Object> out = new LinkedHashMap<>();
                     out.put("found", true);

@@ -1,5 +1,6 @@
 package com.inventory.backend.service;
 
+import com.inventory.backend.dto.ReturnOrderDTO;
 import com.inventory.backend.model.*;
 import com.inventory.backend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -52,7 +53,7 @@ public class ReturnService {
      * out of nothing.
      */
     @Transactional
-    public ReturnOrder createSalesReturn(Long saleOrderId, List<LineRequest> lines,
+    public ReturnOrderDTO createSalesReturn(Long saleOrderId, List<LineRequest> lines,
                                          String reason, String notes) {
         SaleOrder sale = saleOrderRepository.findById(saleOrderId)
                 .orElseThrow(() -> new IllegalArgumentException("Sale not found: id=" + saleOrderId));
@@ -113,12 +114,12 @@ public class ReturnService {
                 actor == null ? "system" : actor.getUsername(),
                 "SALES_RETURN_RAISED", "RETURN", String.valueOf(saved.getId()),
                 saved.getReturnNumber() + " against " + sale.getOrderNumber());
-        return saved;
+        return ReturnOrderDTO.from(saved);
     }
 
     /** Raises a purchase return: goods going back to a supplier. */
     @Transactional
-    public ReturnOrder createPurchaseReturn(Long purchaseOrderId, List<LineRequest> lines,
+    public ReturnOrderDTO createPurchaseReturn(Long purchaseOrderId, List<LineRequest> lines,
                                             String reason, String notes) {
         PurchaseOrder order = purchaseOrderRepository.findById(purchaseOrderId)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -176,7 +177,7 @@ public class ReturnService {
                 actor == null ? "system" : actor.getUsername(),
                 "PURCHASE_RETURN_RAISED", "RETURN", String.valueOf(saved.getId()),
                 saved.getReturnNumber() + " against " + order.getOrderNumber());
-        return saved;
+        return ReturnOrderDTO.from(saved);
     }
 
     /**
@@ -186,8 +187,19 @@ public class ReturnService {
      * <p>Refuses an approval that would remove stock the warehouse does not
      * have — a supplier return of goods that were already sold would otherwise
      * drive stock negative and quietly distort the valuation.
+     *
+     * <p>{@code @Transactional} is not optional here. The ledger posts through
+     * {@link StockLedgerService}, whose writes are
+     * {@code Propagation.MANDATORY} precisely so that a stock movement can never
+     * be committed without the order that caused it. Without a transaction of its
+     * own, approving a return threw
+     * {@code IllegalTransactionStateException} and answered 500: the goods were
+     * never restocked and the return was never marked approved. The test suite
+     * hid it, because the integration base class is itself transactional, so the
+     * approval ran inside a transaction it does not have in production.
      */
-    public ReturnOrder approve(Long id, String note) {
+    @Transactional
+    public ReturnOrderDTO approve(Long id, String note) {
         ReturnOrder ret = returnOrderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Return not found: id=" + id));
         if (!ReturnOrder.STATUS_PENDING.equals(ret.getStatus())) {
@@ -256,12 +268,12 @@ public class ReturnService {
                 actor == null ? "system" : actor.getUsername(),
                 "RETURN_APPROVED", "RETURN", String.valueOf(saved.getId()),
                 saved.getReturnNumber() + " (" + saved.getTotalAmount().toPlainString() + ")");
-        return saved;
+        return ReturnOrderDTO.from(saved);
     }
 
     /** Refuses a return. No stock moves and no money changes. */
     @Transactional
-    public ReturnOrder reject(Long id, String note) {
+    public ReturnOrderDTO reject(Long id, String note) {
         ReturnOrder ret = returnOrderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Return not found: id=" + id));
         if (!ReturnOrder.STATUS_PENDING.equals(ret.getStatus())) {
@@ -289,18 +301,18 @@ public class ReturnService {
                 actor == null ? "system" : actor.getUsername(),
                 "RETURN_REJECTED", "RETURN", String.valueOf(saved.getId()),
                 saved.getReturnNumber() + (note == null ? "" : " — " + note));
-        return saved;
+        return ReturnOrderDTO.from(saved);
     }
 
     @Transactional(readOnly = true)
-    public Page<ReturnOrder> search(String type, String status, Pageable pageable) {
-        return returnOrderRepository.search(type, status, pageable);
+    public Page<ReturnOrderDTO> search(String type, String status, Pageable pageable) {
+        return returnOrderRepository.search(type, status, pageable).map(ReturnOrderDTO::from);
     }
 
     @Transactional(readOnly = true)
-    public Page<ReturnOrder> pending(Pageable pageable) {
+    public Page<ReturnOrderDTO> pending(Pageable pageable) {
         return returnOrderRepository.findByStatusOrderByCreatedAtAsc(
-                ReturnOrder.STATUS_PENDING, pageable);
+                ReturnOrder.STATUS_PENDING, pageable).map(ReturnOrderDTO::from);
     }
 
     private ReturnOrder newReturn(String type, String originalReference, String partyName,
