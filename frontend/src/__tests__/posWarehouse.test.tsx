@@ -1,25 +1,22 @@
-/**
- * The till must be able to take money.
+﻿/**
+ * The till must be able to take money without being asked to choose something
+ * it has no way to know.
  *
- * A cashier who cannot complete a sale is not a degraded experience, it is a
- * closed shop — and that is exactly what happened: the business had two active
- * warehouses, the till sent neither, and the backend answered 500. The picker
- * below is the fix, and these tests exist so the fix cannot quietly regress
- * into a button that does nothing.
+ * The warehouse picker was removed at the owner's request. That reintroduces a
+ * real hazard: with more than one active location the backend refuses a sale
+ * that does not name one, and a till that cannot sell is a closed shop rather
+ * than a degraded experience.
  *
- * Three things are pinned:
- *  1. The picker appears only when the choice is real (more than one warehouse).
- *  2. "Complete Sale" is refused until a warehouse is chosen, so the failure
- *     happens before the customer is waiting rather than after.
- *  3. The chosen warehouse is sent on the request.
+ * So what protects it now is resolution in the component. These tests pin it:
+ *   1. No picker appears, at any number of warehouses.
+ *   2. The checkout button is never disabled for a reason nobody can see.
+ *   3. The resolved warehouse still reaches the API, and is never a closed one.
  */
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PosPage from '@/app/(dashboard)/sales/pos/page';
 import { salesApi } from '@/lib/api/salesApi';
 import { warehousesApi } from '@/lib/api/warehousesApi';
-import { useToast } from '@/components/ui/ToastProvider';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -31,7 +28,21 @@ jest.mock('@/lib/api/customersApi', () => ({
   customersApi: { list: jest.fn().mockResolvedValue([]) },
 }));
 jest.mock('@/hooks/useProducts', () => ({
-  useProducts: () => ({ data: [], isLoading: false }),
+  useProducts: () => ({
+    data: [
+      {
+        id: 5,
+        sku: 'DEL-INSP-002',
+        name: 'Dell Inspiron',
+        sellingPrice: 100,
+        quantity: 12,
+        active: true,
+        // The category filter matches on the name, and defaults to "All".
+        categoryName: 'Laptops',
+      },
+    ],
+    isLoading: false,
+  }),
 }));
 jest.mock('@/components/ui/ToastProvider', () => ({
   useToast: () => ({ toast: jest.fn() }),
@@ -42,20 +53,8 @@ const mockedWarehouses = warehousesApi.list as jest.MockedFunction<
   typeof warehousesApi.list
 >;
 
-const PRODUCT = {
-  id: 5,
-  sku: 'DEL-INSP-002',
-  name: 'Dell Inspiron',
-  sellingPrice: 100,
-  quantity: 12,
-  category: { id: 1, name: 'Laptops' },
-};
-
-function product(overrides: Record<string, unknown> = {}) {
-  return { ...PRODUCT, ...overrides };
-}
-
 function renderPos() {
+  // The page uses react-query for its products, so it needs a real provider.
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -66,7 +65,35 @@ function renderPos() {
   );
 }
 
-describe('POS warehouse selection', () => {
+/** Adds the only product to the cart, so checkout has something to sell. */
+async function addToCart() {
+  const card = await screen.findByText('Dell Inspiron');
+  card.click();
+}
+
+/** Settles the payment fields the form requires, then submits. */
+async function completeCheckout() {
+  // The cash field only exists for the cash method, and defaults to cash.
+  const tendered = screen.queryByPlaceholderText(/cash given/i);
+  if (tendered) {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )?.set;
+    setter?.call(tendered, '999999');
+    tendered.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: /complete sale/i }),
+    ).toBeEnabled(),
+  );
+  screen
+    .getByRole('button', { name: /complete sale/i })
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+}
+
+describe('POS — warehouse resolution', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedWarehouses.mockResolvedValue([
@@ -74,65 +101,64 @@ describe('POS warehouse selection', () => {
       { id: 2, name: 'Branch Warehouse', active: true },
     ]);
     mockedCreate.mockResolvedValue({
-      ...product(),
       id: 99,
       orderNumber: 'SO-000099',
       createdAt: new Date().toISOString(),
       totalAmount: 100,
       finalAmount: 100,
+      status: 'PAID',
     } as never);
   });
 
-  it('offers a warehouse picker when there is more than one location', async () => {
-    renderPos();
-
-    const picker = await screen.findByLabelText(/sell from/i);
-    expect(picker).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Main Warehouse' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Branch Warehouse' })).toBeInTheDocument();
-  });
-
-  it('hides the picker when the business has a single warehouse', async () => {
-    mockedWarehouses.mockResolvedValue([
-      { id: 1, name: 'Main Warehouse', active: true },
-    ]);
-
+  it('shows no warehouse picker, even with several warehouses', async () => {
     renderPos();
 
     await waitFor(() => expect(mockedWarehouses).toHaveBeenCalled());
-    // The backend resolves one location on its own; asking would have no answer.
     expect(screen.queryByLabelText(/sell from/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Selling from/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Active Cart/)).not.toBeInTheDocument();
   });
 
-  it('ignores inactive warehouses', async () => {
-    // Three warehouses, one of them closed: the picker must still appear
-    // because two active locations remain a real choice, and the closed one
-    // must not be among them.
-    mockedWarehouses.mockResolvedValue([
-      { id: 1, name: 'Main Warehouse', active: true },
-      { id: 2, name: 'Branch Warehouse', active: true },
-      { id: 3, name: 'Closed Warehouse', active: false },
-    ]);
-
+  it('still sends a warehouse on the sale when there are several', async () => {
     renderPos();
+    await waitFor(() => expect(mockedWarehouses).toHaveBeenCalled());
+    await addToCart();
+    await completeCheckout();
 
-    await screen.findByLabelText(/sell from/i);
-    // Offering a location that cannot hold stock trades one dead end for another.
-    expect(screen.queryByRole('option', { name: 'Closed Warehouse' })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Main Warehouse' })).toBeInTheDocument();
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalled());
+    const payload = mockedCreate.mock.calls[0][0] as { warehouseId?: number };
+    expect(payload.warehouseId).toBeTruthy();
   });
 
-  it('will not complete a sale until a warehouse is chosen', async () => {
+  it('never disables checkout for a reason nobody can see', async () => {
     renderPos();
+    await waitFor(() => expect(mockedWarehouses).toHaveBeenCalled());
+    await addToCart();
 
-    const button = await screen.findByRole('button', { name: /complete sale/i });
-    // Refused up front with a reason, rather than after the customer is waiting
-    // and the server has refused.
-    expect(button).toBeDisabled();
-    // Exact string: this jest-dom build compares attribute values by equality
-    // rather than by pattern, so a regex here would fail on a matching value.
-    expect(button.getAttribute('title')).toBe('Choose a warehouse to sell from');
-    expect(mockedCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /complete sale/i })).toBeEnabled();
+  });
+
+  it('still lets a single warehouse resolve on its own', async () => {
+    mockedWarehouses.mockClear();
+    mockedWarehouses.mockResolvedValue([{ id: 7, name: 'Only', active: true }]);
+
+    renderPos();
+    await waitFor(() => expect(mockedWarehouses).toHaveBeenCalled());
+    await addToCart();
+    await completeCheckout();
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalled());
+    const payload = mockedCreate.mock.calls[0][0] as { warehouseId?: number };
+    expect(payload.warehouseId).toBe(7);
+  });
+
+  it('never credits stock to a closed warehouse', async () => {
+    renderPos();
+    await waitFor(() => expect(mockedWarehouses).toHaveBeenCalled());
+    await addToCart();
+    await completeCheckout();
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalled());
+    const payload = mockedCreate.mock.calls[0][0] as { warehouseId?: number };
+    expect(payload.warehouseId).toBe(1);
   });
 });

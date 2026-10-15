@@ -25,7 +25,6 @@ import DateRangeFilter, {
 import AiInsightPanel from '@/components/ai/AiInsightPanel';
 import ForecastChart from '@/components/ai/ForecastChart';
 import AssistantPanel from '@/components/ai/AssistantPanel';
-import SalesSummaryPanel from '@/components/dashboard/SalesSummaryPanel';
 import SalesOrderTable from '@/components/dashboard/SalesOrderTable';
 import { useAiDashboard, useDashboardFinancial } from '@/hooks/useAiDashboard';
 import { useProducts } from '@/hooks/useProducts';
@@ -106,9 +105,6 @@ export default function DashboardPage() {
         cannot make an unreadable figure appear.
       */}
       <RoleOrderedSections order={sectionOrderFor(user?.role)}>
-        <Section name="sales-summary">
-          <SalesSummaryPanel range={range} />
-        </Section>
         <Section name="orders">
           <SalesOrderTable limit={8} />
         </Section>
@@ -123,12 +119,6 @@ export default function DashboardPage() {
           missing.
         </ErrorBanner>
       )}
-
-      {/* ── Sales record ─────────────────────────────────────────────────── */}
-      <SalesSummaryPanel range={range} />
-
-      {/* ── The orders behind those figures ──────────────────────────────── */}
-      <SalesOrderTable limit={8} />
 
       {/* ── Money ────────────────────────────────────────────────────────── */}
       <Section name="financials">

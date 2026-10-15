@@ -46,13 +46,12 @@ export const ROLE_HOMES: Record<Role, string> = {
  * set", which is what {@code defaultSectionOrder} gives.
  */
 export const ROLE_SECTIONS: Partial<Record<Role, string[]>> = {
-  CASHIER: ['sales-summary', 'orders', 'forecast', 'alerts'],
+  CASHIER: ['orders', 'forecast', 'alerts'],
   INVENTORY_STAFF: ['stock', 'alerts', 'forecast', 'orders'],
-  SUPERVISOR: ['orders', 'sales-summary', 'approvals', 'alerts', 'forecast'],
-  MANAGER: ['sales-summary', 'forecast', 'stock', 'approvals', 'orders'],
-  ACCOUNTANT: ['sales-summary', 'financials', 'approvals', 'orders'],
+  SUPERVISOR: ['orders', 'approvals', 'alerts', 'forecast'],
+  MANAGER: ['forecast', 'stock', 'approvals', 'orders'],
+  ACCOUNTANT: ['financials', 'approvals', 'orders'],
   SUPER_ADMIN: [
-    'sales-summary',
     'financials',
     'forecast',
     'stock',
@@ -64,7 +63,6 @@ export const ROLE_SECTIONS: Partial<Record<Role, string[]>> = {
 
 /** The order used when a role has no preference of its own. */
 export const defaultSectionOrder = [
-  'sales-summary',
   'orders',
   'financials',
   'forecast',
