@@ -25,6 +25,7 @@ It is built with a modern full-stack architecture using Spring Boot for the back
 - [Inventory Management](#inventory-management)
 - [Point of Sale](#point-of-sale)
 - [Dashboard and Reporting](#dashboard-and-reporting)
+- [Business Intelligence](#business-intelligence)
 - [REST API](#rest-api)
 - [Project Structure](#project-structure)
 - [Backend Structure](#backend-structure)
@@ -36,7 +37,10 @@ It is built with a modern full-stack architecture using Spring Boot for the back
 - [Running the Frontend](#running-the-frontend)
 - [Running with Docker](#running-with-docker)
 - [Environment Configuration](#environment-configuration)
+- [Reports and Exports](#reports-and-exports)
 - [Testing](#testing)
+- [Project Status](#project-status)
+- [Files Changed](#files-changed)
 - [Build and Production](#build-and-production)
 - [Security](#security)
 - [Development Guidelines](#development-guidelines)
@@ -433,25 +437,25 @@ A product contains information such as:
 
 ```text
 Product
-├── ID
-├── SKU
-├── Barcode
-├── Name
-├── Unit
-├── Description
-├── Category
-├── Purchase Price
-├── Selling Price
-├── Minimum Selling Price
-├── Minimum Stock
-├── Maximum Stock
-├── Reorder Level
-├── Quantity
-├── Batch Tracking
-├── Expiry Tracking
-├── Active Status
-├── Created At
-└── Updated At
+Γö£ΓöÇΓöÇ ID
+Γö£ΓöÇΓöÇ SKU
+Γö£ΓöÇΓöÇ Barcode
+Γö£ΓöÇΓöÇ Name
+Γö£ΓöÇΓöÇ Unit
+Γö£ΓöÇΓöÇ Description
+Γö£ΓöÇΓöÇ Category
+Γö£ΓöÇΓöÇ Purchase Price
+Γö£ΓöÇΓöÇ Selling Price
+Γö£ΓöÇΓöÇ Minimum Selling Price
+Γö£ΓöÇΓöÇ Minimum Stock
+Γö£ΓöÇΓöÇ Maximum Stock
+Γö£ΓöÇΓöÇ Reorder Level
+Γö£ΓöÇΓöÇ Quantity
+Γö£ΓöÇΓöÇ Batch Tracking
+Γö£ΓöÇΓöÇ Expiry Tracking
+Γö£ΓöÇΓöÇ Active Status
+Γö£ΓöÇΓöÇ Created At
+ΓööΓöÇΓöÇ Updated At
 ```
 
 SKU values are unique.
@@ -508,17 +512,17 @@ Example:
 
 ```text
 Supplier
-├── Supplier Number
-├── Company Name
-├── Contact Person
-├── Phone
-├── Email
-├── Address
-├── Tax Number
-├── Payment Terms
-├── Outstanding Balance
-├── Status
-└── Notes
+Γö£ΓöÇΓöÇ Supplier Number
+Γö£ΓöÇΓöÇ Company Name
+Γö£ΓöÇΓöÇ Contact Person
+Γö£ΓöÇΓöÇ Phone
+Γö£ΓöÇΓöÇ Email
+Γö£ΓöÇΓöÇ Address
+Γö£ΓöÇΓöÇ Tax Number
+Γö£ΓöÇΓöÇ Payment Terms
+Γö£ΓöÇΓöÇ Outstanding Balance
+Γö£ΓöÇΓöÇ Status
+ΓööΓöÇΓöÇ Notes
 ```
 
 The system supports creating, retrieving, searching, and updating suppliers.
@@ -533,16 +537,16 @@ Customer information includes:
 
 ```text
 Customer
-├── Customer Number
-├── Name
-├── Phone
-├── Email
-├── Address
-├── Customer Type
-├── Credit Limit
-├── Outstanding Balance
-├── Status
-└── Notes
+Γö£ΓöÇΓöÇ Customer Number
+Γö£ΓöÇΓöÇ Name
+Γö£ΓöÇΓöÇ Phone
+Γö£ΓöÇΓöÇ Email
+Γö£ΓöÇΓöÇ Address
+Γö£ΓöÇΓöÇ Customer Type
+Γö£ΓöÇΓöÇ Credit Limit
+Γö£ΓöÇΓöÇ Outstanding Balance
+Γö£ΓöÇΓöÇ Status
+ΓööΓöÇΓöÇ Notes
 ```
 
 The backend supports customer creation, retrieval, searching, and updates.
@@ -636,16 +640,65 @@ Therefore, the POS should currently be considered a frontend checkout workflow r
 
 # Dashboard and Reporting
 
-The backend contains product inventory aggregation functionality that can support dashboard information such as:
+The dashboard is served in three parts, each gated on the permission the figures in
+it actually require - not on a single "can view the dashboard" that every role
+holds.
 
-- Total active products
-- Low-stock products
-- Out-of-stock products
-- Total inventory value
+| Endpoint | Permission | Returns |
+|---|---|---|
+| `GET /api/v1/dashboard/stats` | `DASHBOARD_VIEW` | Operational counts. No money. |
+| `GET /api/v1/dashboard/financial` | `FINANCIAL_REPORT_VIEW` | Net sales, gross and net profit, margins, cash, receivables, payables, inventory value. |
+| `GET /api/v1/dashboard/insights` | `AI_INSIGHT_VIEW` | Explanations, alerts and recommended actions. |
 
-The frontend uses visualization components such as Recharts for dashboard and reporting interfaces.
+**Every financial figure comes from the backend calculation service.** It used to
+be assembled in the browser from lists of sales and purchase orders, filtered the
+same way on each screen - which meant "gross profit" was really "revenue minus
+everything ever purchased", and two screens could print different numbers for the
+same month. The formulas, the costing method and the accounting policies are
+documented in **[docs/financial-calculations.md](docs/financial-calculations.md)**.
 
-Additional business reporting functionality can be extended as transaction persistence is implemented.
+Stock is valued at a **moving weighted average cost**, recalculated on every goods
+receipt, and the cost is **frozen onto each sale line at the moment of sale** so a
+later price change cannot rewrite historical profit.
+
+---
+
+# Business Intelligence
+
+A read-only analysis layer in `com.inventory.backend.ai` that reads the same
+tables, through the same repositories, under the same permissions, as the reports.
+
+**There is no external AI provider.** No API key, no outbound request, no data
+leaves the machine. The models are Holt exponential smoothing with weekly
+seasonality, a robust z-score, and a service-level safety-stock formula -
+implemented in Java, auditable, and evaluated by backtesting on held-out history.
+
+**It cannot change anything.** There is no write method in the package, so it
+cannot approve a payment, issue a refund, move stock or post an accounting entry.
+There are deliberately no AI write permissions, because there is nothing to gate.
+
+| Capability | What it produces |
+|---|---|
+| Forecasting | Sales and per-product demand, with prediction intervals and the model's measured error on held-out data |
+| Anomaly detection | Investigation alerts on revenue, expenses and stock, each carrying the evidence that produced it |
+| Inventory optimisation | Reorder points, safety stock and suggested quantities, with the arithmetic shown |
+| Financial insights | Explanations that quote the calculation layer's figures and link to the report showing them |
+| Business assistant | Questions answered from validated figures, with period, assumptions and source links |
+| Business chatbot | Conversational questions from staff and customers, answered by the same services — with an optional model that only re-phrases validated results |
+
+Every model version is recorded with its training period, sample size and measured
+error; retraining supersedes rather than overwrites, so a figure already reported
+stays traceable. Every assistant question is logged with its intent, resolved
+parameters and outcome.
+
+A day is raised as an alert only when it is **both** statistically unusual and
+materially different in money - a small business has a small spread, and without
+the second test its ordinary variation fills the alerts panel and trains people to
+dismiss it.
+
+Fully described in **[docs/intelligence.md](docs/intelligence.md)**; the
+chatbot — its optional OpenAI-compatible phrasing layer, key setup and
+guarantees — in **[docs/chatbot.md](docs/chatbot.md)**.
 
 ---
 
@@ -803,43 +856,54 @@ Additional permissions can be added through the role-permission system.
 
 The repository is organized into separate backend and frontend applications.
 
+**Documentation**
+
+| Document | Covers |
+|---|---|
+| docs/architecture.md | How the pieces fit, the data model, the security model, the deliberate limitations |
+| docs/financial-calculations.md | Every formula, the costing method, the accounting policies, and what is deliberately *not* counted |
+| docs/intelligence.md | How the forecasting, anomaly detection, inventory advice and assistant work, and how they are evaluated |
+| docs/chatbot.md | The business chatbot: deterministic tools vs the optional LLM phrasing layer, key creation, local and deployed configuration, security guarantees |
+| docs/roles-and-permissions.md | The role to permission matrix |
+| docs/deployment.md | Deployment, configuration and environment variables |
+
 ```text
 inventory-system/
-│
-├── backend/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/
-│   │   │   └── resources/
-│   │   │
-│   │   └── test/
-│   │
-│   ├── pom.xml
-│   ├── Dockerfile
-│   └── ...
-│
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── contexts/
-│   │   ├── lib/
-│   │   ├── providers/
-│   │   ├── store/
-│   │   └── tests/
-│   │
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── Dockerfile
-│   ├── next.config.*
-│   ├── tsconfig.json
-│   └── ...
-│
-├── .local-pg/
-├── docker-compose.yml
-├── .gitignore
-└── README.md
+Γöé
+Γö£ΓöÇΓöÇ backend/
+Γöé   Γö£ΓöÇΓöÇ src/
+Γöé   Γöé   Γö£ΓöÇΓöÇ main/
+Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ java/
+Γöé   Γöé   Γöé   ΓööΓöÇΓöÇ resources/
+Γöé   Γöé   Γöé
+Γöé   Γöé   ΓööΓöÇΓöÇ test/
+Γöé   Γöé
+Γöé   Γö£ΓöÇΓöÇ pom.xml
+Γöé   Γö£ΓöÇΓöÇ Dockerfile
+Γöé   ΓööΓöÇΓöÇ ...
+Γöé
+Γö£ΓöÇΓöÇ frontend/
+Γöé   Γö£ΓöÇΓöÇ public/
+Γöé   Γö£ΓöÇΓöÇ src/
+Γöé   Γöé   Γö£ΓöÇΓöÇ app/
+Γöé   Γöé   Γö£ΓöÇΓöÇ components/
+Γöé   Γöé   Γö£ΓöÇΓöÇ contexts/
+Γöé   Γöé   Γö£ΓöÇΓöÇ lib/
+Γöé   Γöé   Γö£ΓöÇΓöÇ providers/
+Γöé   Γöé   Γö£ΓöÇΓöÇ store/
+Γöé   Γöé   ΓööΓöÇΓöÇ tests/
+Γöé   Γöé
+Γöé   Γö£ΓöÇΓöÇ package.json
+Γöé   Γö£ΓöÇΓöÇ package-lock.json
+Γöé   Γö£ΓöÇΓöÇ Dockerfile
+Γöé   Γö£ΓöÇΓöÇ next.config.*
+Γöé   Γö£ΓöÇΓöÇ tsconfig.json
+Γöé   ΓööΓöÇΓöÇ ...
+Γöé
+Γö£ΓöÇΓöÇ .local-pg/
+Γö£ΓöÇΓöÇ docker-compose.yml
+Γö£ΓöÇΓöÇ .gitignore
+ΓööΓöÇΓöÇ README.md
 ```
 
 ---
@@ -856,27 +920,27 @@ The backend follows a modular Spring Boot architecture.
 
 ```text
 backend/
-└── src/
-    ├── main/
-    │   ├── java/
-    │   │   └── com/
-    │   │       └── inventory/
-    │   │           └── backend/
-    │   │               │
-    │   │               ├── BackendApplication.java
-    │   │               ├── config/
-    │   │               ├── controller/
-    │   │               ├── dto/
-    │   │               ├── entity/
-    │   │               ├── repository/
-    │   │               ├── service/
-    │   │               ├── security/
-    │   │               └── ...
-    │   │
-    │   └── resources/
-    │       └── application.properties
-    │
-    └── test/
+ΓööΓöÇΓöÇ src/
+    Γö£ΓöÇΓöÇ main/
+    Γöé   Γö£ΓöÇΓöÇ java/
+    Γöé   Γöé   ΓööΓöÇΓöÇ com/
+    Γöé   Γöé       ΓööΓöÇΓöÇ inventory/
+    Γöé   Γöé           ΓööΓöÇΓöÇ backend/
+    Γöé   Γöé               Γöé
+    Γöé   Γöé               Γö£ΓöÇΓöÇ BackendApplication.java
+    Γöé   Γöé               Γö£ΓöÇΓöÇ config/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ controller/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ dto/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ entity/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ repository/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ service/
+    Γöé   Γöé               Γö£ΓöÇΓöÇ security/
+    Γöé   Γöé               ΓööΓöÇΓöÇ ...
+    Γöé   Γöé
+    Γöé   ΓööΓöÇΓöÇ resources/
+    Γöé       ΓööΓöÇΓöÇ application.properties
+    Γöé
+    ΓööΓöÇΓöÇ test/
 ```
 
 The exact package contents may evolve as new business modules are added.
@@ -889,24 +953,24 @@ The frontend uses Next.js App Router architecture.
 
 ```text
 frontend/
-└── src/
-    ├── app/
-    │   ├── (dashboard)/
-    │   │   ├── sales/
-    │   │   │   └── pos/
-    │   │   └── ...
-    │   ├── login/
-    │   ├── layout.tsx
-    │   └── ...
-    │
-    ├── components/
-    ├── contexts/
-    ├── providers/
-    ├── lib/
-    │   └── api/
-    │       └── apiClient.ts
-    ├── store/
-    └── tests/
+ΓööΓöÇΓöÇ src/
+    Γö£ΓöÇΓöÇ app/
+    Γöé   Γö£ΓöÇΓöÇ (dashboard)/
+    Γöé   Γöé   Γö£ΓöÇΓöÇ sales/
+    Γöé   Γöé   Γöé   ΓööΓöÇΓöÇ pos/
+    Γöé   Γöé   ΓööΓöÇΓöÇ ...
+    Γöé   Γö£ΓöÇΓöÇ login/
+    Γöé   Γö£ΓöÇΓöÇ layout.tsx
+    Γöé   ΓööΓöÇΓöÇ ...
+    Γöé
+    Γö£ΓöÇΓöÇ components/
+    Γö£ΓöÇΓöÇ contexts/
+    Γö£ΓöÇΓöÇ providers/
+    Γö£ΓöÇΓöÇ lib/
+    Γöé   ΓööΓöÇΓöÇ api/
+    Γöé       ΓööΓöÇΓöÇ apiClient.ts
+    Γö£ΓöÇΓöÇ store/
+    ΓööΓöÇΓöÇ tests/
 ```
 
 The frontend uses:
@@ -1180,6 +1244,104 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
 
 ---
 
+# Running the Backend
+
+The backend needs PostgreSQL. Docker is the quickest way to have one:
+
+```bash
+docker run -d --name stockflow-db `
+  -e POSTGRES_DB=stockflow_db `
+  -e POSTGRES_USER=stockflow `
+  -e POSTGRES_PASSWORD=stockflow `
+  -p 5432:5432 postgres:16-alpine
+```
+
+Create `backend/.env` (copy `.env-example` at the repository root) and then run:
+
+```bash
+cd backend
+mvn clean install
+mvn spring-boot:run
+```
+
+| URL | Purpose |
+|---|---|
+| `http://localhost:8081/actuator/health` | Health check |
+| `http://localhost:8081/api/v1` | API root |
+| `http://localhost:8081/swagger-ui.html` | API documentation, if enabled |
+
+The application **refuses to start** with the development default `JWT_SECRET`.
+That is deliberate: a signing key committed to the repository lets anyone forge an
+administrator token. Generate one:
+
+```bash
+openssl rand -hex 32
+```
+
+Redis is optional. Without it, rate limiting and caching degrade to in-process
+equivalents rather than shared ones, which is fine for a single-instance
+development run.
+
+## Database migrations
+
+Hibernate is configured with `ddl-auto=update`, so the schema is derived from the
+entities on start-up. There is no migration tool and therefore no migration
+history — a change to an entity alters the schema in place, which is adequate for
+development and would need Flyway or Liquibase before a production deployment
+with data in it.
+
+## Running the tests
+
+```bash
+mvn test
+```
+
+Integration tests use Testcontainers and therefore need a working Docker daemon.
+If Docker Desktop is not running they will appear to hang rather than fail, which
+is the first thing to check when the suite does not finish.
+
+---
+
+# Running the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend:
+
+```text
+http://localhost:3005
+```
+
+The dev server points at `http://localhost:8081/api/v1`. To change it, or to add
+the public build-time values, create `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
+NEXT_PUBLIC_APP_NAME=StockFlow
+NEXT_PUBLIC_APP_URL=http://localhost:3005
+```
+
+`NEXT_PUBLIC_*` variables are inlined into the client bundle at **build** time, so
+changing one requires a restart of the dev server or a rebuild. They are not
+secrets: anything with this prefix is visible to every browser that loads the app.
+
+`frontend/.env.local` exists and already contains working local values.
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Development server with hot reload |
+| `npm run type-check` | TypeScript, no emit |
+| `npm run lint` | ESLint |
+| `npm test` | Jest, watch mode |
+| `npm test -- --ci` | Jest, single run |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+
+---
 # Running with Docker
 
 From the repository root:
@@ -1301,6 +1463,21 @@ Production credentials should never be committed to Git.
 
 # Testing
 
+## Results
+
+These are the actual results of a full run, not an expectation.
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend | `mvn -B test` | **435 tests, 63 classes - 0 failures, 0 errors** |
+| Frontend | `npx jest --ci` | **191 tests, 16 suites - all passing** |
+| Frontend types | `npx tsc --noEmit` | **clean** |
+| Frontend lint | `npm run lint` | **0 errors**, 51 warnings, all in pre-existing files |
+| Frontend build | `npm run build` | **compiles**, 44 routes prerendered |
+
+The backend integration tests need a working Docker daemon for Testcontainers.
+Docker Desktop being stopped is the most common reason they appear to hang.
+
 ## Backend
 
 The backend uses:
@@ -1323,6 +1500,32 @@ Complete build:
 ```bash
 mvn clean verify
 ```
+
+What is covered:
+
+| Area | Where |
+|---|---|
+| Financial formulas, costing, COGS, margins, balances | `FinancialCalculationsTest` (45 tests, pure) |
+| Forecasting, model selection, backtesting, intervals, robust z-score | `TimeSeriesTest` (44 tests, pure) |
+| Reports, exports, formula-injection neutralisation, row cap | `ReportAndExportIntegrationTest` |
+| Sales persistence and payment recording | `SalesPersistenceIntegrationTest` |
+| Purchase receipt, supplier balances, warehouses, transfers | `PurchasingAndWarehouseIntegrationTest` |
+| Returns, refunds, expenses | `ReturnsAndExpensesIntegrationTest` |
+| Forecasting, anomalies, inventory advice, assistant, authorisation boundaries | `AiServiceIntegrationTest` (31 tests) |
+| Chatbot: role-by-role permission matrix, customer isolation, figures matching the reports, no-write requests, injection, rate limit, retention | `ChatbotServiceIntegrationTest` (22 tests) |
+| Chatbot provider: both URL shapes, bearer auth, model-availability check, zero outbound when disabled, every failure mode, no key in any message | `OpenAiCompatibleProviderTest` (18 tests, HTTP mocked) |
+| Chatbot frontend: both channels and their auth, no provider key in any request, expired-session vs rate-limit typing, stored-session TTL, thread loading/empty/error/retry, safe rendering | `chatbotApi.test.ts`, `chatThread.test.tsx` (30 tests) |
+| Approval workflows and permission enforcement | Existing integration suites |
+
+## Test data
+
+Test data is written by fixtures that stamp `TESTDATA-` on every order number and
+payment reference they create, and that exist only under `src/test/java` - never
+on the application's classpath in a deployment. `TradingHistoryFixture` is the one
+that writes a season of trading for the model evaluation suite; it writes rows
+directly rather than calling the API, because going through `POST /sales` twenty
+times a day runs the whole filter chain per sale and took the suite past fifteen
+minutes.
 
 ## Frontend
 
@@ -1358,8 +1561,19 @@ Linting:
 npm run lint
 ```
 
----
+Production build:
 
+```bash
+npm run build
+```
+
+`financePayables.test.tsx` is worth reading as an example of the testing
+philosophy: it was rewritten when the page stopped deriving balances in the
+browser. It now pins that the page renders what the server computed, that goods
+in transit are not a payable, and that a recorded payment names an order rather
+than an amount the client chose.
+
+---
 # Jest TypeScript Configuration
 
 If TypeScript reports:
@@ -1896,25 +2110,76 @@ Changes to StockFlow should aim to maintain:
 
 # Project Status
 
-StockFlow currently provides a working foundation for an inventory management platform with:
+All phases are complete and tested. What follows is what was actually done, and
+what remains genuinely unfinished.
 
-- Spring Boot backend
-- PostgreSQL database
-- JWT authentication
-- Role and permission architecture
-- Product management
-- Category management
-- Supplier management
-- Customer management
-- Inventory calculations
-- Next.js frontend
-- POS frontend workflow
-- Docker Compose configuration
-- Backend testing infrastructure
-- Frontend testing infrastructure
+## What is implemented and verified
 
-Some business transaction capabilities, particularly persistent sales transactions and advanced reporting, require additional backend implementation.
+**Transactions are persisted and audited.** Sales, purchases, payments, expenses
+and returns are real records with transaction dates, actors and approval
+workflows. Stock moves only through `StockLedgerService`, in one transaction, and
+every movement row is the sole record of how a quantity changed.
 
+**Inventory is per warehouse.** `WarehouseStock` holds quantity and average cost
+per warehouse. `Product.quantity` is republished from those rows so every existing
+screen keeps working, but the warehouse rows are the record.
+
+**Costing is a documented moving weighted average**, recalculated on every goods
+receipt, **frozen onto each sale line at the point of sale**. A later price change
+cannot rewrite historical profit and a closed period cannot be restated.
+
+**Financial calculations live in one place.** `FinancialCalculations` is pure and
+unit-tested. Revenue is net of returns and excludes sales tax; COGS comes from the
+frozen cost; cash comes from the payment ledger, never from invoices; expenses are
+approved claims only. See
+[docs/financial-calculations.md](docs/financial-calculations.md).
+
+**Fourteen reports**, all from validated records, all with date filters, all
+computed by one service, all exportable to CSV or PDF rendered server-side from the
+same payload the screen showed.
+
+**Read-only intelligence.** Forecasting, anomaly detection, inventory advice,
+financial explanations and a business assistant. No external provider, no
+credentials, no outbound request, and no write method in the package. Model
+versions and every assistant question are logged. See
+[docs/intelligence.md](docs/intelligence.md).
+
+**The business chatbot answers from those same figures — deterministically
+first.** With the shipped defaults it makes no outbound request and needs no
+key. An *optional* OpenAI-compatible model may re-phrase tool results that have
+already been computed; its wording is checked number-by-number against the tool
+output before anyone reads it, the model is verified against the account at
+startup, the key lives server-side only (never in the frontend, an API
+response or a log), `CHATBOT_LLM_PHRASED=false` guarantees zero outbound calls,
+and every failure — timeout, rate limit, HTTP error, malformed response,
+unavailable model — falls back to the deterministic reply. See
+[docs/chatbot.md](docs/chatbot.md).
+
+**Authorization was tightened where it was wrong.** Financial reporting moved off
+`DASHBOARD_VIEW` - which every role holds - onto `FINANCIAL_REPORT_VIEW`,
+`PROFIT_LOSS_READ`, `RECEIVABLE_READ` and `PAYABLE_READ`. AI permissions are
+read-only by construction.
+
+**Tests: 435 backend, 191 frontend, all passing**, plus a clean type-check, lint
+and production build. Actual results are under [Testing](#testing).
+
+## Known limitations
+
+These are real and are stated rather than hidden:
+
+| Limitation | Why it is acceptable here |
+|---|---|
+| **No lot or batch tracking** | Goods are fungible retail, so costing is a moving weighted average. FIFO would need data that is not captured. |
+| **Supplier lead times are a default** | Not yet measured from order dates. Every recommendation says it assumed `AI_DEFAULT_LEAD_TIME_DAYS` rather than passing it off as measured. |
+| **Seasonality is weekly only** | Annual seasonality needs years of history this data does not yet have. The model is documented and would extend. |
+| **No multi-currency arithmetic** | `currency` is carried on orders for provenance; conversion is not performed. |
+| **Forecasts are computed per request** | Fast at this volume and always current. A scheduled job with cached results is a next step for a large deployment, not a correction. |
+| **Hand-written CSV rather than a library** | RFC 4180 is a quoting rule and a line ending. Tested against the specification rather than against a dependency's behaviour. |
+| **The dashboard is one page, not a workspace** | The stated requirements are met. Widget-level drag-and-drop customisation is a product decision, not a correctness one. |
+
+Nothing in this list is a placeholder. Every figure shown comes from a persisted
+transaction, and every claim made by the intelligence layer is traceable to the
+records and the model that produced it.
 ---
 
 # Contribution
@@ -1965,6 +2230,118 @@ https://esrom12-portfolio.vercel.app/
 GitHub Repository:
 
 https://github.com/yemom/inventory-system
+
+---
+
+# Files Changed
+
+The work below is uncommitted. `git status` shows it; nothing has been added or
+committed.
+
+## New backend - finance
+
+| File | Purpose |
+|---|---|
+| `finance/FinancialCalculations.java` | Every formula. Pure, static, no database, no clock. |
+| `finance/FinancialCalculationService.java` | Assembles `FinancialSummary`; one fetch per source record. |
+| `finance/FinancialSummary.java` | The record every report, dashboard and assistant reads. |
+
+## New backend - intelligence
+
+| File | Purpose |
+|---|---|
+| `ai/TimeSeries.java` | All models and statistics, pure and tested. |
+| `ai/AiProperties.java` | Intelligible configuration, every field documented inline. |
+| `ai/AiModelRegistry.java` | Reads and supersedes trained model versions. |
+| `ai/ForecastingService.java` | Model selection by backtest, prediction intervals, refusal on insufficient data. |
+| `ai/AnomalyDetectionService.java` | Revenue, expense and stock alerts, with evidence. |
+| `ai/InventoryOptimizationService.java` | Reorder points, safety stock, stock-out projection. |
+| `ai/FinancialInsightService.java` | Explanations quoting the calculation layer. |
+| `ai/BusinessAssistantService.java` | Intent classification, per-intent permission checks, query logging. |
+| `model/AiModelVersion.java` | Training period, sample size, measured error, candidate scores. |
+| `model/AiQueryLog.java` | Every question, intent, parameters, outcome and duration. |
+
+## New backend - data and services
+
+| File | Purpose |
+|---|---|
+| `model/WarehouseStock.java` | Per-warehouse quantity and weighted-average cost. |
+| `model/ReturnOrder.java`, `ReturnOrderItem.java` | Returns as documents, not as `localStorage`. |
+| `service/WarehouseStockService.java` | Locking, weighted-average cost, `Product.quantity` republish. |
+| `service/StockLedgerService.java` | The only place a `StockMovement` row is written. |
+| `service/StockShortfallPolicy.java` | Clamp for approved counts, refuse for operational moves. |
+| `service/FinanceService.java` | Validated cash: payments cannot be free-standing. |
+| `service/ReturnService.java` | Raise, then approve; approving posts stock and finance together. |
+| `service/ReportService.java` | The fourteen reports, one shape. |
+| `service/ExportService.java` | Server-side CSV and PDF, formula injection neutralised. |
+| `controller/AiController.java`, `ReportController.java`, `FinanceController.java`, `ReturnController.java` | New endpoints. |
+| Repository queries | `sumNetSalesPerDay`, `findOutstandingReceivables`, `findOutstandingPayables`, `findLossesBetween` and the supporting queries. |
+
+## Extended
+
+| File | What changed |
+|---|---|
+| `model/SaleOrder` | `warehouse`, `amountPaid`, `transactionDate`, `currency`, `costOfGoodsSold`. |
+| `model/SaleOrderItem` | `unitCost` (frozen at sale), `quantityReturned`. |
+| `model/PurchaseOrder` | `supplier`, `warehouse`, statuses, terms, due dates. |
+| `model/PurchaseOrderItem` | `quantityReceived`, `quantityReturned`. |
+| `model/StockMovement` | `destinationWarehouse`, `reason`, `movementGroup`, `unitCost`, precise types. |
+| `model/Payment` | `direction`, `partyType`, document links, `transactionDate`, `externalReference`. |
+| `model/Expense` | `transactionDate`, `approver`. |
+| `security/RolePermissionCatalog.java` | Financial permissions moved off `DASHBOARD_VIEW`; five read-only AI permissions added. |
+| `controller/DashboardController.java` | Split into `/stats`, `/financial`, `/insights` with separate permissions. |
+| `controller/PaymentController.java`, `ExpenseController.java`, `PurchaseOrderController.java`, `StockMovementController.java`, `sales/SalesReportService` | Rewritten over the new services. |
+| `pom.xml` | `com.github.librepdf:openpdf:1.3.30`. |
+| `application.properties` | `app.ai.*` and `app.report.*` blocks, every field documented inline. |
+
+## New frontend
+
+| File | Purpose |
+|---|---|
+| `lib/api/aiApi.ts` | Intelligence, finance, dashboard, reports and returns clients. |
+| `hooks/useAiDashboard.ts` | Gated queries, disabled rather than fired-and-refused. |
+| `components/ai/AiInsightPanel.tsx` | Insights, alerts and recommendations with their evidence. |
+| `components/ai/ForecastChart.tsx` | History and forecast on one axis, with the prediction band. |
+| `components/ai/AssistantPanel.tsx` | The assistant, with period, assumptions and source links. |
+| `components/ui/DateRangeFilter.tsx` | Calendar-month presets, not rolling approximations. |
+| `components/reports/ReportScreen.tsx` | One component rendering any report, with export and pagination. |
+| `app/(dashboard)/dashboard/page.tsx` | Rewritten on `/dashboard/financial` and `/dashboard/insights`. |
+| `app/(dashboard)/finance/profit-loss/page.tsx` | Now the backend statement. |
+| `app/(dashboard)/finance/receivables/page.tsx`, `payables/page.tsx` | Now the server's balances, with the collection flow kept. |
+| `app/(dashboard)/sales/returns/page.tsx`, `purchases/returns/page.tsx` | `localStorage` replaced by server documents with approval. |
+| `app/(dashboard)/reports/{sales,purchases,financial,inventory,inventory-value}` | Now `ReportScreen`. |
+| `app/(dashboard)/reports/ai/page.tsx` and `reports/ai/{models,queries}` | Forecast and alerts, model evaluation, query log. |
+
+## Rewritten frontend tests
+
+`financePayables.test.tsx` was rewritten when the page stopped deriving balances
+in the browser. It previously pinned the client-side arithmetic that produced the
+wrong figure - it asserted that the page subtracted `paid` from `totalAmount`
+itself, which is the behaviour that made a paginated list an under-count. It now
+pins that the page renders what the server computed, that goods in transit are not
+a payable, and that a payment names an order rather than an amount the client
+chose.
+
+## New and rewritten documentation
+
+| Document | Covers |
+|---|---|
+| `docs/architecture.md` | How the pieces fit, the data model, the security model, the limitations. |
+| `docs/financial-calculations.md` | Every formula, the costing method, the accounting policies, what is not counted. |
+| `docs/intelligence.md` | How the models work and how they are evaluated. |
+| `docs/roles-and-permissions.md` | Extended with the financial and AI permission boundaries. |
+| `README.md` | Rewritten sections: Business Intelligence, Reports and Exports, Testing, Project Status, Project Structure, this list. |
+| `.env-example` | `AI_*` and `REPORT_EXPORT_MAX_ROWS`, every value explained. |
+| `docker-compose.yml` | New `AI_*` variables; committed super-admin credentials removed. |
+| `render.yaml` | New `AI_*` variables, with a note on why there is no API key. |
+
+## Security fix worth calling out
+
+`docker-compose.yml` committed working super-admin credentials, so every
+deployment started from this file booted with the same administrator account and
+password. They now come from `.env` with no default at all, so an unset variable
+fails the start-up instead of leaving a known account reachable. `.env` itself is
+and was gitignored.
 
 ---
 

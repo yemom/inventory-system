@@ -83,6 +83,49 @@ Same shape for refunds. The person at the till asks; someone else decides. Appro
 
 Queues: `GET /inventory/movements/pending` and `GET /sales/approvals`. Both require the matching `*_APPROVE` permission — being able to *ask* does not entitle anyone to *review*.
 
+## Financial reporting was moved off `DASHBOARD_VIEW`
+
+`FINANCIAL_REPORT_VIEW`, `PROFIT_LOSS_READ`, `RECEIVABLE_READ` and
+`PAYABLE_READ` are **not** part of the baseline every role holds.
+
+The dashboard previously served net sales, gross profit and balances to anyone
+who could see the dashboard at all — which is every authenticated user, because
+`DASHBOARD_VIEW` is granted universally so the operational tiles render. The
+figures were split onto their own permissions, and the endpoint moved:
+
+| Endpoint | Permission |
+|---|---|
+| `GET /dashboard/stats` | `DASHBOARD_VIEW` — counts and stock alerts, no money |
+| `GET /dashboard/financial` | `FINANCIAL_REPORT_VIEW` |
+| `GET /finance/profit-loss-detail` | `PROFIT_LOSS_READ` |
+| `GET /finance/receivables` | `RECEIVABLE_READ` |
+| `GET /reports/payables` | `PAYABLE_READ` |
+
+A Cashier still sees the operational dashboard; the financial panel is replaced
+by a note explaining which permission is required. Hiding a card is ergonomics —
+the 403 on the endpoint is the control.
+
+## AI permissions are read-only, and there are no others
+
+| Permission | Grants |
+|---|---|
+| `AI_INSIGHT_VIEW` | Financial explanations and anomaly alerts |
+| `AI_FORECAST_VIEW` | Forecasts, reorder recommendations, stock-out projection |
+| `AI_ASSISTANT_USE` | The business assistant |
+| `AI_MODEL_VIEW` | Trained model versions and their measured accuracy |
+| `AI_QUERY_LOG_VIEW` | The log of questions asked of the assistant |
+
+**There is deliberately no `AI_*_APPROVE` or `AI_*_EXECUTE` permission.** The
+`ai` package contains no write method, so there is nothing for such a permission
+to gate. Granting one would imply a capability that does not exist.
+
+`SUPERVISOR` holds `AI_INSIGHT_VIEW`, `AI_FORECAST_VIEW` and `AI_ASSISTANT_USE`
+but **not** `PROFIT_LOSS_READ`, and **not** `AI_QUERY_LOG_VIEW`. That combination
+is deliberate and is what the boundary test exercises: the assistant checks the
+permission of the *resolved question*, not the permission of the caller, so
+holding `AI_ASSISTANT_USE` cannot be used to extract a profit figure. The check
+fails closed when there is no authenticated caller at all.
+
 ## Privilege escalation is blocked in the service, not the UI
 
 Hiding `SUPER_ADMIN` in a dropdown is presentation. `RoleGrantPolicy` is the control:
@@ -106,6 +149,7 @@ Prices are gated the same way: `PRICE_CHANGE_APPROVE` is checked inside `Product
 | `service/OpeningStockIntegrationTest` | an opening quantity of 50 is 50 on hand, with a matching movement |
 | `frontend/src/__tests__/sidebarPermissions.test.tsx` | the UI offers only what the API would allow |
 | `frontend/src/__tests__/openingStock.test.tsx` | the product form sends the opening quantity |
+| `integration/AiServiceIntegrationTest` | the AI endpoints are closed without the AI permissions; a Supervisor may use the assistant but is refused profit figures; a caller with no authorities is refused with nothing computed |
 
 The sidebar hides links the user cannot use, but that is ergonomics. `RolePermissionEnforcementIntegrationTest` is what proves the request is refused.
 

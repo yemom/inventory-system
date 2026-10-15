@@ -1,99 +1,113 @@
 /**
- * Payables page — end-to-end tests
+ * Payables page — balances come from the server, not from a browser-side sum.
  *
- * What was broken (and what these tests pin):
+ * ## Why this file was rewritten
  *
- * 1. The backend `toDTO` hardcoded `paymentStatus = "paid"` for every RECEIVED
- *    order.  A purchase made on credit (RECEIVED but UNPAID) was therefore
- *    invisible to the Payables page — the creditor list was always empty.
+ * The previous version pinned the page's own arithmetic: it passed a list of
+ * suppliers and a list of purchase orders into the component and asserted that
+ * the component subtracted `paid` from `totalAmount` and grouped the result by
+ * supplier name. Those assertions encoded two real defects:
  *
- * 2. The frontend new-purchase form collected a "Payment Status" dropdown value
- *    but silently dropped it from the POST payload, so credit purchases could
- *    never be created at all.
+ * 1. `paid` was not a field the purchases endpoint returned — `amountPaid` was.
+ *    Any order that was not fully paid therefore looked fully paid and
+ *    contributed nothing, so the creditor list was empty or wrong.
+ * 2. The purchases list is paginated. A balance on page three was invisible, and
+ *    the total was wrong by whatever had not loaded. Nothing on the page could
+ *    reveal that.
  *
- * The fixes:
- * - Backend `PurchaseOrder` now carries `paymentStatus` (PAID/PARTIAL/UNPAID)
- *   and `amountPaid` as real persisted columns.
- * - `toDTO` reads those columns instead of inferring from order status.
- * - The new-purchase form sends `paymentStatus` in the POST body.
+ * Both now live in `ReportService.payables`, which walks every order with a
+ * balance, reads `amountPaid`, and includes only goods that have been received.
+ * These tests pin that: the page renders what the report says, and the payment
+ * it records is attached to a specific order rather than posted as a free-standing
+ * row with an amount the client chose.
  *
- * These tests exercise the Payables page in isolation: suppliers and purchases
- * are mocked to match the shapes the real API returns.
+ * The old behaviours are still asserted, but from the report's output — a fully
+ * paid order produces no row, a cancelled order produces no row, and goods that
+ * were ordered but never received are not a payable.
  */
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import PayablesPage from '@/app/(dashboard)/finance/payables/page';
-import { useSuppliers } from '@/hooks/useSuppliers';
+import { reportsApi } from '@/lib/api/aiApi';
 import { usePurchases } from '@/hooks/usePurchases';
-import { useCreatePayment } from '@/hooks/useFinance';
+import { useCreateSupplierPayment } from '@/hooks/useFinance';
 
-// ── Mocks ────────────────────────────────────────────────────────────────────
+jest.mock('@/lib/api/aiApi', () => ({
+  reportsApi: { get: jest.fn() },
+  aiApi: {},
+  financeApi: {},
+  dashboardApi: {},
+  returnsApi: {},
+}));
 
-jest.mock('@/hooks/useSuppliers');
 jest.mock('@/hooks/usePurchases');
-jest.mock('@/hooks/useFinance');
+jest.mock('@/hooks/useFinance', () => ({
+  useCreateSupplierPayment: jest.fn(),
+}));
 jest.mock('@/components/ui/ToastProvider', () => ({
   useToast: () => ({ toast: jest.fn() }),
 }));
 
-const mockedUseSuppliers  = useSuppliers  as jest.MockedFunction<typeof useSuppliers>;
-const mockedUsePurchases  = usePurchases  as jest.MockedFunction<typeof usePurchases>;
-const mockedUseCreatePayment = useCreatePayment as jest.MockedFunction<typeof useCreatePayment>;
+const mockedGet = reportsApi.get as jest.MockedFunction<typeof reportsApi.get>;
+const mockedUsePurchases = usePurchases as jest.MockedFunction<typeof usePurchases>;
+const mockedUseCreateSupplierPayment =
+  useCreateSupplierPayment as jest.MockedFunction<typeof useCreateSupplierPayment>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-/** Minimal supplier shaped like GET /suppliers returns. */
-function makeSupplier(overrides: Record<string, unknown> = {}) {
+/** One creditor row, shaped as ReportService.payables returns it. */
+function payable(overrides: Record<string, unknown> = {}) {
   return {
-    id: 1,
-    companyName: 'Acme Supplies',
-    contactPerson: 'Dawit Bekele',
-    phone: '+251911000001',
-    email: 'acme@example.com',
-    address: 'Addis Ababa',
-    status: 'ACTIVE',
-    outstandingBalance: 0, // This stored column is ALWAYS 0 — never written.
+    supplier: 'Acme Supplies',
+    orderCount: 1,
+    orderTotal: 50000,
+    paid: 0,
+    outstanding: 50000,
+    oldestDueDate: '2026-11-01',
+    overdue: false,
+    orders: ['PO-000001 (50000, received RECEIVED)'],
     ...overrides,
   };
 }
 
-/**
- * Minimal purchase order shaped like GET /purchases returns.
- *
- * paymentStatus is now a real field sent by the backend after the fix.
- * The frontend derives outstanding balances from it, NOT from
- * Supplier.outstandingBalance.
- */
-function makePurchase(overrides: Record<string, unknown> = {}) {
+function report(rows: unknown[], totals: Record<string, unknown> = {}) {
+  const summed = rows.reduce<number>(
+    (sum, row) => sum + Number((row as any).outstanding ?? 0),
+    0,
+  );
+  const overdue = rows
+    .filter((r: any) => r.overdue)
+    .reduce<number>((sum, row) => sum + Number((row as any).outstanding ?? 0), 0);
+
+  return {
+    report: 'Supplier payables',
+    asOf: '2026-10-13',
+    columns: ['supplier', 'orderCount', 'orderTotal', 'paid', 'outstanding'],
+    rows,
+    totals: {
+      totalOutstanding: summed,
+      overdueAmount: overdue,
+      ...totals,
+    },
+  };
+}
+
+/** A purchase order as the purchases list returns it. */
+function purchase(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     orderNumber: 'PO-000001',
-    reference: 'PO-000001',
     supplierName: 'Acme Supplies',
-    totalAmount: 50000,
-    total: 50000,
-    paymentStatus: 'unpaid', // credit purchase — not yet paid
-    paid: 0,
     status: 'RECEIVED',
-    date: '2026-10-01',
-    createdAt: '2026-10-01T10:00:00',
+    totalAmount: 50000,
+    amountPaid: 0,
     ...overrides,
   };
 }
 
-// ── Render helper ─────────────────────────────────────────────────────────────
-
-function renderWith(
-  suppliers: unknown[],
-  purchases: unknown[],
-  opts: { suppliersLoading?: boolean; error?: Error; createPaymentMutateAsync?: jest.Mock } = {}
-) {
-  mockedUseSuppliers.mockReturnValue({
-    data: suppliers,
-    isLoading: opts.suppliersLoading ?? false,
-    error: opts.error ?? null,
-    refetch: jest.fn(),
-  } as any);
-
+function renderWith(rows: unknown[], purchases: unknown[] = []) {
+  mockedGet.mockResolvedValue(report(rows) as any);
   mockedUsePurchases.mockReturnValue({
     data: purchases,
     isLoading: false,
@@ -101,11 +115,15 @@ function renderWith(
     refetch: jest.fn(),
   } as any);
 
-  mockedUseCreatePayment.mockReturnValue({
-    mutateAsync: opts.createPaymentMutateAsync ?? jest.fn().mockResolvedValue({}),
-  } as any);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
 
-  return render(<PayablesPage />);
+  return render(
+    <QueryClientProvider client={client}>
+      <PayablesPage />
+    </QueryClientProvider>,
+  );
 }
 
 /** Finds the stat card containing the given label, returns its container. */
@@ -115,201 +133,248 @@ function statCard(label: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockedUseCreateSupplierPayment.mockReturnValue({
+    mutateAsync: jest.fn().mockResolvedValue({}),
+    isPending: false,
+  } as any);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Core creditor derivation
+// 1. The report is what the page renders
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Payables page — derives creditors from purchase orders, not supplier.outstandingBalance', () => {
-  it('shows a supplier that has an UNPAID purchase order', async () => {
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'unpaid', paid: 0, totalAmount: 50000, total: 50000 })]
-    );
+describe('Payables page — renders the balances the server computed', () => {
+  it('shows a supplier the report says is owed money', async () => {
+    renderWith([payable()]);
 
     expect(await screen.findByText('Acme Supplies')).toBeInTheDocument();
     expect(screen.queryByText('No records found')).not.toBeInTheDocument();
   });
 
-  it('does NOT show a supplier whose only purchase is PAID', async () => {
-    // This is the pre-fix bug: the old code showed nothing because
-    // Supplier.outstandingBalance was always 0. After the fix, PAID purchases
-    // should correctly *exclude* the supplier from the creditor list.
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'paid', paid: 50000, totalAmount: 50000, total: 50000 })]
-    );
+  it('shows no row for a supplier whose balance is zero', async () => {
+    // A fully paid order produces no row — not because the page subtracted the
+    // payment, but because the report never emitted one.
+    renderWith([]);
 
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-    expect(screen.queryByText('Acme Supplies')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('Acme Supplies')).not.toBeInTheDocument(),
+    );
     expect(await screen.findByText('No records found')).toBeInTheDocument();
   });
 
-  it('ignores Supplier.outstandingBalance (always 0, never written) and reads purchases instead', async () => {
-    // Supplier with outstandingBalance: 0 and no unpaid purchases — must stay hidden.
-    renderWith(
-      [makeSupplier({ outstandingBalance: 0 })],
-      [] // no purchases at all
-    );
+  it('sends the balance date the reader chose', async () => {
+    renderWith([payable()]);
+    await screen.findByText('Acme Supplies');
 
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-    expect(screen.queryByText('Acme Supplies')).not.toBeInTheDocument();
+    expect(mockedGet).toHaveBeenCalledWith(
+      'payables',
+      expect.objectContaining({ asOf: expect.any(String) }),
+    );
   });
 
-  it('matches purchase orders to suppliers by name (case-insensitive)', async () => {
-    renderWith(
-      [makeSupplier({ companyName: 'ACME SUPPLIES' })],
-      [makePurchase({ supplierName: 'acme supplies', paymentStatus: 'unpaid' })]
-    );
+  it('shows every creditor the report returned, not a page of them', async () => {
+    renderWith([
+      payable({ supplier: 'Alpha', outstanding: 15000, orders: [] }),
+      payable({ supplier: 'Beta', outstanding: 30000, orders: [] }),
+      payable({ supplier: 'Gamma', outstanding: 22000, orders: [] }),
+    ]);
 
-    expect(await screen.findByText('ACME SUPPLIES')).toBeInTheDocument();
+    expect(await screen.findByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    expect(screen.getByText('Gamma')).toBeInTheDocument();
   });
 
-  it('shows multiple creditors when several suppliers have unpaid orders', async () => {
-    renderWith(
-      [
-        makeSupplier({ id: 1, companyName: 'Supplier A' }),
-        makeSupplier({ id: 2, companyName: 'Supplier B' }),
-      ],
-      [
-        makePurchase({ id: 1, supplierName: 'Supplier A', paymentStatus: 'unpaid', totalAmount: 10000, total: 10000 }),
-        makePurchase({ id: 2, supplierName: 'Supplier B', paymentStatus: 'unpaid', totalAmount: 20000, total: 20000 }),
-      ]
-    );
+  it('collapses several orders for one supplier into a single row', async () => {
+    // The grouping is the server's job now: one row per supplier with the order
+    // references listed beneath it.
+    renderWith([
+      payable({
+        supplier: 'Mega Corp',
+        orderCount: 2,
+        orderTotal: 80000,
+        paid: 30000,
+        outstanding: 50000,
+        orders: ['PO-000001 (20000, received RECEIVED)', 'PO-000002 (30000, received RECEIVED)'],
+      }),
+    ]);
 
-    expect(await screen.findByText('Supplier A')).toBeInTheDocument();
-    expect(screen.getByText('Supplier B')).toBeInTheDocument();
-  });
-});
+    const rows = await screen.findAllByText('Mega Corp');
+    expect(rows).toHaveLength(1);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. Partial payments
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Payables page — partial payment handling', () => {
-  it('shows a supplier with a PARTIAL purchase and the remaining balance', async () => {
-    // 30 000 total, 10 000 paid → 20 000 outstanding
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'partial', paid: 10000, totalAmount: 30000, total: 30000 })]
-    );
-
-    expect(await screen.findByText('Acme Supplies')).toBeInTheDocument();
-    // 30 000 − 10 000 = 20 000 should appear in the "Amount Owed" column in the table.
     const table = screen.getByRole('table');
-    expect(within(table).getByText(/20,000/)).toBeInTheDocument();
-  });
-
-  it('excludes a purchase where paid equals total even when status is partial', async () => {
-    // Edge case: partial status but fully paid — no outstanding balance.
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'partial', paid: 50000, totalAmount: 50000, total: 50000 })]
-    );
-
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-    expect(screen.queryByText('Acme Supplies')).not.toBeInTheDocument();
+    expect(within(table).getByText(/50,000/)).toBeInTheDocument();
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Stat-card values
+// 2. Stat cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Payables page — stat cards show correct totals', () => {
-  it('Total Payables Due equals the sum of all unpaid amounts', async () => {
-    renderWith(
-      [
-        makeSupplier({ id: 1, companyName: 'Alpha' }),
-        makeSupplier({ id: 2, companyName: 'Beta' }),
-      ],
-      [
-        makePurchase({ id: 1, supplierName: 'Alpha', paymentStatus: 'unpaid', totalAmount: 15000, total: 15000, paid: 0 }),
-        makePurchase({ id: 2, supplierName: 'Beta',  paymentStatus: 'partial', totalAmount: 40000, total: 40000, paid: 10000 }),
-      ]
-    );
+describe('Payables page — stat cards report the totals the server gave', () => {
+  it('Total Owed equals the sum the report reported', async () => {
+    renderWith([
+      payable({ supplier: 'Alpha', outstanding: 15000, orders: [] }),
+      payable({ supplier: 'Beta', outstanding: 30000, orders: [] }),
+    ]);
 
-    // 15 000 + (40 000 − 10 000) = 45 000
-    await screen.findByText('Total Payables Due');
-    const card = statCard('Total Payables Due');
-    expect(within(card).getByText(/45,000/)).toBeInTheDocument();
+    await screen.findByText('Total Owed');
+    expect(within(statCard('Total Owed')).getByText(/45,000/)).toBeInTheDocument();
   });
 
-  it('Vendors With Balances shows the number of creditors', async () => {
-    renderWith(
-      [
-        makeSupplier({ id: 1, companyName: 'Alpha' }),
-        makeSupplier({ id: 2, companyName: 'Beta' }),
-        makeSupplier({ id: 3, companyName: 'Gamma' }), // fully paid — should not count
-      ],
-      [
-        makePurchase({ id: 1, supplierName: 'Alpha', paymentStatus: 'unpaid' }),
-        makePurchase({ id: 2, supplierName: 'Beta',  paymentStatus: 'unpaid' }),
-        makePurchase({ id: 3, supplierName: 'Gamma', paymentStatus: 'paid', paid: 50000 }),
-      ]
-    );
+  it('counts suppliers owing, and no others', async () => {
+    renderWith([
+      payable({ supplier: 'Alpha', outstanding: 100, orders: [] }),
+      payable({ supplier: 'Beta', outstanding: 200, orders: [] }),
+    ]);
 
-    expect(await screen.findByText('2 Vendors')).toBeInTheDocument();
+    await screen.findByText('Suppliers Owed');
+    expect(within(statCard('Suppliers Owed')).getByText('2')).toBeInTheDocument();
   });
 
-  it('Unpaid Purchase Orders stat shows outstanding PO value', async () => {
-    renderWith(
-      [makeSupplier()],
-      [
-        makePurchase({ id: 1, paymentStatus: 'unpaid', totalAmount: 12000, total: 12000, paid: 0 }),
-        makePurchase({ id: 2, paymentStatus: 'unpaid', totalAmount: 8000,  total: 8000,  paid: 0 }),
-        makePurchase({ id: 3, paymentStatus: 'paid',   totalAmount: 5000,  total: 5000,  paid: 5000 }),
-      ]
-    );
+  it('shows zero, not a blank, when nothing is owed', async () => {
+    renderWith([]);
 
-    await screen.findByText('Unpaid Purchase Orders');
-    // 12 000 + 8 000 = 20 000 — scoped to the stat card to avoid matching the table row
-    const card = statCard('Unpaid Purchase Orders');
-    expect(within(card).getByText(/20,000/)).toBeInTheDocument();
+    await screen.findByText('Total Owed');
+    const card = statCard('Total Owed');
+    expect(within(card).getByText(/0\.00/)).toBeInTheDocument();
   });
 
-  it('Unpaid Purchase Orders stat shows the open PO count', async () => {
-    renderWith(
-      [makeSupplier()],
-      [
-        makePurchase({ id: 1, paymentStatus: 'unpaid', totalAmount: 12000, total: 12000, paid: 0 }),
-        makePurchase({ id: 2, paymentStatus: 'unpaid', totalAmount: 8000,  total: 8000,  paid: 0 }),
-        makePurchase({ id: 3, paymentStatus: 'paid',   totalAmount: 5000,  total: 5000,  paid: 5000 }),
-      ]
-    );
+  it('separates the overdue portion from the total', async () => {
+    renderWith([
+      payable({ supplier: 'Alpha', outstanding: 10000, overdue: true, orders: [] }),
+      payable({ supplier: 'Beta', outstanding: 20000, overdue: false, orders: [] }),
+    ]);
 
-    await screen.findByText('Unpaid Purchase Orders');
-    // StatCard renders changeLabel as "2 open PO(s)"
-    expect(screen.getByText(/2 open PO/)).toBeInTheDocument();
-  });
-
-  it('stat cards all show ETB 0.00 when there are no unpaid orders', async () => {
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'paid', paid: 50000, totalAmount: 50000, total: 50000 })]
-    );
-
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-
-    const cards = screen.getAllByText(/0\.00/);
-    expect(cards.length).toBeGreaterThanOrEqual(2);
+    await screen.findByText('Overdue');
+    expect(within(statCard('Total Owed')).getByText(/30,000/)).toBeInTheDocument();
+    expect(within(statCard('Overdue')).getByText(/10,000/)).toBeInTheDocument();
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. CANCELLED orders
+// 3. Goods not yet received
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Payables page — cancelled purchase orders', () => {
-  it('does not count a CANCELLED order regardless of paymentStatus', async () => {
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ status: 'CANCELLED', paymentStatus: 'unpaid', totalAmount: 50000, total: 50000 })]
+describe('Payables page — an order in transit is not a payable', () => {
+  it('does not offer an unreceived order as something to pay against', async () => {
+    renderWith([payable()], [
+      purchase({ id: 1, status: 'ORDERED', totalAmount: 50000, amountPaid: 0 }),
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    // No unpaid order was offered, and the form says so rather than silently
+    // disabling itself.
+    expect(
+      within(dialog).getByText(/not on the pages of the purchases list/i),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /^record payment$/i }),
+    ).toBeDisabled();
+  });
+
+  it('offers a received order that still has a balance', async () => {
+    renderWith([payable()], [
+      purchase({ id: 7, orderNumber: 'PO-000007', status: 'RECEIVED', totalAmount: 50000, amountPaid: 0 }),
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const selects = within(dialog).getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: '7' } });
+
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('button', { name: /^record payment$/i }),
+      ).not.toBeDisabled(),
     );
 
-    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
-    expect(screen.queryByText('Acme Supplies')).not.toBeInTheDocument();
+    // The option names the order and states what is still owed on it, so the
+    // operator can see which invoice they are about to settle.
+    const option = within(dialog).getByRole('option', { name: /PO-000007/ });
+    expect(option).toHaveTextContent(/outstanding/);
+    expect(within(dialog).getByLabelText(/amount paid/i)).toHaveValue(50000);
+  });
+
+  it('never offers a cancelled order', async () => {
+    renderWith([payable()], [
+      purchase({ id: 1, status: 'CANCELLED', totalAmount: 50000, amountPaid: 0 }),
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).getByText(/not on the pages of the purchases list/i),
+    ).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Recording a payment
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Payables page — a payment is attached to an order, not a free amount', () => {
+  it('records against the chosen order and lets the server decide the rest', async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockedUseCreateSupplierPayment.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    } as any);
+
+    renderWith([payable()], [
+      purchase({ id: 7, orderNumber: 'PO-000007', status: 'RECEIVED', totalAmount: 50000, amountPaid: 0 }),
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    // Choose the order, then submit.
+    const selects = within(dialog).getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: '7' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^record payment$/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+
+    // The order id and the amount — and nothing the server should own. In
+    // particular no `party`, no `type` and no `partyType`: the server derives
+    // direction and party from the order, which is what stops a client declaring
+    // a payment against something it was never owed.
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ purchaseOrderId: '7', amount: 50000 }),
+    );
+    const payload = mutateAsync.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('party');
+    expect(payload).not.toHaveProperty('type');
+    expect(payload).not.toHaveProperty('partyType');
+  });
+
+  it('refuses an amount larger than the order still owes', async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockedUseCreateSupplierPayment.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    } as any);
+
+    renderWith([payable({ outstanding: 50000 })], [
+      purchase({ id: 7, status: 'RECEIVED', totalAmount: 50000, amountPaid: 30000 }),
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const selects = within(dialog).getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: '7' } });
+
+    // Overwrite the pre-filled amount with one beyond the balance.
+    const amountInput = within(dialog).getByLabelText(/amount paid/i);
+    fireEvent.change(amountInput, { target: { value: '99999' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^record payment$/i }));
+
+    await waitFor(() => expect(mutateAsync).not.toHaveBeenCalled());
   });
 });
 
@@ -318,130 +383,48 @@ describe('Payables page — cancelled purchase orders', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Payables page — loading and error states', () => {
-  it('does not say "No records found" while data is still loading', async () => {
-    renderWith([], [], { suppliersLoading: true });
-
-    await waitFor(() => {
-      expect(screen.queryByText('No records found')).not.toBeInTheDocument();
-    });
-  });
-
-  it('shows an error state when the suppliers API fails', async () => {
-    mockedUseSuppliers.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error('Suppliers unavailable'),
-      refetch: jest.fn(),
-    } as any);
+  it('does not claim "No records found" before the report arrives', async () => {
+    // A promise that has not settled yet: the page must show neither a table nor
+    // an empty result while it is waiting.
+    mockedGet.mockReturnValue(new Promise(() => {}) as any);
     mockedUsePurchases.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     } as any);
-    mockedUseCreatePayment.mockReturnValue({ mutateAsync: jest.fn() } as any);
 
-    render(<PayablesPage />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <PayablesPage />
+      </QueryClientProvider>,
+    );
 
-    expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.queryByText('No records found')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('No records found')).not.toBeInTheDocument(),
+    );
   });
 
-  it('shows an error state when the purchases API fails', async () => {
-    mockedUseSuppliers.mockReturnValue({
-      data: [makeSupplier()],
+  it('shows an error state when the report fails, and offers a retry', async () => {
+    mockedGet.mockRejectedValue(new Error('Server unavailable') as any);
+    mockedUsePurchases.mockReturnValue({
+      data: [],
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     } as any);
-    mockedUsePurchases.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error('Purchases unavailable'),
-      refetch: jest.fn(),
-    } as any);
-    mockedUseCreatePayment.mockReturnValue({ mutateAsync: jest.fn() } as any);
 
-    render(<PayablesPage />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <PayablesPage />
+      </QueryClientProvider>,
+    );
 
     expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 6. Settle-bill modal
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Payables page — settle-bill modal', () => {
-  it('opens the disbursement modal with the correct outstanding balance', async () => {
-    renderWith(
-      [makeSupplier()],
-      [makePurchase({ paymentStatus: 'unpaid', totalAmount: 75000, total: 75000, paid: 0 })]
-    );
-
-    const settleBtn = await screen.findByRole('button', { name: /settle bill/i });
-    fireEvent.click(settleBtn);
-
-    // Modal dialog should appear
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Disburse Payment/i)).toBeInTheDocument();
-
-    // Balance is shown inside the dialog
-    expect(within(dialog).getByText(/75,000/)).toBeInTheDocument();
-  });
-
-  it('calls createPayment with the correct supplier name and amount', async () => {
-    const mutateAsync = jest.fn().mockResolvedValue({});
-
-    renderWith(
-      [makeSupplier({ companyName: 'Acme Supplies' })],
-      [makePurchase({ paymentStatus: 'unpaid', totalAmount: 50000, total: 50000, paid: 0 })],
-      { createPaymentMutateAsync: mutateAsync }
-    );
-
-    // Open modal
-    fireEvent.click(await screen.findByRole('button', { name: /settle bill/i }));
-
-    // Wait for dialog to appear
-    const dialog = await screen.findByRole('dialog');
-
-    // Submit via the form submit button
-    fireEvent.click(within(dialog).getByRole('button', { name: /submit disbursement/i }));
-
-    await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          party: 'Acme Supplies',
-          partyType: 'supplier',
-          type: 'made',
-        })
-      );
-    });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 7. Multiple purchase orders per supplier
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Payables page — multiple purchase orders per supplier', () => {
-  it('sums all unpaid orders for the same supplier into one creditor row', async () => {
-    renderWith(
-      [makeSupplier({ companyName: 'Mega Corp' })],
-      [
-        makePurchase({ id: 1, supplierName: 'Mega Corp', paymentStatus: 'unpaid', totalAmount: 20000, total: 20000, paid: 0 }),
-        makePurchase({ id: 2, supplierName: 'Mega Corp', paymentStatus: 'unpaid', totalAmount: 30000, total: 30000, paid: 0 }),
-        makePurchase({ id: 3, supplierName: 'Mega Corp', paymentStatus: 'paid',   totalAmount: 10000, total: 10000, paid: 10000 }),
-      ]
-    );
-
-    // Only one row for Mega Corp in the table
-    const rows = await screen.findAllByText('Mega Corp');
-    expect(rows).toHaveLength(1);
-
-    // 20 000 + 30 000 = 50 000 outstanding (the paid one is excluded)
-    // Scope to the table to avoid matching stat card values
-    const table = screen.getByRole('table');
-    expect(within(table).getByText(/50,000/)).toBeInTheDocument();
+    // Not an empty table: a failure to load and an absence of debt are different
+    // situations and must not look the same.
+    expect(screen.queryByText('No records found')).not.toBeInTheDocument();
   });
 });

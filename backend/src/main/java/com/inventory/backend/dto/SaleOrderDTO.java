@@ -40,6 +40,22 @@ public class SaleOrderDTO {
     private String createdBy;
 
     /**
+     * The warehouse the goods were taken from.
+     *
+     * <p>A sale now names its location, so a warehouse can report what it sold
+     * and a transfer can be reasoned about against a known starting point.
+     */
+    private Long warehouseId;
+    private String warehouseName;
+
+    /**
+     * Cost of the goods on this sale, at the weighted-average cost they carried
+     * when they left. Reported per line so the receipt shows the margin the sale
+     * actually made rather than whatever the purchase price is today.
+     */
+    private BigDecimal costOfGoodsSold;
+
+    /**
      * The cashier who rang the sale, as a reference rather than an id.
      *
      * <p>Resolved from {@code createdBy} on the order. Null when the sale has no

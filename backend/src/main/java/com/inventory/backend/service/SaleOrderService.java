@@ -12,10 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,14 +29,16 @@ public class SaleOrderService {
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
     private final AuditLogService auditLogService;
+    private final StockLedgerService ledger;
+    private final WarehouseStockService warehouseStockService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /**
      * The sales the caller is allowed to see.
      *
-     * <p>{@code SALE_READ} alone means \"sales you can look at\", not \"every sale
-     * in the business\". Holding {@code SALES_REPORT_VIEW} is what widens it: that
+     * <p>{@code SALE_READ} alone means "sales you can look at", not "every sale
+     * in the business". Holding {@code SALES_REPORT_VIEW} is what widens it: that
      * permission exists precisely to see the whole picture, so a Cashier — who
      * has the first but not the second — sees only their own transactions and
      * everyone else's takings stay out of reach.
@@ -94,7 +96,7 @@ public class SaleOrderService {
      *
      * <p>Same rule as {@link #listSales}: without the wider reporting
      * permission, a sale that belongs to somebody else is reported as missing
-     * rather than returned. Saying \"not found\" rather than \"forbidden\" avoids
+     * rather than returned. Saying "not found" rather than "forbidden" avoids
      * confirming that a given order number exists to someone who may not see it.
      */
     @Transactional(readOnly = true)
@@ -133,11 +135,6 @@ public class SaleOrderService {
      * Raises a request to void a sale. Requires {@code SALE_VOID_REQUEST};
      * accepting it requires {@code SALE_VOID_APPROVE}.
      */
-
-    /**
-     * Raises a request to void a sale. Requires {@code SALE_VOID_REQUEST};
-     * accepting it requires {@code SALE_VOID_APPROVE}.
-     */
     @Transactional
     public SaleOrderDTO requestVoid(Long id, String reason) {
         SaleOrder order = loadForApproval(id);
@@ -155,8 +152,8 @@ public class SaleOrderService {
     /**
      * Accepts a pending void: the sale is cancelled and its stock goes back.
      *
-     * <p>Restocking uses the same lock as a sale so a void cannot race a
-     * concurrent sale into a negative quantity.
+     * <p>Restocking uses the same per-warehouse stock service as a sale, so the
+     * ledger and the warehouse split cannot drift apart when a sale is undone.
      */
     @Transactional
     public SaleOrderDTO approveVoid(Long id, String note) {
@@ -164,7 +161,7 @@ public class SaleOrderService {
         requirePending(order.getVoidStatus(), "void");
         User actor = currentUser();
 
-        restock(order);
+        restock(order, actor);
 
         order.setStatus("CANCELLED");
         order.setPaymentStatus("REFUNDED");
@@ -219,7 +216,7 @@ public class SaleOrderService {
         requirePending(order.getRefundStatus(), "refund");
         User actor = currentUser();
 
-        restock(order);
+        restock(order, actor);
 
         order.setPaymentStatus("REFUNDED");
         order.setRefundStatus(StockMovement.Status.APPROVED);
@@ -280,32 +277,43 @@ public class SaleOrderService {
         }
     }
 
-    /** Returns each sold item to stock, never below zero, and records why. */
-    private void restock(SaleOrder order) {
+    /**
+     * Returns each sold item to the warehouse it was taken from.
+     *
+     * <p>Going back to the original warehouse rather than "wherever stock is
+     * available" is deliberate: putting it somewhere else would silently
+     * relocate the business's inventory as a side effect of a refund.
+     */
+    private void restock(SaleOrder order, User actor) {
         if (order.getItems() == null) {
             return;
+        }
+        Warehouse warehouse = order.getWarehouse();
+        if (warehouse == null) {
+            warehouse = warehouseStockService.resolveDefaultWarehouse(null);
         }
         for (SaleOrderItem item : order.getItems()) {
             if (item.getProduct() == null || item.getQuantity() == null) {
                 continue;
             }
-            Product product = productRepository.findByIdWithLock(item.getProduct().getId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Product not found: id=" + item.getProduct().getId()));
-            int current = product.getQuantity() != null ? product.getQuantity() : 0;
-            product.setQuantity(current + item.getQuantity());
-            productRepository.save(product);
+            int returned = item.getQuantityReturned() != null ? item.getQuantityReturned() : 0;
+            int quantity = item.getQuantity() - returned;
+            if (quantity <= 0) {
+                continue;
+            }
+            // The cost comes back with the goods, at the cost they left at.
+            BigDecimal unitCost = item.getUnitCost() != null
+                    ? item.getUnitCost()
+                    : (item.getProduct().getPurchasePrice() != null
+                        ? item.getProduct().getPurchasePrice() : BigDecimal.ZERO);
 
-            stockMovementRepository.save(StockMovement.builder()
-                    .product(product)
-                    .type("IN")
-                    .quantity(item.getQuantity())
-                    .reference(order.getOrderNumber())
-                    .notes("Returned to stock — sale " + order.getOrderNumber() + " voided or refunded")
-                    .createdBy(currentUser())
-                    .status(StockMovement.Status.APPROVED)
-                    .approvedAt(java.time.LocalDateTime.now())
-                    .build());
+            ledger.post(StockMovement.TYPE_SALES_RETURN, item.getProduct().getId(),
+                    warehouse.getId(), quantity, order.getOrderNumber(),
+                    "Sale voided or refunded",
+                    "Returned to stock — sale " + order.getOrderNumber()
+                            + " voided or refunded",
+                    unitCost, StockLedgerService.newGroup("RET-" + order.getId()),
+                    StockMovement.Status.APPROVED, actor);
         }
     }
 
@@ -327,6 +335,14 @@ public class SaleOrderService {
                 order.getOrderNumber() + (note == null || note.isBlank() ? "" : " — " + note));
     }
 
+    /**
+     * Records a sale: deducts stock from the stated warehouse, snapshots the
+     * cost of the goods, and writes the payment that was actually taken.
+     *
+     * <p>Everything happens in one transaction. If the payment cannot be written
+     * the stock comes back, because a sale that moved goods without recording
+     * the money is worse than a sale that failed.
+     */
     @Transactional
     public SaleOrderDTO createSale(CreateSaleOrderRequest req) {
         // ── 0. Idempotency: return the existing sale on duplicate submission ──
@@ -341,21 +357,11 @@ public class SaleOrderService {
             throw new IllegalArgumentException("A sale must contain at least one item.");
         }
 
-        String principal;
-        try {
-            principal = SecurityContextHolder.getContext().getAuthentication().getName();
-        } catch (Exception e) {
-            principal = null;
-        }
-        final String currentUser = principal;
-        User currentUserEntity = (currentUser == null) ? null :
-                userRepository.findByEmail(currentUser)
-                        .or(() -> userRepository.findByUsername(currentUser))
-                        .orElse(null);
+        User currentUserEntity = currentUser();
 
         // ── 1. Build the order shell ──────────────────────────────────────────
         SaleOrder order = new SaleOrder();
-        order.setOrderNumber("SO-TMP-" + UUID.randomUUID()); // placeholder; replaced with stable number below
+        order.setOrderNumber("SO-TMP-" + java.util.UUID.randomUUID()); // placeholder; replaced with stable number below
         if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
             order.setIdempotencyKey(req.getIdempotencyKey());
         }
@@ -372,10 +378,16 @@ public class SaleOrderService {
                     ? req.getCustomerName() : "Walk-in Customer");
         }
 
+        // Which warehouse the goods leave. Resolved before anything moves, so an
+        // ambiguous warehouse fails the sale rather than half-completing it.
+        Warehouse warehouse = warehouseStockService.resolveDefaultWarehouse(req.getWarehouseId());
+        order.setWarehouse(warehouse);
+
         order.setCreatedBy(currentUserEntity);
         order.setDiscount(req.getDiscount() != null ? req.getDiscount() : BigDecimal.ZERO);
         order.setTax(req.getTax() != null ? req.getTax() : BigDecimal.ZERO);
         order.setPaymentMethod(req.getPaymentMethod() != null ? req.getPaymentMethod() : "CASH");
+        order.setTransactionDate(LocalDateTime.now());
 
         // Determine payment status from request; default to PAID (cash sale)
         String paymentStatus = req.getPaymentStatus() != null ? req.getPaymentStatus() : "PAID";
@@ -383,9 +395,14 @@ public class SaleOrderService {
         order.setStatus("UNPAID".equals(paymentStatus) ? "PENDING" : "PAID");
 
         BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal cogs = BigDecimal.ZERO;
         List<SaleOrderItem> items = new ArrayList<>();
 
-        // ── 2. Validate stock and build items ─────────────────────────────────
+        // ── 2. Validate stock, price the line, and move the goods ────────────
+        //
+        // The cost is snapshotted per line before the goods leave, so the COGS of
+        // this sale is fixed now and is not restated when the product's purchase
+        // price changes later.
         for (CreateSaleOrderItem i : req.getItems()) {
             Product p = productRepository.findByIdWithLock(i.getProductId())
                     .orElseThrow(() -> new IllegalArgumentException("Product not found: id=" + i.getProductId()));
@@ -393,20 +410,32 @@ public class SaleOrderService {
             if (i.getQuantity() == null || i.getQuantity() <= 0) {
                 throw new IllegalArgumentException("Quantity must be at least 1 for product: " + p.getName());
             }
-
-            int currentStock = p.getQuantity() != null ? p.getQuantity() : 0;
-            if (currentStock < i.getQuantity()) {
-                throw new IllegalArgumentException(
-                        "Insufficient stock for '" + p.getName() + "'. " +
-                        "Available: " + currentStock + ", Requested: " + i.getQuantity());
+            if (i.getUnitPrice() == null) {
+                throw new IllegalArgumentException("A selling price is required for product: " + p.getName());
             }
 
-            // ── 3. Deduct stock atomically ────────────────────────────────────
-            p.setQuantity(currentStock - i.getQuantity());
-            productRepository.save(p);
+            // The cost is snapshotted per line before the goods leave, so the COGS
+            // of this sale is fixed now and is not restated when the product's
+            // purchase price changes later.
+            BigDecimal unitCost = warehouseStockService.unitCostOf(p.getId(), warehouse.getId());
+            if (unitCost == null) {
+                unitCost = p.getPurchasePrice() != null ? p.getPurchasePrice() : BigDecimal.ZERO;
+            }
+
+            // Up-front availability check, so the caller gets a clear message
+            // before any work is done. The authoritative check is the one inside
+            // applyMovement, which holds the row lock and is what actually
+            // prevents two concurrent sales from both succeeding.
+            int available = warehouseStockService.quantityIn(p.getId(), warehouse.getId());
+            if (available < i.getQuantity()) {
+                throw new IllegalArgumentException(String.format(
+                        "Insufficient stock for '%s' in %s. Available: %d, Requested: %d.",
+                        p.getName(), warehouse.getName(), available, i.getQuantity()));
+            }
 
             BigDecimal itemDiscount = i.getDiscount() != null ? i.getDiscount() : BigDecimal.ZERO;
-            BigDecimal lineTotal = i.getUnitPrice().multiply(new BigDecimal(i.getQuantity())).subtract(itemDiscount);
+            BigDecimal lineTotal = com.inventory.backend.finance.FinancialCalculations
+                    .lineNet(i.getUnitPrice(), i.getQuantity(), itemDiscount);
 
             SaleOrderItem item = new SaleOrderItem();
             item.setSaleOrder(order);
@@ -415,13 +444,18 @@ public class SaleOrderService {
             item.setUnitPrice(i.getUnitPrice());
             item.setDiscount(itemDiscount);
             item.setSubtotal(lineTotal);
+            item.setUnitCost(unitCost);
+            item.setQuantityReturned(0);
             items.add(item);
 
-            subtotal = subtotal.add(item.getSubtotal());
+            subtotal = subtotal.add(lineTotal);
+            cogs = cogs.add(unitCost.multiply(BigDecimal.valueOf(i.getQuantity())));
         }
 
         order.setTotalAmount(subtotal);
         order.setFinalAmount(subtotal.subtract(order.getDiscount()).add(order.getTax()));
+        order.setCostOfGoodsSold(cogs);
+        order.setAmountPaid(order.getFinalAmount());
         order.setItems(items);
 
         SaleOrder saved = saleOrderRepository.save(order);
@@ -429,30 +463,47 @@ public class SaleOrderService {
         saved.setOrderNumber(String.format("SO-%06d", saved.getId()));
         saved = saleOrderRepository.save(saved);
 
-        // ── 4. Record stock movement per item ─────────────────────────────────
+        // ── 4. Record the ledger entry per line, which is also what deducts the
+        //       stock from the warehouse ───────────────────────────────────────
+        // Deliberately not applied above as well. The ledger is the single place
+        // a movement is written and the single place stock changes; calling both
+        // would deduct the goods twice and leave the ledger disagreeing with the
+        // quantity on hand.
+        String group = StockLedgerService.newGroup("SALE-" + saved.getId());
         for (SaleOrderItem item : saved.getItems()) {
-            StockMovement movement = StockMovement.builder()
-                    .product(item.getProduct())
-                    .type("OUT")
-                    .quantity(-item.getQuantity())
-                    .reference(saved.getOrderNumber())
-                    .notes("Sale: " + saved.getOrderNumber())
-                    .createdBy(currentUserEntity)
-                    .build();
-            stockMovementRepository.save(movement);
+            ledger.post(StockMovement.TYPE_SALE, item.getProduct().getId(), warehouse.getId(),
+                    -item.getQuantity(), saved.getOrderNumber(), "Customer sale",
+                    "Sale: " + saved.getOrderNumber() + " at " + warehouse.getName(),
+                    item.getUnitCost(), group, StockMovement.Status.APPROVED, currentUserEntity);
         }
 
-        // ── 5. Record the payment ─────────────────────────────────────────────
+        // ── 5. Record the payment that was actually taken ─────────────────────
+        //
+        // Only money that was handed over gets a COMPLETED payment. A credit sale
+        // gets a PENDING one so the amount is on record without being counted as
+        // cash, which is what distinguishes "sold" from "paid".
         Payment payment = Payment.builder()
                 .reference("PAY-" + System.currentTimeMillis() + "-" + saved.getId())
                 .orderReference(saved.getOrderNumber())
-                .type("IN")
+                .type(Payment.DIRECTION_IN)
+                .direction(Payment.DIRECTION_IN)
+                .partyType(Payment.PARTY_CUSTOMER)
+                .customer(saved.getCustomer())
+                .saleOrder(saved)
                 .amount(saved.getFinalAmount())
                 .paymentMethod(saved.getPaymentMethod())
-                .status("UNPAID".equals(paymentStatus) ? "PENDING" : "COMPLETED")
-                .createdBy(currentUser)
+                .status("UNPAID".equals(paymentStatus)
+                        ? Payment.STATUS_PENDING : Payment.STATUS_COMPLETED)
+                .transactionDate(LocalDateTime.now())
+                .createdBy(currentUserEntity == null ? "system" : currentUserEntity.getUsername())
+                .createdByUser(currentUserEntity)
                 .build();
         paymentRepository.save(payment);
+
+        if ("UNPAID".equals(paymentStatus)) {
+            saved.setAmountPaid(BigDecimal.ZERO);
+            saleOrderRepository.save(saved);
+        }
 
         return toDTO(saved);
     }
@@ -502,6 +553,10 @@ public class SaleOrderService {
         if (o.getCustomer() != null) {
             dto.setCustomerId(o.getCustomer().getId());
         }
+        if (o.getWarehouse() != null) {
+            dto.setWarehouseId(o.getWarehouse().getId());
+            dto.setWarehouseName(o.getWarehouse().getName());
+        }
         if (o.getCreatedBy() != null) {
             dto.setCreatedBy(o.getCreatedBy().getUsername());
             // Cashier and branch travel together because branch is an attribute
@@ -527,7 +582,12 @@ public class SaleOrderService {
         } else {
             dto.setPaymentStatus(derivePaymentStatus(o));
         }
-        dto.setPaid(dto.getPaymentStatus().equals("PAID") ? o.getFinalAmount() : BigDecimal.ZERO);
+        // Amount actually received, from the stored running total. Reporting the
+        // invoice total as "paid" for every sale would make every credit sale
+        // look collected.
+        dto.setPaid(o.getAmountPaid() != null ? o.getAmountPaid() : BigDecimal.ZERO);
+        dto.setCostOfGoodsSold(o.getCostOfGoodsSold() != null
+                ? o.getCostOfGoodsSold() : BigDecimal.ZERO);
 
         // Map items
         if (o.getItems() != null) {
@@ -544,6 +604,7 @@ public class SaleOrderService {
                 idto.setSubtotal(i.getSubtotal());
                 idto.setTotal(i.getSubtotal());    // frontend alias
                 idto.setDiscount(i.getDiscount() != null ? i.getDiscount() : BigDecimal.ZERO);
+                idto.setUnitCost(i.getUnitCost());
                 return idto;
             }).collect(Collectors.toList()));
         }

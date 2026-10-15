@@ -7,4 +7,5 @@ import java.util.List;
 public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
     boolean existsByName(String name);
     List<Warehouse> findByActiveTrue();
+    List<Warehouse> findByActiveTrueOrderByIdAsc();
 }

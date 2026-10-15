@@ -38,6 +38,7 @@ const nextConfig = {
     // Host addresses on private ranges, so testing from a phone/tablet or a
     // second machine on the same network works.
     '192.168.137.1',
+    '169.254.51.110',
     'host.docker.internal',
   ],
 };

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, TruckIcon,
   Users, Building2, DollarSign, BarChart3, Shield, Settings,
-  ChevronDown, ChevronRight, Menu, X, Activity, Tag,
+  ChevronDown, ChevronRight, Menu, X, Activity, Tag, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -87,9 +87,28 @@ const navItems: NavItem[] = [
     label: 'Reports', icon: <BarChart3 size={18} />,
     children: [
       { label: 'Sales Report', href: '/reports/sales', anyOf: ['SALES_REPORT_VIEW', 'REPORT_VIEW'] },
+      { label: 'Purchase Report', href: '/reports/purchases', anyOf: ['PURCHASE_READ'] },
+      { label: 'Income & Cash Flow', href: '/reports/financial', anyOf: ['FINANCIAL_REPORT_VIEW'] },
       { label: 'Inventory Report', href: '/reports/inventory', anyOf: ['INVENTORY_REPORT_VIEW', 'LOW_STOCK_REPORT_VIEW', 'REPORT_VIEW'] },
       { label: 'Inventory Value', href: '/reports/inventory-value', anyOf: ['INVENTORY_VALUE_VIEW'] },
-      { label: 'Purchase Report', href: '/reports/purchases', anyOf: ['PURCHASE_READ'] },
+      // Profit & Loss, receivables and payables stay under Finance, where they
+      // already were. Repeating a route in two groups means two links to one
+      // page and an active-highlight that matches both.
+    ],
+  },
+  {
+    // Read-only analysis. Nothing in this group can change stock, approve a
+    // payment or post an accounting entry — there are deliberately no AI write
+    // permissions to grant, so a role either sees this section or does not.
+    label: 'Intelligence', icon: <Sparkles size={18} />,
+    children: [
+      // The chatbot. Its tools are permission-checked on the
+      // server, so the entry only needs the one permission
+      // that gates the endpoints.
+      { label: 'Assistant', href: '/assistant', anyOf: ['AI_ASSISTANT_USE'] },
+      { label: 'Forecast & Alerts', href: '/reports/ai', anyOf: ['AI_INSIGHT_VIEW', 'AI_FORECAST_VIEW'] },
+      { label: 'Model Evaluation', href: '/reports/ai/models', anyOf: ['AI_MODEL_VIEW'] },
+      { label: 'Assistant Queries', href: '/reports/ai/queries', anyOf: ['AI_QUERY_LOG_VIEW'] },
     ],
   },
   { label: 'Staff Management', href: '/staff', icon: <Shield size={18} />, anyOf: ['STAFF_VIEW', 'USER_READ'] },

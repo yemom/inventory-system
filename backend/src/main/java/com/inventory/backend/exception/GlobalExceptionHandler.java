@@ -6,6 +6,8 @@ import io.jsonwebtoken.JwtException;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -113,6 +115,29 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, "NOT_FOUND", ex.getMessage());
     }
 
+    /**
+     * An unmapped URL is a 404, not a server fault.
+     *
+     * <p>A request for a path no controller claims is thrown by the dispatcher as
+     * {@code NoResourceFoundException} and used to reach the catch-all handler,
+     * which answers 500. That is wrong twice over: the caller is told the server
+     * broke when it did not, and every client — including this repository's own
+     * frontend, which uses a wrong path — has no way to tell a typo from an
+     * outage. The message names the path the caller itself sent and nothing else.
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleNoHandler(Exception ex) {
+        String path = ex instanceof NoResourceFoundException resource
+                ? resource.getResourcePath()
+                : (ex instanceof NoHandlerFoundException handler ? handler.getRequestURL() : null);
+        log.debug("No handler for path (requestId={}): {}",
+                MDC.get(RequestIdFilter.MDC_REQUEST_ID_KEY), path);
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND",
+                path == null || path.isBlank()
+                        ? "That endpoint does not exist."
+                        : "No endpoint matches /" + path + ".");
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConflict(DataIntegrityViolationException ex) {
         // Never leak the SQL / constraint internals.
@@ -154,6 +179,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     public ResponseEntity<ApiResponse<Void>> handleAuth(Exception ex) {
         return build(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid email or password.");
+    }
+
+    /**
+     * A customer session could not be opened, or its token did not
+     * resolve.
+     *
+     * <p>401 rather than 403: the customer has not been refused
+     * anything they hold; they have not proved who they are. The
+     * message is fixed rather than taken from the exception so an
+     * order number can never be probed for.
+     */
+    @ExceptionHandler(
+            com.inventory.backend.chatbot.ChatbotService.InvalidCustomerCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidCustomerCredentials(
+            com.inventory.backend.chatbot.ChatbotService.InvalidCustomerCredentialsException ex) {
+        return build(HttpStatus.UNAUTHORIZED, "INVALID_CUSTOMER_CREDENTIALS",
+                "No active account matches that email and order number.");
     }
 
     /**

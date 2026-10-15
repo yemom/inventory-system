@@ -107,14 +107,76 @@ services:
       # would let anyone forge an admin token. Generate one: openssl rand -hex 32
       JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret}
 
+      # ── Intelligence service ─────────────────────────────────────────
+      # Forecasts, anomaly alerts and reorder advice, all computed from this
+      # application's own transactions inside the backend. There is no
+      # external provider, no API key and no outbound call, so there is
+      # nothing here to keep secret and nothing to rotate.
+      #
+      # AI_ENABLED=false switches every /api/v1/ai endpoint off. Reports,
+      # dashboards and financial figures are unaffected — they are computed
+      # by the reporting layer, not by these models.
+      AI_ENABLED: ${AI_ENABLED:-true}
+      AI_HISTORY_DAYS: ${AI_HISTORY_DAYS:-540}
+      AI_DEMAND_HISTORY_DAYS: ${AI_DEMAND_HISTORY_DAYS:-365}
+      AI_CONFIDENCE: ${AI_CONFIDENCE:-0.95}
+      AI_DAILY_HORIZON: ${AI_DAILY_HORIZON:-14}
+      AI_MAX_DEMAND_MODELS: ${AI_MAX_DEMAND_MODELS:-25}
+      AI_MIN_DEMAND_OBSERVATIONS: ${AI_MIN_DEMAND_OBSERVATIONS:-28}
+      # A day is raised only when it is both statistically unusual and
+      # materially different in money. See docs/intelligence.md.
+      AI_ANOMALY_THRESHOLD: ${AI_ANOMALY_THRESHOLD:-3.5}
+      AI_ANOMALY_MIN_OBSERVATIONS: ${AI_ANOMALY_MIN_OBSERVATIONS:-8}
+      AI_ANOMALY_MIN_RELATIVE_DEVIATION: ${AI_ANOMALY_MIN_RELATIVE_DEVIATION:-0.30}
+      AI_LARGE_MOVEMENT_THRESHOLD: ${AI_LARGE_MOVEMENT_THRESHOLD:-50}
+      AI_SLOW_MOVING_DAYS: ${AI_SLOW_MOVING_DAYS:-60}
+      AI_DEFAULT_LEAD_TIME_DAYS: ${AI_DEFAULT_LEAD_TIME_DAYS:-7}
+      AI_SERVICE_LEVEL: ${AI_SERVICE_LEVEL:-0.95}
+      AI_PERSIST_MODEL_VERSIONS: ${AI_PERSIST_MODEL_VERSIONS:-true}
+      AI_ASSISTANT_MIN_CONFIDENCE: ${AI_ASSISTANT_MIN_CONFIDENCE:-0.35}
+
+      REPORT_EXPORT_MAX_ROWS: ${REPORT_EXPORT_MAX_ROWS:-10000}
+
+      # ── Chatbot service ──────────────────────────────────────────────
+      CHATBOT_ENABLED: ${CHATBOT_ENABLED:-true}
+      CHATBOT_PROVIDER: ${CHATBOT_PROVIDER:-deterministic}
+      CHATBOT_API_URL: ${CHATBOT_API_URL:-}
+      CHATBOT_API_KEY: ${CHATBOT_API_KEY:-}
+      # The backend reads CHATBOT_API_KEY first and falls back to
+      # OPENAI_API_KEY, so either name works. Pass both through; the key
+      # itself lives in your .env, which is git-ignored.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CHATBOT_MODEL: ${CHATBOT_MODEL:-gpt-4o-mini}
+      CHATBOT_TIMEOUT_MS: ${CHATBOT_TIMEOUT_MS:-15000}
+      CHATBOT_MAX_TOKENS: ${CHATBOT_MAX_TOKENS:-900}
+      CHATBOT_LLM_PHRASED: ${CHATBOT_LLM_PHRASED:-true}
+      CHATBOT_MAX_CONTEXT_CHARS: ${CHATBOT_MAX_CONTEXT_CHARS:-6000}
+      CHATBOT_MIN_CONFIDENCE: ${CHATBOT_MIN_CONFIDENCE:-0.45}
+      CHATBOT_STAFF_RETENTION_DAYS: ${CHATBOT_STAFF_RETENTION_DAYS:-90}
+      CHATBOT_CUSTOMER_RETENTION_DAYS: ${CHATBOT_CUSTOMER_RETENTION_DAYS:-30}
+      CHATBOT_SESSION_TTL_HOURS: ${CHATBOT_SESSION_TTL_HOURS:-12}
+      CHATBOT_MAX_MESSAGES: ${CHATBOT_MAX_MESSAGES:-100}
+      CHATBOT_MESSAGES_PER_WINDOW: ${CHATBOT_MESSAGES_PER_WINDOW:-30}
+      CHATBOT_WINDOW_SECONDS: ${CHATBOT_WINDOW_SECONDS:-60}
+
       SERVER_PORT: 8080
 
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: true
 
-      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-Esrom Basazinaw}
-      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-12yemom@gmail.com}
-      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-Fekerte@zegeye1221}
+      # Bootstrap administrator.
+      #
+      # These were previously committed here as working credentials, which
+      # means the super admin of every deployment started from this file was
+      # the same person with the same password. They now come from .env with
+      # no default at all: an unset variable is a startup failure, which is a
+      # better outcome than a reachable admin account.
+      #
+      # Set them in .env (see .env-example), or export them before
+      # `docker compose up`.
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:?SUPER_ADMIN_USERNAME is required}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:?SUPER_ADMIN_EMAIL is required}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD is required}
       SUPER_ADMIN_FIRST_NAME: ${SUPER_ADMIN_FIRST_NAME:-Super}
       SUPER_ADMIN_LAST_NAME: ${SUPER_ADMIN_LAST_NAME:-Admin}
 

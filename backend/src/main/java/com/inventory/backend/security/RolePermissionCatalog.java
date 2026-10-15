@@ -117,7 +117,15 @@ public final class RolePermissionCatalog {
 
             // ── Platform ──
             "AUDIT_LOG_VIEW", "SYSTEM_SETTINGS_MANAGE", "SETTINGS_VIEW", "SETTINGS_UPDATE",
-            "DASHBOARD_VIEW");
+            "DASHBOARD_VIEW",
+
+            // ── Artificial intelligence ──
+            // Read-only by design. There is no AI_*_APPROVE or AI_*_EXECUTE:
+            // nothing the assistant or the models produce is allowed to change a
+            // balance, approve a payment or move stock on its own. Adding such a
+            // permission later would defeat the reason these are absent.
+            "AI_INSIGHT_VIEW", "AI_FORECAST_VIEW", "AI_ASSISTANT_USE",
+            "AI_MODEL_VIEW", "AI_QUERY_LOG_VIEW");
 
     // ── The matrix ────────────────────────────────────────────────────────────
 
@@ -161,7 +169,15 @@ public final class RolePermissionCatalog {
             "AUDIT_LOG_VIEW",
             // Deliberately NOT granted: SYSTEM_SETTINGS_MANAGE, SETTINGS_UPDATE.
 
-            "DAMAGE_RECORD", "EXPIRY_RECORD", "RECEIVABLE_READ", "PAYABLE_READ");
+            "DAMAGE_RECORD", "EXPIRY_RECORD", "RECEIVABLE_READ", "PAYABLE_READ",
+            "RETURN_CREATE", "RETURN_READ", "RETURN_APPROVE",
+
+            // The Manager sees the intelligence layer. Forecasts and insights
+            // are read-only, and the assistant's own permission checks run on top
+            // of these, so a Manager without PROFIT_LOSS_READ still cannot make
+            // it produce a profit figure.
+            "AI_INSIGHT_VIEW", "AI_FORECAST_VIEW", "AI_ASSISTANT_USE",
+            "AI_MODEL_VIEW", "AI_QUERY_LOG_VIEW");
 
     private static final Set<String> SUPERVISOR_PERMISSIONS = orderedSet(
             "DASHBOARD_VIEW",
@@ -176,6 +192,16 @@ public final class RolePermissionCatalog {
             "SALE_VOID_APPROVE", "SALE_REFUND_APPROVE",
             "STOCK_ADJUSTMENT_APPROVE",
 
+            // Intelligence: forecasts and stock-risk advice are operational, and
+            // a Supervisor needs them to run a shop. Profit figures are still
+            // withheld — the assistant checks PROFIT_LOSS_READ on its own, so
+            // holding AI_ASSISTANT_USE cannot be used to extract them.
+            "AI_INSIGHT_VIEW", "AI_FORECAST_VIEW", "AI_ASSISTANT_USE",
+            "AI_MODEL_VIEW",
+
+            // Deliberately NOT granted: AI_QUERY_LOG_VIEW. A Supervisor sees the
+            // advice, not the log of what everybody has asked the assistant.
+
             // Sales and low-stock reporting, but NOT profit or inventory valuation.
             "SALE_READ",
             "SALES_REPORT_VIEW", "LOW_STOCK_REPORT_VIEW", "INVENTORY_REPORT_VIEW",
@@ -188,7 +214,12 @@ public final class RolePermissionCatalog {
             // PRODUCT_CREATE / PRODUCT_UPDATE / PRODUCT_DEACTIVATE, PRICE_CHANGE_APPROVE.
 
             "SUPPLIER_READ", "CUSTOMER_READ",
-            "PURCHASE_READ", "DAMAGE_RECORD", "EXPIRY_RECORD");
+            "PURCHASE_READ", "DAMAGE_RECORD", "EXPIRY_RECORD",
+
+            // Operational intelligence only: what is about to run out and how
+            // demand is moving. No profit, no assistant (the assistant could
+            // surface balances the Cashier should not see), no model history.
+            "AI_FORECAST_VIEW");
 
     private static final Set<String> CASHIER_PERMISSIONS = orderedSet(
             "DASHBOARD_VIEW",
@@ -246,6 +277,17 @@ public final class RolePermissionCatalog {
             "SALES_REPORT_VIEW", "REPORT_VIEW", "REPORT_EXPORT",
             "SUPPLIER_READ", "CUSTOMER_READ");
 
+    /**
+     * The Accountant role extended for the finance and intelligence surfaces.
+     *
+     * <p>Separate from the matrix above only to keep the addition readable; it is
+     * merged into the same set, so an Accountant has exactly the permissions
+     * listed in both blocks and nothing else.
+     */
+    private static final Set<String> ACCOUNTANT_AI_PERMISSIONS = orderedSet(
+            "AI_INSIGHT_VIEW", "AI_FORECAST_VIEW", "AI_ASSISTANT_USE",
+            "AI_MODEL_VIEW", "AI_QUERY_LOG_VIEW");
+
     private static final Map<String, Set<String>> MATRIX = buildMatrix();
 
     private static Map<String, Set<String>> buildMatrix() {
@@ -256,8 +298,15 @@ public final class RolePermissionCatalog {
         matrix.put(SUPERVISOR, SUPERVISOR_PERMISSIONS);
         matrix.put(CASHIER, CASHIER_PERMISSIONS);
         matrix.put(INVENTORY_STAFF, INVENTORY_STAFF_PERMISSIONS);
-        matrix.put(ACCOUNTANT, ACCOUNTANT_PERMISSIONS);
+        matrix.put(ACCOUNTANT, merge(ACCOUNTANT_PERMISSIONS, ACCOUNTANT_AI_PERMISSIONS));
         return Map.copyOf(matrix);
+    }
+
+    /** Union of two permission sets, order irrelevant since it is a Set. */
+    private static Set<String> merge(Set<String> a, Set<String> b) {
+        Set<String> merged = new LinkedHashSet<>(a);
+        merged.addAll(b);
+        return Set.copyOf(merged);
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────

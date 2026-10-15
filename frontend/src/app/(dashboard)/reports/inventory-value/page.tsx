@@ -1,181 +1,112 @@
 'use client';
-/**
- * ============================================================
- * INVENTORY VALUATION
- * ============================================================
- *
- * What the stock on hand is worth.
- *
- * This is a separate page from the inventory report on purpose. A Supervisor
- * may see which products need reordering — that is operational and they act on
- * it — but the valuation is the business's balance sheet and is gated on
- * INVENTORY_VALUE_VIEW, which the Supervisor role does not hold. The sidebar
- * hides the link, and the API refuses the call regardless.
- *
- * The figures come from GET /reports/inventory-value rather than being derived
- * in the browser from the product list: the endpoint is where the permission is
- * enforced, and computing valuation client-side would both bypass that and mean
- * a denied fetch still leaked every price to the page.
- */
-import React, { useCallback, useEffect, useState } from 'react';
-import { Boxes, Coins, TrendingUp, ShieldAlert } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
+
+import React from 'react';
+import ReportScreen from '@/components/reports/ReportScreen';
 import StatCard from '@/components/ui/StatCard';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import ErrorState from '@/components/ui/ErrorState';
-import Badge from '@/components/ui/Badge';
-import apiClient, { fetchAllPages } from '@/lib/api/apiClient';
-import { extractErrorMessage } from '@/lib/api/response';
+import { useWarehouses } from '@/hooks/useWarehouses';
 import { formatCurrency } from '@/lib/utils';
 
-interface ValuationLine {
-  id: number;
-  sku: string;
-  name: string;
-  unit?: string | null;
-  quantity: number;
-  reorderLevel?: number | null;
-  categoryName?: string | null;
-  purchasePrice: number;
-  sellingPrice: number;
-  costValue: number;
-  retailValue: number;
-}
+/**
+ * What the stock on hand is worth.
+ *
+ * <p>Valued at a moving weighted average, recalculated every time goods are
+ * received: the average cost of everything held, not today's purchase price and
+ * not the price the oldest batch was bought at. The method is named on the
+ * screen rather than left implicit, because "what is this worth" has more than
+ * one defensible answer and a reader is entitled to know which one is being
+ * given.
+ *
+ * <p>Value at retail and potential margin are shown alongside, clearly labelled
+ * as what <em>would</em> be realised if everything sold at list. It is not
+ * money, and it is not in the financial reports.
+ */
+export default function InventoryValuePage() {
+  const { data: warehouses = [] } = useWarehouses();
+  const [warehouseId, setWarehouseId] = React.useState('');
 
-interface InventoryValueReport {
-  lines: ValuationLine[];
-  totalUnits: number;
-  totalCostValue: number;
-  totalRetailValue: number;
-  potentialMargin: number;
-  skuCount: number;
-}
-
-export default function InventoryValueReportPage() {
-  const [report, setReport] = useState<InventoryValueReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.get('/reports/inventory-value');
-      setReport(response.data?.data ?? response.data);
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Could not load the inventory valuation.'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const columns: Column<ValuationLine>[] = [
-    {
-      key: 'sku',
-      label: 'SKU',
-      render: (_: unknown, row) => (
-        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{row.sku}</span>
-      ),
-    },
-    { key: 'name', label: 'Product' },
-    {
-      key: 'categoryName',
-      label: 'Category',
-      render: (v: unknown) => (v ? String(v) : <span className="text-gray-400">—</span>),
-    },
-    {
-      key: 'quantity',
-      label: 'On Hand',
-      render: (v: unknown, row) => (
-        <span className="font-semibold">
-          {Number(v ?? 0)} {row.unit || ''}
-        </span>
-      ),
-    },
-    {
-      key: 'purchasePrice',
-      label: 'Cost',
-      render: (v: unknown) => formatCurrency(Number(v ?? 0)),
-    },
-    {
-      key: 'costValue',
-      label: 'Value at Cost',
-      render: (v: unknown) => <span className="font-semibold">{formatCurrency(Number(v ?? 0))}</span>,
-    },
-    {
-      key: 'retailValue',
-      label: 'Value at Retail',
-      render: (v: unknown) => <span className="text-emerald-600 font-semibold">{formatCurrency(Number(v ?? 0))}</span>,
-    },
-    {
-      key: 'margin',
-      label: 'Margin',
-      render: (_: unknown, row) => {
-        const margin = Number(row.retailValue ?? 0) - Number(row.costValue ?? 0);
-        return (
-          <Badge variant={margin > 0 ? 'success' : 'default'}>
-            {formatCurrency(margin)}
-          </Badge>
-        );
-      },
-    },
-  ];
+  const filter = warehouseId
+    ? (
+        <label className="flex items-center gap-2 text-xs text-gray-500">
+          Warehouse
+          <select
+            value={warehouseId}
+            onChange={(event) => setWarehouseId(event.target.value)}
+            className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs"
+          >
+            <option value="">All warehouses</option>
+            {(warehouses as any[]).map((w) => (
+              <option key={w.id} value={String(w.id)}>
+                {w.name ?? `Warehouse ${w.id}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )
+    : null;
 
   return (
-    <div>
-      <PageHeader
-        title="Inventory Valuation"
-        subtitle="What the stock on hand is worth at cost and at retail."
-      />
-
-      {error ? (
-        <ErrorState message={error} retry={load} />
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              title="Stock Lines"
-              value={String(report?.skuCount ?? 0)}
-              icon={<Boxes size={20} />}
-            />
-            <StatCard
-              title="Units on Hand"
-              value={String(report?.totalUnits ?? 0)}
-              icon={<Boxes size={20} />}
-            />
-            <StatCard
-              title="Value at Cost"
-              value={formatCurrency(Number(report?.totalCostValue ?? 0))}
-              icon={<Coins size={20} />}
-            />
-            <StatCard
-              title="Potential Margin"
-              value={formatCurrency(Number(report?.potentialMargin ?? 0))}
-              icon={<TrendingUp size={20} />}
-            />
+    <ReportScreen
+      title="Inventory Valuation"
+      subtitle="Stock on hand at moving weighted-average cost, per warehouse"
+      report="inventory-valuation"
+      dateFiltered={false}
+      extraParams={warehouseId ? { warehouseId } : {}}
+      filters={filter}
+      columns={[
+        { key: 'sku', label: 'SKU' },
+        { key: 'product', label: 'Product' },
+        { key: 'warehouse', label: 'Warehouse' },
+        { key: 'quantity', label: 'On hand', numeric: true },
+        { key: 'unitCost', label: 'Unit cost', money: true },
+        { key: 'valueAtCost', label: 'Value at cost', money: true },
+        { key: 'unitPrice', label: 'List price', money: true },
+        { key: 'valueAtRetail', label: 'Value at retail', money: true },
+        { key: 'potentialMargin', label: 'Potential margin', money: true },
+      ]}
+      summary={(payload) => {
+        const rows: any[] = payload.rows ?? [];
+        const retail = rows.reduce(
+          (sum, r) => sum + Number(r.valueAtRetail ?? 0),
+          0,
+        );
+        const cost = Number(payload.totals?.totalValueAtCost ?? 0);
+        const units = Number(payload.totals?.totalUnits ?? 0);
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard
+                title="Stock at Cost"
+                value={formatCurrency(cost)}
+                changeLabel="what the business paid"
+                color="blue"
+              />
+              <StatCard
+                title="Units on Hand"
+                value={units.toLocaleString()}
+                changeLabel={`${rows.length} product/warehouse lines`}
+                color="purple"
+              />
+              <StatCard
+                title="Value at Retail"
+                value={formatCurrency(retail)}
+                changeLabel="if everything sold at list"
+                color="emerald"
+              />
+              <StatCard
+                title="Gross Margin on Hand"
+                value={retail > 0 ? `${(((retail - cost) / retail) * 100).toFixed(1)}%` : '—'}
+                changeLabel="not yet realised"
+                color="amber"
+              />
+            </div>
+            {payload.method && (
+              <p className="text-xs text-gray-400">
+                Costing method: {String(payload.method)}.
+              </p>
+            )}
           </div>
-
-          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3">
-            <ShieldAlert size={18} className="text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              This report reveals cost prices and margin on every line. It is limited to roles that hold
-              the inventory-value permission; Supervisors and Cashiers cannot open it.
-            </p>
-          </div>
-
-          <DataTable
-            columns={columns}
-            data={report?.lines ?? []}
-            loading={loading}
-            searchable
-            searchPlaceholder="Search by name or SKU..."
-          />
-        </div>
-      )}
-    </div>
+        );
+      }}
+    />
   );
 }

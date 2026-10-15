@@ -1,13 +1,17 @@
 package com.inventory.backend;
 
+import com.inventory.backend.model.Category;
 import com.inventory.backend.model.Permission;
 import com.inventory.backend.model.Role;
 import com.inventory.backend.model.User;
 import com.inventory.backend.model.UserStatus;
+import com.inventory.backend.model.Warehouse;
 import com.inventory.backend.security.RolePermissionCatalog;
+import com.inventory.backend.repository.CategoryRepository;
 import com.inventory.backend.repository.PermissionRepository;
 import com.inventory.backend.repository.RoleRepository;
 import com.inventory.backend.repository.UserRepository;
+import com.inventory.backend.repository.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +31,8 @@ public class DataInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final CategoryRepository categoryRepository;
     private final PasswordEncoder passwordEncoder;
 
     // No inline defaults for the password: it is a credential, and a fallback
@@ -78,6 +84,33 @@ public class DataInitializer implements CommandLineRunner {
         // the same permissions so existing accounts keep working, but it is not in
         // the assignable set, so no new account is ever created with it.
         ensureRole(RolePermissionCatalog.STOREKEEPER, allPermissions);
+
+        // 2b. At least one warehouse.
+        //
+        // Sales and purchases now name the warehouse the goods come from or go
+        // to, so a business with no warehouse cannot transact at all. Seeding one
+        // is bootstrap data, not business data: it is the location a single-site
+        // business already occupies, and every later movement is attributed to
+        // it until a second is added deliberately.
+        if (warehouseRepository.count() == 0) {
+            Warehouse main = new Warehouse();
+            main.setName("Main Warehouse");
+            main.setLocation("Head office");
+            main.setActive(true);
+            warehouseRepository.save(main);
+            log.info("  Created the default warehouse 'Main Warehouse'. "
+                    + "Stock movements will be attributed to it until another is added.");
+        }
+
+        // 2c. A default category, so a product can be created on a fresh install
+        // without first having to invent a taxonomy.
+        if (categoryRepository.count() == 0) {
+            Category general = new Category();
+            general.setName("General");
+            general.setDescription("Products not yet assigned to a more specific category");
+            categoryRepository.save(general);
+            log.info("  Created the default category 'General'.");
+        }
 
         // 3. Create or update initial Super Admin
         java.util.Optional<User> existingAdmin = userRepository.findByUsername(superAdminUsername);

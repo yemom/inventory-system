@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
@@ -31,6 +32,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     /** Dashboard aggregates */
     long countByActiveTrue();
+
+    /** Every active product, for catalogue browsing. */
+    @Query("SELECT p FROM Product p WHERE p.active = true ORDER BY p.name")
+    List<Product> findAllActive();
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.active = true AND p.quantity > 0 AND p.quantity <= COALESCE(p.reorderLevel, 0)")
     long countLowStock();

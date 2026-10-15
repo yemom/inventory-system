@@ -9,10 +9,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -58,6 +61,50 @@ public class StockMovementController {
         String note = body == null ? null : body.get("note");
         return ResponseEntity.ok(ApiResponse.ok("Stock movement rejected",
                 stockMovementService.reject(id, note)));
+    }
+
+    /**
+     * Moves stock between warehouses.
+     *
+     * <p>Deducts the source and credits the destination in one transaction, and
+     * writes both legs of the move to the ledger. Previously a transfer adjusted
+     * the business-wide quantity and never said where the stock went, so no
+     * warehouse could report its own turnover and a transfer was indistinguishable
+     * from a sale in the movement history.
+     */
+    @PostMapping("/transfer")
+    @PreAuthorize("hasAuthority('INVENTORY_TRANSFER')")
+    public ResponseEntity<ApiResponse<List<StockMovementDTO>>> transfer(
+            @Valid @RequestBody CreateStockMovementRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Stock transferred",
+                stockMovementService.transfer(request)));
+    }
+
+    /** Movement history for one product, straight from the ledger. */
+    @GetMapping("/product/{productId}")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'STOCK_MOVEMENT_READ')")
+    public ResponseEntity<ApiResponse<Page<StockMovementDTO>>> forProduct(
+            @PathVariable Long productId,
+            @PageableDefault(size = 50) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok("Product movement history",
+                stockMovementService.historyForProduct(productId, pageable)));
+    }
+
+    /** Filtered ledger search, used by the movement report. */
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'STOCK_MOVEMENT_READ', 'INVENTORY_REPORT_VIEW')")
+    public ResponseEntity<ApiResponse<Page<StockMovementDTO>>> search(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 50) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok("Stock movements",
+                stockMovementService.search(
+                        from == null ? null : from.atStartOfDay(),
+                        to == null ? null : to.atTime(java.time.LocalTime.MAX),
+                        warehouseId, type, status, pageable)));
     }
 
     /** Movements waiting for a Supervisor or Manager to sign them off. */

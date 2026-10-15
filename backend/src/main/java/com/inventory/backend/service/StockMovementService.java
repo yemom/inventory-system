@@ -2,10 +2,7 @@ package com.inventory.backend.service;
 
 import com.inventory.backend.dto.CreateStockMovementRequest;
 import com.inventory.backend.dto.StockMovementDTO;
-import com.inventory.backend.model.Product;
-import com.inventory.backend.model.StockMovement;
-import com.inventory.backend.model.User;
-import com.inventory.backend.model.Warehouse;
+import com.inventory.backend.model.*;
 import com.inventory.backend.repository.ProductRepository;
 import com.inventory.backend.repository.StockMovementRepository;
 import com.inventory.backend.repository.UserRepository;
@@ -20,6 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,8 +32,41 @@ public class StockMovementService {
     private final WarehouseRepository warehouseRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final StockLedgerService ledger;
+    private final WarehouseStockService warehouseStockService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    /**
+     * Authorities in force for the current thread when the caller is not a web
+     * request.
+     *
+     * <p>Held per-thread rather than on the service, so a scheduled job setting
+     * it can never widen what an unrelated web request on a pooled thread is
+     * allowed to do.
+     */
+    private static final ThreadLocal<Set<String>> SYSTEM_AUTHORITIES = new ThreadLocal<>();
+
+    /**
+     * Runs {@code work} as if the caller held {@code authorities}.
+     *
+     * <p>Restores whatever was in place afterwards, including when {@code work}
+     * throws, so a failure cannot leave elevated permissions on a pooled worker
+     * thread for the next task that lands on it.
+     */
+    public <T> T asSystem(Set<String> authorities, Supplier<T> work) {
+        Set<String> previous = SYSTEM_AUTHORITIES.get();
+        SYSTEM_AUTHORITIES.set(authorities);
+        try {
+            return work.get();
+        } finally {
+            if (previous == null) {
+                SYSTEM_AUTHORITIES.remove();
+            } else {
+                SYSTEM_AUTHORITIES.set(previous);
+            }
+        }
+    }
 
     public Page<StockMovementDTO> listMovements(Pageable pageable) {
         return stockMovementRepository.findAll(pageable).map(this::toDTO);
@@ -45,13 +80,28 @@ public class StockMovementService {
                 .map(this::toDTO);
     }
 
+    /** Movement history for one product, from the ledger rather than a computed balance. */
+    @Transactional(readOnly = true)
+    public Page<StockMovementDTO> historyForProduct(Long productId, Pageable pageable) {
+        return stockMovementRepository.findApprovedHistoryForProduct(productId, pageable)
+                .map(this::toDTO);
+    }
+
+    /** Filtered ledger search used by the reports. */
+    @Transactional(readOnly = true)
+    public Page<StockMovementDTO> search(LocalDateTime from, LocalDateTime to, Long warehouseId,
+                                         String type, String status, Pageable pageable) {
+        return stockMovementRepository.search(from, to, warehouseId, type, status, pageable)
+                .map(this::toDTO);
+    }
+
     /**
      * Records a stock movement.
      *
      * <p>{@code ADJUSTMENT} and {@code STOCK_COUNT} are the movements a human has
      * to approve, so they are written {@link StockMovement.Status#PENDING} and the
-     * product quantity is <b>not</b> touched — Inventory Staff submit a request,
-     * a Supervisor or Manager accepts it in {@link #approve}. Callers that already
+     * stock is <b>not</b> touched — Inventory Staff submit a request, a
+     * Supervisor or Manager accepts it in {@link #approve}. Callers that already
      * hold {@code STOCK_ADJUSTMENT_APPROVE} have their own adjustments approved on
      * the spot, which is what makes the approval screen usable for a Manager
      * without weakening it for anyone else.
@@ -64,6 +114,11 @@ public class StockMovementService {
      * or {@code INVENTORY_RECEIVE}; the controller checks that, and the
      * type-specific check here keeps a request that claims "RECEIVE" from writing
      * an adjustment.
+     *
+     * <p>A movement without a warehouse is refused unless the business has
+     * exactly one. Stock that is not attributable to a location cannot be
+     * reported per warehouse, and silently attributing it to an arbitrary one
+     * makes two different reports disagree.
      */
     public StockMovementDTO recordMovement(CreateStockMovementRequest request) {
         Product product = productRepository.findByIdWithLock(request.getProductId())
@@ -73,6 +128,8 @@ public class StockMovementService {
         if (request.getWarehouseId() != null) {
             warehouse = warehouseRepository.findById(request.getWarehouseId())
                     .orElseThrow(() -> new IllegalArgumentException("Warehouse not found"));
+        } else {
+            warehouse = warehouseStockService.resolveDefaultWarehouse(null);
         }
 
         User actor = currentUser();
@@ -84,53 +141,88 @@ public class StockMovementService {
         boolean autoApproved = needsApproval && actor != null
                 && hasAuthority("STOCK_ADJUSTMENT_APPROVE");
 
-        StockMovement movement = new StockMovement();
-        movement.setProduct(product);
-        movement.setWarehouse(warehouse);
-        movement.setType(type);
-        movement.setQuantity(request.getQuantity());
-        movement.setReference(request.getReference());
-        movement.setNotes(request.getNotes());
-        movement.setCreatedBy(actor);
-        movement.setStatus(autoApproved ? StockMovement.Status.APPROVED : StockMovement.Status.PENDING);
-
-        if (!needsApproval) {
-            movement.setStatus(StockMovement.Status.APPROVED);
-            movement.setApprovedAt(LocalDateTime.now());
-            movement.setApprovedBy(actor);
+        // Refuse a second posting of the same fact. This is what stops a
+        // retried request from moving stock twice: the row is the record, so
+        // the check has to happen before it is written.
+        if (request.getReference() != null && !request.getReference().isBlank()) {
+            long duplicates = stockMovementRepository.countMatching(
+                    product.getId(), type, request.getReference(), request.getQuantity());
+            if (duplicates > 0) {
+                throw new IllegalArgumentException(
+                        "A movement of " + request.getQuantity() + " of " + product.getSku()
+                                + " against reference '" + request.getReference()
+                                + "' has already been recorded.");
+            }
         }
 
-        StockMovement saved = stockMovementRepository.save(movement);
+        int delta = request.getQuantity() != null ? request.getQuantity() : 0;
+        String ledgerType = mapType(type, delta);
 
-        // Only an approved movement moves the goods.
-        if (StockMovement.Status.APPROVED.equals(saved.getStatus())) {
-            applyToStock(product, saved);
+        if (needsApproval && !autoApproved) {
+            StockMovement pending = ledger.recordPending(ledgerType, product.getId(),
+                    warehouse.getId(), delta, request.getReference(), request.getNotes(),
+                    request.getNotes(), StockLedgerService.newGroup("ADJ"), actor);
+            return toDTO(pending);
         }
+
+        StockMovement saved = ledger.post(ledgerType, product.getId(), warehouse.getId(),
+                delta, request.getReference(), request.getNotes(), request.getNotes(),
+                warehouseStockService.unitCostOf(product.getId(), warehouse.getId()),
+                StockLedgerService.newGroup("MOV"), StockMovement.Status.APPROVED, actor);
+
+        auditLogService.log(actor == null ? null : actor.getId(),
+                actor == null ? "system" : actor.getUsername(),
+                "STOCK_MOVEMENT_RECORDED", "STOCK_MOVEMENT", String.valueOf(saved.getId()),
+                String.format("%s of %d for %s at %s",
+                        ledgerType, delta, product.getSku(), warehouse.getName()));
 
         return toDTO(saved);
+    }
+
+    /**
+     * Moves stock between warehouses in one transaction.
+     *
+     * <p>Requires {@code INVENTORY_TRANSFER}. Both legs are written together: the
+     * source is deducted and the destination credited, or neither happens.
+     */
+    public List<StockMovementDTO> transfer(CreateStockMovementRequest request) {
+        if (request.getWarehouseId() == null || request.getDestinationWarehouseId() == null) {
+            throw new IllegalArgumentException(
+                    "A transfer needs both a source and a destination warehouse.");
+        }
+        requireAuthority("INVENTORY_TRANSFER");
+
+        Product product = productRepository.findByIdWithLock(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+        Warehouse source = warehouseRepository.findById(request.getWarehouseId())
+                .orElseThrow(() -> new IllegalArgumentException("Source warehouse not found"));
+        Warehouse destination = warehouseRepository.findById(request.getDestinationWarehouseId())
+                .orElseThrow(() -> new IllegalArgumentException("Destination warehouse not found"));
+
+        int quantity = request.getQuantity() == null ? 0 : Math.abs(request.getQuantity());
+        User actor = currentUser();
+        boolean approve = actor != null && hasAuthority("STOCK_ADJUSTMENT_APPROVE");
+
+        List<StockMovement> legs = ledger.transfer(product, source, destination, quantity,
+                request.getReference(), request.getNotes(), request.getNotes(), approve, actor);
+        return legs.stream().map(this::toDTO).toList();
     }
 
     /**
      * Accepts a pending adjustment or stock count and applies it to the product.
      *
      * <p>Refuses to approve a movement the caller recorded themselves when they
-     * do not hold the approval permission — otherwise "submit, then approve" would
-     * be a two-step bypass of the whole workflow.
+     * do not hold the approval permission — otherwise "submit, then approve"
+     * would be a two-step bypass of the whole workflow.
      */
     public StockMovementDTO approve(Long movementId, String note) {
         StockMovement movement = findForReview(movementId);
         User actor = currentUser();
         requireAuthority("STOCK_ADJUSTMENT_APPROVE");
 
-        movement.setStatus(StockMovement.Status.APPROVED);
-        movement.setApprovedAt(LocalDateTime.now());
-        movement.setApprovedBy(actor);
+        ledger.applyApprovedPending(movement, actor);
         movement.setReviewNote(note);
         StockMovement saved = stockMovementRepository.save(movement);
-
-        Product product = productRepository.findByIdWithLock(saved.getProduct().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
-        applyToStock(product, saved);
 
         auditLogService.log(actor == null ? null : actor.getId(),
                 actor == null ? "system" : actor.getUsername(),
@@ -161,6 +253,29 @@ public class StockMovementService {
         return toDTO(saved);
     }
 
+    /**
+     * Maps the caller's type word onto a precise ledger type.
+     *
+     * <p>A caller who says "IN" has not said <em>why</em> the goods arrived, and
+     * the difference between a purchase receipt, a customer return and a transfer
+     * in is exactly what the shrinkage and turnover reports are built from.
+     * Sign is honoured for ADJUSTMENT and STOCK_COUNT, where a caller expresses
+     * a correction as a signed number.
+     */
+    private String mapType(String type, int delta) {
+        return switch (type) {
+            case StockMovement.TYPE_IN, "RECEIPT", "RECEIVE" ->
+                    StockMovement.TYPE_PURCHASE_RECEIPT;
+            case StockMovement.TYPE_OUT, "ISSUE" -> StockMovement.TYPE_SALE;
+            case StockMovement.TYPE_ADJUSTMENT -> StockMovement.TYPE_ADJUSTMENT;
+            case StockMovement.TYPE_STOCK_COUNT -> StockMovement.TYPE_STOCK_COUNT;
+            case StockMovement.TYPE_DAMAGE -> StockMovement.TYPE_DAMAGE;
+            case StockMovement.TYPE_EXPIRY -> StockMovement.TYPE_EXPIRY;
+            case StockMovement.TYPE_LOSS -> StockMovement.TYPE_LOSS;
+            default -> type;
+        };
+    }
+
     private StockMovement findForReview(Long movementId) {
         StockMovement movement = stockMovementRepository.findById(movementId)
                 .orElseThrow(() -> new IllegalArgumentException("Stock movement not found"));
@@ -169,34 +284,6 @@ public class StockMovementService {
                     "Only a pending movement can be reviewed; this one is " + movement.getStatus() + ".");
         }
         return movement;
-    }
-
-    /**
-     * Applies a signed-off movement to the product, never below zero.
-     *
-     * <p>Clamping at zero rather than rejecting: a count that overshoots means the
-     * shelf genuinely holds less than the count, and refusing would leave the
-     * request permanently un-approvable. The clamp is deliberate and is recorded
-     * in the movement note so the discrepancy is visible rather than silent.
-     */
-    private void applyToStock(Product product, StockMovement movement) {
-        int current = product.getQuantity() != null ? product.getQuantity() : 0;
-        int delta = movement.getQuantity() != null ? movement.getQuantity() : 0;
-        int updated = current + delta;
-
-        if (updated < 0) {
-            movement.setNotes(appendNote(movement.getNotes(),
-                    "Applied as 0: a movement of " + delta + " from a balance of " + current
-                            + " would have gone negative."));
-            updated = 0;
-        }
-
-        product.setQuantity(updated);
-        productRepository.save(product);
-    }
-
-    private String appendNote(String existing, String addition) {
-        return existing == null || existing.isBlank() ? addition : existing + " | " + addition;
     }
 
     /** The movement type must match a permission the caller actually holds. */
@@ -209,7 +296,12 @@ public class StockMovementService {
                     hasAuthority("INVENTORY_ADJUST") || hasAuthority("STOCK_ADJUSTMENT_APPROVE");
             case StockMovement.TYPE_TRANSFER -> hasAuthority("INVENTORY_TRANSFER");
             case StockMovement.TYPE_IN, "RECEIPT", "RECEIVE" -> hasAuthority("INVENTORY_RECEIVE");
-            case StockMovement.TYPE_OUT, "ISSUE" -> hasAuthority("INVENTORY_ADJUST") || hasAuthority("SALE_CREATE");
+            case StockMovement.TYPE_OUT, "ISSUE" ->
+                    hasAuthority("INVENTORY_ADJUST") || hasAuthority("SALE_CREATE");
+            case StockMovement.TYPE_DAMAGE -> hasAuthority("DAMAGE_RECORD");
+            case StockMovement.TYPE_EXPIRY -> hasAuthority("EXPIRY_RECORD");
+            case StockMovement.TYPE_LOSS -> hasAuthority("DAMAGE_RECORD")
+                    || hasAuthority("STOCK_ADJUSTMENT_APPROVE");
             case StockMovement.TYPE_OPENING -> hasAuthority("PRODUCT_CREATE")
                     || hasAuthority("STOCK_ADJUSTMENT_APPROVE");
             default -> false;
@@ -226,12 +318,31 @@ public class StockMovementService {
      * assert the broadest one.
      */
     private boolean hasAuthority(String authority) {
+        return effectiveAuthorities().contains(authority);
+    }
+
+    /**
+     * The authorities in force for this thread.
+     *
+     * <p>A caller's own authorities when there is a request in flight, or
+     * whatever {@link #asSystem} set for a scheduled job, an evaluation run or
+     * any other caller acting outside a web request. Without that second case
+     * the service would refuse its own background work, because a background
+     * thread has no security context and the check would fail closed on output
+     * the system is producing itself.
+     */
+    private Set<String> effectiveAuthorities() {
+        Set<String> system = SYSTEM_AUTHORITIES.get();
+        if (system != null) {
+            return system;
+        }
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            return false;
+            return Set.of();
         }
         return authentication.getAuthorities().stream()
-                .anyMatch(granted -> authority.equals(granted.getAuthority()));
+                .map(granted -> granted.getAuthority())
+                .collect(Collectors.toSet());
     }
 
     private void requireAuthority(String authority) {
@@ -263,9 +374,15 @@ public class StockMovementService {
             dto.setWarehouseId(m.getWarehouse().getId());
             dto.setWarehouseName(m.getWarehouse().getName());
         }
+        if (m.getDestinationWarehouse() != null) {
+            dto.setDestinationWarehouseId(m.getDestinationWarehouse().getId());
+            dto.setDestinationWarehouseName(m.getDestinationWarehouse().getName());
+        }
         dto.setType(m.getType());
         dto.setQuantity(m.getQuantity());
         dto.setReference(m.getReference());
+        dto.setReason(m.getReason());
+        dto.setUnitCost(m.getUnitCost());
         dto.setNotes(m.getNotes());
         dto.setNote(m.getNotes()); // alias
         // Derive direction from type for frontend

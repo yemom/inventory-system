@@ -39,6 +39,42 @@ public class SaleOrder {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
+    /**
+     * The warehouse the goods were taken from.
+     *
+     * <p>Previously a sale had nowhere to name a location, so stock was deducted
+     * from {@code products.quantity} — a single business-wide figure — and no
+     * warehouse could say what it had sold. Nullable so that rows created before
+     * warehouses existed, and sales through a till that has not chosen a
+     * location, remain readable; the service falls back to the single warehouse
+     * when exactly one exists.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private Warehouse warehouse;
+
+    /**
+     * Cash actually received against this sale, summed from completed payments.
+     *
+     * <p>This is what distinguishes "sold on credit" from "sold and paid": an
+     * invoice that has not been paid is revenue but it is not cash, and treating
+     * it as cash is the single most common way a dashboard overstates a business.
+     */
+    @Column(name = "amount_paid", precision = 12, scale = 2)
+    private BigDecimal amountPaid;
+
+    /** Business date the sale is reported under. Defaults to {@link #createdAt}. */
+    @Column(name = "transaction_date")
+    private LocalDateTime transactionDate;
+
+    /** ISO 4217 code. ETB throughout; stored so a future multi-currency row is explicit. */
+    @Column(name = "currency", length = 3)
+    private String currency = "ETB";
+
+    /** Cost of the goods on this order, snapshotted when the sale was written. */
+    @Column(name = "cost_of_goods_sold", precision = 12, scale = 2)
+    private BigDecimal costOfGoodsSold;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")
     private User createdBy;

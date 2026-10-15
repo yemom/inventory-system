@@ -7,6 +7,7 @@ import com.inventory.backend.model.Category;
 import com.inventory.backend.model.Product;
 import com.inventory.backend.model.StockMovement;
 import com.inventory.backend.model.User;
+import com.inventory.backend.model.Warehouse;
 import com.inventory.backend.repository.CategoryRepository;
 import com.inventory.backend.repository.ProductRepository;
 import com.inventory.backend.repository.StockMovementRepository;
@@ -29,6 +30,7 @@ public class ProductService {
     private final StockMovementRepository stockMovementRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final WarehouseStockService warehouseStockService;
 
     public Page<ProductDTO> listProducts(String search, Pageable pageable) {
         if (search != null && !search.trim().isEmpty()) {
@@ -95,32 +97,87 @@ public class ProductService {
         product.setExpiryTracked(request.isExpiryTracked());
         product.setActive(true);
         // Opening stock is the quantity on hand from the moment the product exists.
+        // The warehouse split below republishes this figure from the per-warehouse
+        // rows, so it is set here only as the starting value for the case where no
+        // warehouse can be attributed yet.
         product.setQuantity(openingQuantity != null ? openingQuantity : 0);
 
         Product saved = productRepository.save(product);
 
         if (openingQuantity != null && openingQuantity > 0) {
             User actor = currentUser();
+            recordOpeningStock(saved, openingQuantity, request.getPurchasePrice(), actor);
+        }
+
+        return toDTO(saved);
+    }
+
+    /**
+     * Records opening stock as a ledger movement attributed to a warehouse.
+     *
+     * <p>Routing through {@link WarehouseStockService} rather than writing the
+     * quantity directly is what keeps {@code products.quantity} and the
+     * per-warehouse rows in agreement from the very first movement. A product
+     * whose stock exists only as a number would be invisible to every
+     * per-warehouse report and to the valuation.
+     *
+     * <p>Where no single warehouse can be chosen, the movement is still recorded
+     * — an opening balance has to exist in the ledger even before locations are
+     * configured — but it carries no warehouse, and the note says so rather than
+     * pretending the stock has a home it does not.
+     */
+    private void recordOpeningStock(Product product, int quantity, BigDecimal unitCost, User actor) {
+        Warehouse warehouse = null;
+        try {
+            warehouse = warehouseStockService.resolveDefaultWarehouse(null);
+        } catch (IllegalStateException undecided) {
+            // Several warehouses exist and none was named. Recorded unassigned
+            // rather than guessed at — putting the stock in the wrong place is
+            // worse than leaving it unattributed and visible as such.
+        }
+
+        if (warehouse != null) {
+            warehouseStockService.applyMovement(product.getId(), warehouse.getId(), quantity,
+                    unitCost, "Opening stock", actor);
             stockMovementRepository.save(StockMovement.builder()
-                    .product(saved)
+                    .product(product)
+                    .warehouse(warehouse)
                     .type(StockMovement.TYPE_OPENING)
-                    .quantity(openingQuantity)
-                    .reference(saved.getSku())
-                    .notes("Opening stock recorded when the product was created")
+                    .quantity(quantity)
+                    .reference(product.getSku())
+                    .reason("Opening stock at product creation")
+                    .unitCost(unitCost)
+                    .notes("Opening stock recorded when the product was created at "
+                            + warehouse.getName())
                     .createdBy(actor)
                     .status(StockMovement.Status.APPROVED)
                     .approvedAt(java.time.LocalDateTime.now())
                     .approvedBy(actor)
                     .build());
-
-            auditLogService.log(actor == null ? null : actor.getId(),
-                    actor == null ? "system" : actor.getUsername(),
-                    "PRODUCT_OPENING_STOCK", "PRODUCT", String.valueOf(saved.getId()),
-                    "Created " + saved.getSku() + " with opening stock of " + openingQuantity
-                            + " " + (saved.getUnit() == null ? "units" : saved.getUnit()));
+        } else {
+            stockMovementRepository.save(StockMovement.builder()
+                    .product(product)
+                    .type(StockMovement.TYPE_OPENING)
+                    .quantity(quantity)
+                    .reference(product.getSku())
+                    .reason("Opening stock at product creation")
+                    .unitCost(unitCost)
+                    .notes("Opening stock recorded when the product was created. "
+                            + "No warehouse was chosen, so this quantity is not yet "
+                            + "attributed to a location.")
+                    .createdBy(actor)
+                    .status(StockMovement.Status.APPROVED)
+                    .approvedAt(java.time.LocalDateTime.now())
+                    .approvedBy(actor)
+                    .build());
         }
 
-        return toDTO(saved);
+        auditLogService.log(actor == null ? null : actor.getId(),
+                actor == null ? "system" : actor.getUsername(),
+                "PRODUCT_OPENING_STOCK", "PRODUCT", String.valueOf(product.getId()),
+                "Created " + product.getSku() + " with opening stock of " + quantity
+                        + " " + (product.getUnit() == null ? "units" : product.getUnit())
+                        + (warehouse == null ? " (warehouse not yet attributed)" : ""));
     }
 
     private boolean changesPricing(Product product, UpdateProductRequest request) {

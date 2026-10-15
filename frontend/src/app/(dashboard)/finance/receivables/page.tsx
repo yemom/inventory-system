@@ -1,697 +1,409 @@
-"use client";
+'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from 'react';
 
-import { DollarSign, Clock, AlertTriangle } from "lucide-react";
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, Clock, DollarSign } from 'lucide-react';
 
-import PageHeader from "@/components/ui/PageHeader";
-import DataTable, { Column } from "@/components/ui/DataTable";
-import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
-import StatCard from "@/components/ui/StatCard";
-import Modal from "@/components/ui/Modal";
-import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
-import ErrorState from "@/components/ui/ErrorState";
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+import StatCard from '@/components/ui/StatCard';
+import Modal from '@/components/ui/Modal';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import ErrorState from '@/components/ui/ErrorState';
+import { Card, CardContent } from '@/components/ui/Card';
 
-import { formatCurrency } from "@/lib/utils";
-
-import { customersApi } from "@/lib/api/customersApi";
-
-import type { Customer } from "@/lib/api/customersApi";
-
-import { useSales } from "@/hooks/useSales";
-import { useCreatePayment } from "@/hooks/useFinance";
-
-import { useToast } from "@/components/ui/ToastProvider";
-
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+import { formatCurrency } from '@/lib/utils';
+import { reportsApi } from '@/lib/api/aiApi';
+import { useSales } from '@/hooks/useSales';
+import { useCreatePayment } from '@/hooks/useFinance';
+import { useToast } from '@/components/ui/ToastProvider';
 
 /**
- * Calculate the unpaid amount for a sale.
+ * Who owes what.
  *
- * Cancelled and fully-paid sales do not contribute to receivables.
- */
-function unpaidOfSale(sale: any): number {
-  const status = String(sale?.status ?? "").toUpperCase();
-
-  if (status === "CANCELLED") {
-    return 0;
-  }
-
-  const paymentStatus = String(sale?.paymentStatus ?? "").toUpperCase();
-
-  if (paymentStatus === "PAID") {
-    return 0;
-  }
-
-  const total = Number(
-    sale?.finalAmount ?? sale?.total ?? sale?.totalAmount ?? 0,
-  );
-
-  const paid = Number(sale?.paid ?? sale?.paidAmount ?? 0);
-
-  return Math.max(0, total - paid);
-}
-
-/**
- * Calculate how many days have passed since the sale date.
- */
-function daysSince(sale: any): number {
-  const dateValue = sale?.createdAt ?? sale?.date ?? sale?.saleDate ?? "";
-
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return 0;
-  }
-
-  return Math.floor((Date.now() - date.getTime()) / 86400000);
-}
-
-/**
- * Identifies the customer a sale belongs to.
+ * <h2>What changed and why it mattered</h2>
  *
- * Walk-in sales carry a name but no `customerId`, so the name is the only way to
- * attribute them. Returning the name for those is what keeps an unpaid walk-in
- * sale from disappearing from the receivables report entirely.
+ * <p>This screen used to derive every figure in the browser: it pulled the sales
+ * list, subtracted what each order said had been paid, and grouped the result by
+ * customer. Two things were wrong with that, and both were invisible on the
+ * page.
+ *
+ * <p>The sales list is paginated. A customer with an unpaid invoice on page
+ * three simply did not appear in this table, and the total was quietly wrong by
+ * however much was on the pages that had not loaded. And it read
+ * {@code paidAmount} / {@code paid} — fields that the sale list endpoint had
+ * stopped returning — so any order that was not fully paid looked fully paid and
+ * contributed nothing.
+ *
+ * <p>The balances, ageing and totals now come from {@code /reports/receivables},
+ * which walks every outstanding invoice regardless of pagination and computes
+ * them from the sale's own amount paid. The collection form is unchanged in
+ * spirit but is now honest about what it writes: a payment is attached to a
+ * specific sale order, and the server derives the rest.
  */
-function customerKeyOf(sale: any): string | null {
-  const id = sale?.customerId;
-  if (id !== undefined && id !== null && id !== "") return `id:${id}`;
-  const name = String(sale?.customerName ?? "").trim();
-  return name ? `name:${name.toLowerCase()}` : null;
+
+/** One row of the receivables report. */
+interface ReceivableRow {
+  customer: string;
+  invoiceCount: number;
+  invoiceTotal: number;
+  paid: number;
+  outstanding: number;
+  oldestDays: number;
+  ageing: string;
+  overdue: boolean;
 }
 
 /**
- * Outstanding balance per customer, derived from their unpaid sales.
+ * A starting reference for a collection.
  *
- * <p>The `outstandingBalance` column on a customer is **never written by any
- * code path in this application** — it is a stored column defaulting to zero, so
- * reading it returns 0 forever. Every receivable figure on this page derived
- * from it, which is why the page reported ETB 0.00 with a populated sales list:
- * not because nothing was owed, but because the field it was reading could never
- * hold anything.
- *
- * <p>The sales themselves are the source of truth: a sale that is not PAID in
- * full leaves an amount outstanding. Kept keyed by customer so the table, the
- * totals and the payment modal all agree.
+ * <p>Only a suggestion — the field is editable, and the server stores whatever
+ * the operator types as the receipt number. Kept outside the component so the
+ * clock is read when a form is opened rather than during a render.
  */
-function deriveOutstandingByCustomer(sales: any[]): Map<string, number> {
-  const totals = new Map<string, number>();
-
-  for (const sale of sales) {
-    const unpaid = unpaidOfSale(sale);
-    if (unpaid <= 0) continue;
-
-    const key = customerKeyOf(sale);
-    if (!key) continue;
-
-    totals.set(key, (totals.get(key) ?? 0) + unpaid);
-  }
-
-  return totals;
+function suggestedReference(prefix: string): string {
+  return `${prefix}-${Date.now().toString().slice(-8)}`;
 }
-
-/**
- * A customer's outstanding balance.
- *
- * <p>Derived from sales, falling back to the stored column only when nothing has
- * been derived — so if the backend later starts computing that column properly,
- * this keeps working rather than going blank.
- */
-function balanceOf(
-  customer: Customer,
-  derived?: Map<string, number>,
-): number {
-  if (derived) {
-    const key =
-      customer?.id !== undefined && customer?.id !== null
-        ? `id:${customer.id}`
-        : String(customer?.name ?? "")
-            .trim()
-            .toLowerCase();
-    const fromSales = derived.get(key.startsWith("id:") ? key : `name:${key}`);
-    if (fromSales !== undefined) return fromSales;
-  }
-
-  return Number(
-    customer?.outstandingBalance ?? (customer as any)?.balance ?? 0,
-  );
-}
-
-/**
- * Safely extract an error message.
- */
-function getErrorMessage(error: unknown, fallback: string): string {
-  const err = error as {
-    response?: {
-      data?: {
-        message?: string;
-        error?: string;
-      };
-    };
-    message?: string;
-  };
-
-  return (
-    err?.response?.data?.message ??
-    err?.response?.data?.error ??
-    err?.message ??
-    fallback
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Page                                                                       */
-/* -------------------------------------------------------------------------- */
 
 export default function ReceivablesPage() {
   const { toast } = useToast();
+  const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));
 
-  /*
-   * Customers are loaded directly through customersApi.
-   *
-   * We intentionally do not use:
-   *
-   * useCustomers()
-   *
-   * because the current useCustomers.ts does not export that hook.
-   */
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['report', 'receivables', asOf],
+    queryFn: () => reportsApi.get('receivables', { asOf }),
+    retry: false,
+  });
 
-  const [customersLoading, setCustomersLoading] = useState(true);
-
-  const [customersError, setCustomersError] = useState<unknown>(null);
-
-  const {
-    data: sales = [],
-    isLoading: salesLoading,
-    error: salesError,
-    refetch: refetchSales,
-  } = useSales();
+  // Needed only to let the operator choose which invoice a collection settles.
+  // The balance itself is never derived here.
+  const { data: sales = [] } = useSales();
 
   const createPayment = useCreatePayment();
 
-  /* ------------------------------------------------------------------------ */
-  /* Payment modal                                                            */
-  /* ------------------------------------------------------------------------ */
+  const [open, setOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<ReceivableRow | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('');
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('BANK');
+  const [reference, setReference] = useState('');
 
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const rows: ReceivableRow[] = data?.rows ?? [];
+  const totals = data?.totals ?? {};
 
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    null,
-  );
+  /**
+   * Unpaid orders for one customer.
+   *
+   * <p>Filtered from the sales already loaded for the table; the authoritative
+   * list of what may be collected against is the report's, and the server will
+   * refuse an amount greater than the balance even if this list is stale.
+   */
+  const openOrders = useMemo(() => {
+    if (!selectedRow) return [];
+    const needle = selectedRow.customer.trim().toLowerCase();
+    return (sales as any[])
+      .filter((sale) => {
+        const status = String(sale.status ?? '').toUpperCase();
+        if (status === 'CANCELLED') return false;
+        const name = String(
+          sale.customerName ?? sale.customer?.name ?? '',
+        ).toLowerCase();
+        if (name !== needle) return false;
+        const total = Number(sale.finalAmount ?? sale.total ?? 0);
+        const paid = Number(sale.amountPaid ?? sale.paidAmount ?? 0);
+        return total - paid > 0.01;
+      })
+      .map((sale) => ({
+        id: String(sale.id),
+        label: `${sale.orderNumber ?? sale.reference ?? sale.id} — ${formatCurrency(
+          Number(sale.finalAmount ?? sale.total ?? 0) - Number(sale.amountPaid ?? sale.paidAmount ?? 0),
+        )} outstanding`,
+      }));
+  }, [selectedRow, sales]);
 
-  const [amount, setAmount] = useState("");
-
-  const [method, setMethod] = useState<"cash" | "bank" | "mobile">("bank");
-
-  const [reference, setReference] = useState("");
-
-  /* ------------------------------------------------------------------------ */
-  /* Load customers                                                           */
-  /* ------------------------------------------------------------------------ */
-
-  const fetchCustomers = useCallback(async () => {
-    try {
-      setCustomersLoading(true);
-      setCustomersError(null);
-
-      const data = await customersApi.list();
-
-      /*
-       * Be defensive because APIs can return:
-       *
-       * 1. Customer[]
-       * 2. { content: Customer[] }
-       * 3. { data: Customer[] }
-       * 4. { data: { content: Customer[] } }
-       */
-      let customerList: Customer[] = [];
-
-      if (Array.isArray(data)) {
-        customerList = data;
-      } else if (Array.isArray((data as any)?.content)) {
-        customerList = (data as any).content;
-      } else if (Array.isArray((data as any)?.data)) {
-        customerList = (data as any).data;
-      } else if (Array.isArray((data as any)?.data?.content)) {
-        customerList = (data as any).data.content;
-      }
-
-      setCustomers(customerList);
-    } catch (error: unknown) {
-      setCustomersError(error);
-
-      toast(
-        "error",
-        "Customer Loading Failed",
-        getErrorMessage(error, "Unable to load customers."),
-      );
-    } finally {
-      setCustomersLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    void fetchCustomers();
-  }, [fetchCustomers]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Debtors                                                                  */
-  /* ------------------------------------------------------------------------ */
-
-  const outstandingByCustomer = useMemo(
-    () => deriveOutstandingByCustomer(sales as any[]),
-    [sales],
-  );
-
-  const debtors = useMemo(() => {
-    return customers.filter(
-      (customer) => balanceOf(customer, outstandingByCustomer) > 0,
+  const openOrder = openOrders.find((o) => o.id === selectedOrderId);
+  const outstandingOnOrder = useMemo(() => {
+    const sale = (sales as any[]).find((s) => String(s.id) === selectedOrderId);
+    if (!sale) return 0;
+    return (
+      Number(sale.finalAmount ?? sale.total ?? 0) -
+      Number(sale.amountPaid ?? sale.paidAmount ?? 0)
     );
-  }, [customers, outstandingByCustomer]);
+  }, [sales, selectedOrderId]);
 
-  /* ------------------------------------------------------------------------ */
-  /* Total receivables                                                        */
-  /* ------------------------------------------------------------------------ */
-
-  const totalReceivables = useMemo(() => {
-    return debtors.reduce(
-      (sum, customer) => sum + balanceOf(customer, outstandingByCustomer),
-      0,
-    );
-  }, [debtors, outstandingByCustomer]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Aging                                                                    */
-  /* ------------------------------------------------------------------------ */
-
-  const aging = useMemo(() => {
-    let current = 0;
-    let mid = 0;
-    let overdue = 0;
-
-    for (const sale of sales as any[]) {
-      const unpaid = unpaidOfSale(sale);
-
-      if (unpaid <= 0) {
-        continue;
-      }
-
-      const age = daysSince(sale);
-
-      if (age <= 30) {
-        current += unpaid;
-      } else if (age <= 60) {
-        mid += unpaid;
-      } else {
-        overdue += unpaid;
-      }
-    }
-
-    return {
-      current,
-      mid,
-      overdue,
-    };
-  }, [sales]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Payment modal                                                            */
-  /* ------------------------------------------------------------------------ */
-
-  const openRecordPayment = (customer: Customer) => {
-    const balance = balanceOf(customer, outstandingByCustomer);
-
-    setSelectedCustomer(customer);
-
-    setAmount(String(balance));
-
-    setReference(`REC-${Date.now().toString().slice(-8)}`);
-
-    setMethod("bank");
-
-    setPaymentModalOpen(true);
+  const startCollection = (row: ReceivableRow) => {
+    setSelectedRow(row);
+    setSelectedOrderId('');
+    setAmount('');
+    setReference(suggestedReference('REC'));
+    setMethod('BANK');
+    setOpen(true);
   };
 
-  const closePaymentModal = () => {
-    if (createPayment.isPending) {
-      return;
-    }
-
-    setPaymentModalOpen(false);
-    setSelectedCustomer(null);
-    setAmount("");
-    setReference("");
-    setMethod("bank");
+  const close = () => {
+    if (createPayment.isPending) return;
+    setOpen(false);
+    setSelectedRow(null);
+    setSelectedOrderId('');
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* Record payment                                                           */
-  /* ------------------------------------------------------------------------ */
-
-  const handleSettle = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!selectedRow) return;
 
-    if (!selectedCustomer) {
+    const value = Number.parseFloat(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      toast('warning', 'Invalid amount', 'Enter an amount greater than zero.');
       return;
     }
-
-    const numericAmount = Number.parseFloat(amount);
-
-    const outstanding = balanceOf(selectedCustomer, outstandingByCustomer);
-
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (!selectedOrderId) {
       toast(
-        "warning",
-        "Invalid Amount",
-        "Enter a payment amount greater than zero.",
+        'warning',
+        'Choose an invoice',
+        'A payment must be recorded against a specific sale order.',
       );
       return;
     }
-
-    if (numericAmount > outstanding) {
+    if (value > outstandingOnOrder + 0.01) {
       toast(
-        "warning",
-        "Amount Too Large",
-        `The payment cannot exceed the outstanding balance of ${formatCurrency(
-          outstanding,
-        )}.`,
+        'warning',
+        'Amount too large',
+        `That invoice has ${formatCurrency(outstandingOnOrder)} outstanding.`,
       );
       return;
     }
-
     if (!reference.trim()) {
-      toast(
-        "warning",
-        "Reference Required",
-        "Enter a payment reference or receipt number.",
-      );
+      toast('warning', 'Reference required', 'Enter a receipt or transaction reference.');
       return;
     }
 
     try {
       await createPayment.mutateAsync({
-        reference: reference.trim(),
-
-        type: "received",
-
-        amount: numericAmount,
-
-        date: new Date().toISOString().slice(0, 10),
-
+        saleOrderId: selectedOrderId,
+        amount: value,
         method,
-
-        party:
-          (selectedCustomer as any)?.name ??
-          (selectedCustomer as any)?.companyName ??
-          "",
-
-        partyType: "customer",
-
-        note: "Collection against outstanding balance",
+        reference: reference.trim(),
+        notes: `Collection from ${selectedRow.customer}`,
       });
-
-      const customerName =
-        (selectedCustomer as any)?.name ??
-        (selectedCustomer as any)?.companyName ??
-        "Customer";
-
       toast(
-        "success",
-        "Payment Received",
-        `${formatCurrency(numericAmount)} recorded from ${customerName}.`,
+        'success',
+        'Payment recorded',
+        `${formatCurrency(value)} received from ${selectedRow.customer}.`,
       );
-
-      closePaymentModal();
-
-      /*
-       * Refresh both customer balances and
-       * sales/aging data after payment.
-       */
-      await Promise.all([fetchCustomers(), refetchSales()]);
-    } catch (error: unknown) {
-      toast(
-        "error",
-        "Payment Failed",
-        getErrorMessage(error, "Failed to record payment."),
-      );
+      close();
+      await refetch();
+    } catch (err: unknown) {
+      const message =
+        (err as any)?.response?.data?.message ??
+        (err as any)?.response?.data?.error ??
+        (err as any)?.message ??
+        'Failed to record the payment.';
+      toast('error', 'Payment failed', message);
     }
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* Table columns                                                            */
-  /* ------------------------------------------------------------------------ */
-
-  const columns: Column<Customer>[] = [
+  const columns: Column<ReceivableRow>[] = [
     {
-      key: "name",
-      label: "Customer",
-
-      render: (_, row) => {
-        const customer = row as Customer & {
-          phone?: string;
-          companyName?: string;
-        };
-
-        const displayName =
-          customer.name ?? customer.companyName ?? "Unknown Customer";
-
-        return (
-          <div>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
-              {String(displayName)}
-            </span>
-
-            {customer.phone && (
-              <span className="block text-[11px] text-gray-400">
-                {String(customer.phone)}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-
-    {
-      key: "creditLimit",
-      label: "Credit Limit",
-
-      render: (value) => formatCurrency(Number(value ?? 0)),
-    },
-
-    {
-      key: "outstandingBalance",
-      label: "Outstanding Balance",
-
+      key: 'customer',
+      label: 'Customer',
       render: (_, row) => (
-        <span className="font-bold text-amber-600 dark:text-amber-400">
-          {formatCurrency(balanceOf(row, outstandingByCustomer))}
+        <span className="font-semibold text-gray-900 dark:text-gray-100">
+          {row.customer}
         </span>
       ),
     },
-
+    { key: 'invoiceCount', label: 'Invoices', render: (v) => Number(v ?? 0).toString() },
     {
-      key: "utilization",
-      label: "Credit Used %",
-
-      render: (_, row) => {
-        const limit = Number((row as any)?.creditLimit) || 0;
-
-        const balance = balanceOf(row, outstandingByCustomer);
-
-        /*
-         * If there is no credit limit,
-         * utilization is zero instead of
-         * artificially becoming 100%.
-         */
-        const percentage =
-          limit > 0 ? Math.min(100, Math.round((balance / limit) * 100)) : 0;
-
-        return (
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-              <div
-                className={`h-full ${
-                  percentage > 80 ? "bg-red-500" : "bg-blue-600"
-                }`}
-                style={{
-                  width: `${percentage}%`,
-                }}
-              />
-            </div>
-
-            <span className="font-mono text-xs">{percentage}%</span>
-          </div>
-        );
-      },
+      key: 'invoiceTotal',
+      label: 'Invoiced',
+      render: (v) => formatCurrency(Number(v ?? 0)),
     },
-
+    { key: 'paid', label: 'Paid', render: (v) => formatCurrency(Number(v ?? 0)) },
     {
-      key: "status",
-      label: "Status",
-
-      render: (_, row) => {
-        const balance = balanceOf(row, outstandingByCustomer);
-
-        const limit = Number((row as any)?.creditLimit) || 0;
-
-        if (balance > limit && limit > 0) {
-          return <Badge variant="danger">Over Limit</Badge>;
-        }
-
-        return <Badge variant="warning">Pending Due</Badge>;
-      },
+      key: 'outstanding',
+      label: 'Outstanding',
+      render: (_, row) => (
+        <span className="font-bold text-amber-600 dark:text-amber-400">
+          {formatCurrency(row.outstanding)}
+        </span>
+      ),
+    },
+    {
+      key: 'oldestDays',
+      label: 'Oldest',
+      render: (v) => `${Number(v ?? 0)} days`,
+    },
+    {
+      key: 'ageing',
+      label: 'Ageing',
+      render: (_, row) => (
+        <Badge variant={row.overdue ? 'danger' : 'warning'}>{row.ageing}</Badge>
+      ),
     },
   ];
 
-  /* ------------------------------------------------------------------------ */
-  /* Error state                                                              */
-  /* ------------------------------------------------------------------------ */
-
-  if (customersError || salesError) {
+  if (error) {
     return (
       <ErrorState
-        error={customersError ?? salesError}
+        error={error}
         retry={() => {
-          void fetchCustomers();
-          void refetchSales();
+          void refetch();
         }}
       />
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                   */
-  /* ------------------------------------------------------------------------ */
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Receivables"
-        subtitle="Track outstanding money owed by clients, payment aging from unpaid sales, and credit risk"
+        subtitle="Every outstanding invoice, computed server-side from the sales ledger"
       />
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Statistics                                                        */}
-      {/* ------------------------------------------------------------------ */}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Receivables"
-          value={formatCurrency(totalReceivables)}
-          changeLabel="from customer balances"
-          color="amber"
-          icon={<DollarSign size={20} />}
-        />
-
-        <StatCard
-          title="Current (0–30 Days)"
-          value={formatCurrency(aging.current)}
-          changeLabel="unpaid sales"
-          color="blue"
-          icon={<Clock size={20} />}
-        />
-
-        <StatCard
-          title="Overdue (31–60 Days)"
-          value={formatCurrency(aging.mid)}
-          changeLabel="unpaid sales"
-          color="purple"
-          icon={<Clock size={20} />}
-        />
-
-        <StatCard
-          title="High Risk (60+ Days)"
-          value={formatCurrency(aging.overdue)}
-          changeLabel="unpaid sales"
-          color="red"
-          icon={<AlertTriangle size={20} />}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <label htmlFor="receivables-asof" className="text-gray-500 dark:text-gray-400">
+          Balances as at
+        </label>
+        <input
+          id="receivables-asof"
+          type="date"
+          value={asOf}
+          onChange={(event) => setAsOf(event.target.value)}
+          className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-700 dark:text-gray-300"
         />
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Debtors table                                                     */}
-      {/* ------------------------------------------------------------------ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Total Outstanding"
+          value={formatCurrency(Number(totals.totalOutstanding ?? 0))}
+          changeLabel="across all customers"
+          color="amber"
+          icon={<DollarSign size={20} />}
+        />
+        <StatCard
+          title="Overdue"
+          value={formatCurrency(Number(totals.overdueAmount ?? 0))}
+          changeLabel="older than 30 days"
+          color="red"
+          icon={<AlertTriangle size={20} />}
+        />
+        <StatCard
+          title="Customers Owing"
+          value={String(rows.length)}
+          changeLabel="with a balance over zero"
+          color="blue"
+          icon={<Clock size={20} />}
+        />
+        <StatCard
+          title="Collection Rate"
+          value={
+            Number(totals.totalOutstanding ?? 0) + Number(rows.reduce(
+              (s, r) => s + r.paid,
+              0,
+            )) === 0
+              ? '—'
+              : `${(
+                  (rows.reduce((s, r) => s + r.paid, 0) /
+                    (Number(totals.totalOutstanding ?? 0) +
+                      rows.reduce((s, r) => s + r.paid, 0))) *
+                  100
+                ).toFixed(1)}%`
+          }
+          changeLabel="of invoiced value collected"
+          color="emerald"
+          icon={<DollarSign size={20} />}
+        />
+      </div>
 
-      <DataTable<Customer>
+      <DataTable<ReceivableRow>
         columns={columns}
-        data={debtors}
-        loading={customersLoading || salesLoading}
+        data={rows}
+        loading={isLoading}
         searchable
-        searchPlaceholder="Search debtors..."
+        searchPlaceholder="Search customers..."
         actions={(row) => (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openRecordPayment(row)}
-          >
-            Collect Payment
+          <Button size="sm" variant="outline" onClick={() => startCollection(row)}>
+            Record payment
           </Button>
         )}
       />
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Payment modal                                                     */}
-      {/* ------------------------------------------------------------------ */}
+      {rows.length === 0 && !isLoading && (
+        <Card>
+          <CardContent className="py-6 text-center text-xs text-gray-400">
+            Nobody owes anything as at {asOf}. That is an empty answer, not a
+            missing one — every outstanding invoice was walked, not just those on
+            the first page of a list.
+          </CardContent>
+        </Card>
+      )}
 
       <Modal
-        open={paymentModalOpen}
-        onClose={closePaymentModal}
-        title={`Collect Payment — ${
-          selectedCustomer
-            ? String(
-                (selectedCustomer as any)?.name ??
-                  (selectedCustomer as any)?.companyName ??
-                  "Customer",
-              )
-            : ""
-        }`}
+        open={open}
+        onClose={close}
+        title={`Record a payment — ${selectedRow?.customer ?? ''}`}
       >
-        <form onSubmit={handleSettle} className="space-y-4">
-          {/* Outstanding information */}
-
+        <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1 rounded-lg bg-gray-50 p-3 text-xs dark:bg-gray-800">
             <div className="flex justify-between">
-              <span className="text-gray-400">Total Outstanding:</span>
-
+              <span className="text-gray-400">Total outstanding:</span>
               <strong className="text-amber-600 dark:text-amber-400">
-                {formatCurrency(
-                  selectedCustomer
-                    ? balanceOf(selectedCustomer, outstandingByCustomer)
-                    : 0,
-                )}
+                {formatCurrency(selectedRow?.outstanding ?? 0)}
               </strong>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="text-gray-400">Credit Limit:</span>
-
-              <span>
-                {formatCurrency(
-                  Number((selectedCustomer as any)?.creditLimit ?? 0),
-                )}
-              </span>
             </div>
           </div>
 
-          {/* Reference */}
+          <Select
+            label="Against which invoice"
+            placeholder="Choose an invoice to settle"
+            options={
+              openOrders.length > 0
+                ? openOrders.map((o) => ({ value: o.id, label: o.label }))
+                : [{ value: '', label: 'No unpaid invoice loaded' }]
+            }
+            value={selectedOrderId}
+            onChange={(event) => {
+              setSelectedOrderId(event.target.value);
+              const sale = (sales as any[]).find(
+                (s) => String(s.id) === event.target.value,
+              );
+              if (sale) {
+                setAmount(
+                  String(
+                    Number(sale.finalAmount ?? sale.total ?? 0) -
+                      Number(sale.amountPaid ?? sale.paidAmount ?? 0),
+                  ),
+                );
+              }
+            }}
+          />
+
+          {openOrders.length === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              The unpaid invoices for this customer are not on the pages of the
+              sales list that have loaded. Open the sale order from the sales
+              screen to record a payment against it.
+            </p>
+          )}
 
           <Input
-            label="Payment Reference / Receipt No."
+            label="Payment reference / receipt number"
             value={reference}
             onChange={(event) => setReference(event.target.value)}
             required
           />
 
-          {/* Amount */}
-
           <Input
-            label="Amount Collected (ETB)"
+            label={`Amount collected (ETB)${
+              selectedOrderId
+                ? ` — this invoice has ${formatCurrency(outstandingOnOrder)} outstanding`
+                : ''
+            }`}
             type="number"
             min={0.01}
             step="0.01"
@@ -700,48 +412,36 @@ export default function ReceivablesPage() {
             required
           />
 
-          {/* Payment method */}
-
           <Select
-            label="Payment Channel"
+            label="Payment channel"
             options={[
-              {
-                value: "bank",
-                label: "Commercial Bank Transfer (CBE / Awash / Dashen)",
-              },
-              {
-                value: "mobile",
-                label: "Telebirr / CBE Birr",
-              },
-              {
-                value: "cash",
-                label: "Cash in Register",
-              },
+              { value: 'CASH', label: 'Cash in register' },
+              { value: 'BANK', label: 'Bank transfer' },
+              { value: 'MOBILE', label: 'Mobile money' },
             ]}
             value={method}
-            onChange={(event) =>
-              setMethod(event.target.value as "cash" | "bank" | "mobile")
-            }
+            onChange={(event) => setMethod(event.target.value)}
           />
 
-          {/* Actions */}
+          {openOrder && (
+            <p className="text-xs text-gray-400">{openOrder.label}</p>
+          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <Button
               type="button"
               variant="outline"
-              onClick={closePaymentModal}
+              onClick={close}
               disabled={createPayment.isPending}
             >
               Cancel
             </Button>
-
             <Button
               type="submit"
               loading={createPayment.isPending}
-              disabled={createPayment.isPending}
+              disabled={createPayment.isPending || !selectedOrderId}
             >
-              Record Collection
+              Record payment
             </Button>
           </div>
         </form>

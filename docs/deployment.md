@@ -70,7 +70,66 @@ That is deliberate: both values used to live in `application.properties`, which 
 them public knowledge — a published JWT signing key lets anyone mint an admin token,
 and a published admin password is a working backdoor on every fresh deployment.
 
-#### CORS: `CORS_ALLOWED_ORIGINS`
+#### Business assistant (optional LLM phrasing)
+
+The assistant works with **no key and no outbound request**: the default
+`CHATBOT_PROVIDER=deterministic` answers from the reporting layer, and that is
+the mode offline development and CI run in. To additionally let a model
+re-phrase results that have already been computed and validated:
+
+```bash
+CHATBOT_PROVIDER=openai-compatible
+CHATBOT_API_URL=https://api.openai.com/v1/chat/completions   # or just …/v1
+CHATBOT_MODEL=gpt-4o-mini
+CHATBOT_API_KEY=sk-...        # or OPENAI_API_KEY — server-side secret only
+CHATBOT_LLM_PHRASED=true
+```
+
+- The key is **server-side only**: never in the frontend, never in an API
+  response, never in a log. Do not commit it — `.env` is git-ignored.
+- `CHATBOT_LLM_PHRASED=false` guarantees **zero** outbound LLM requests even
+  with a key configured (not even a model-availability check).
+- The configured model is verified against the account at startup
+  (`GET {base}/models`); if it is unavailable, the reason is a logged
+  configuration error and every answer stays deterministic.
+- `CHATBOT_API_URL` accepts the full endpoint **or** a base URL — the
+  `/chat/completions` suffix is appended only when missing.
+
+Full reference: [docs/chatbot.md](chatbot.md).
+
+#### Schema changes: new columns need a default
+
+The schema is owned by Hibernate (`ddl-auto=update`), so adding a field to an
+entity updates the table on the next start. That works for a nullable column. It
+**fails silently for a `NOT NULL` one**: Hibernate emits
+`alter table … add column x integer not null`, PostgreSQL refuses it when the
+table already holds rows (`column "x" of relation "y" contains null values`),
+and Hibernate logs that as a warning and starts anyway. The entity then expects
+a column the table does not have, and every query that reads it fails with
+`SQLState 42703` — which surfaces as a 500 on whichever screens touch that
+table, long after the deployment that caused it.
+
+So a new column that must be non-null needs its default in the DDL, not just in
+Java:
+
+```java
+@Column(name = "quantity_returned", nullable = false,
+        columnDefinition = "integer default 0")
+private Integer quantityReturned = 0;
+```
+
+The default is what lets the `add column` succeed and backfill existing rows.
+Check the startup log after a deploy — `Error executing DDL` there is the only
+warning before the first user hits the failure:
+
+```bash
+docker compose logs backend | grep -i "error executing ddl"
+```
+
+Existing rows are backfilled with that default, so the migration is additive:
+nothing is dropped and no business record is rewritten. Tests do not catch this
+class of defect — the test profile builds a fresh schema (`create-drop`), which
+has no existing rows for the `add column` to fail on.
 
 The browser refuses any cross-origin API call whose origin the server has not
 allowed, and it reports that refusal as an **opaque network error** — never as a

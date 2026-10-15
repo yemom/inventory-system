@@ -1,307 +1,619 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { ShoppingCart, TruckIcon, AlertTriangle, DollarSign, TrendingUp, Package } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Banknote,
+  Loader2,
+  Package,
+  RefreshCw,
+  ShoppingCart,
+  TrendingUp,
+  TruckIcon,
+  Wallet,
+} from 'lucide-react';
 import StatCard from '@/components/ui/StatCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { useProducts } from '@/hooks/useProducts';
-import { useSales } from '@/hooks/useSales';
-import { usePurchases } from '@/hooks/usePurchases';
 import { StatCardSkeleton } from '@/components/ui/Skeleton';
-import apiClient from '@/lib/api/apiClient';
+import DateRangeFilter, {
+  DateRange,
+  lastNDays,
+} from '@/components/ui/DateRangeFilter';
+import AiInsightPanel from '@/components/ai/AiInsightPanel';
+import ForecastChart from '@/components/ai/ForecastChart';
+import AssistantPanel from '@/components/ai/AssistantPanel';
+import { useAiDashboard, useDashboardFinancial } from '@/hooks/useAiDashboard';
+import { useProducts } from '@/hooks/useProducts';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { labelApiError } from '@/lib/api/apiErrors';
 
-// Derive monthly sales trend from real sale orders
-function buildSalesTrend(sales: any[], purchases: any[]) {
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const now = new Date();
-  const months: Record<string, { month: string; sales: number; purchases: number }> = {};
-
-  // Build last 6 months buckets
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    months[key] = { month: monthNames[d.getMonth()], sales: 0, purchases: 0 };
-  }
-
-  for (const sale of sales) {
-    const d = new Date(sale.createdAt || sale.date || '');
-    if (!isNaN(d.getTime())) {
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (months[key]) months[key].sales += Number(sale.finalAmount || sale.total || 0);
-    }
-  }
-
-  for (const po of purchases) {
-    const d = new Date(po.createdAt || po.date || '');
-    if (!isNaN(d.getTime())) {
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (months[key]) months[key].purchases += Number(po.totalAmount || po.total || 0);
-    }
-  }
-
-  return Object.values(months);
-}
-
-// Derive top products by total sales value from real sale orders
-function buildTopProducts(sales: any[]) {
-  const tally: Record<string, { name: string; sales: number }> = {};
-  for (const order of sales) {
-    for (const item of order.items || []) {
-      const name = item.productName || 'Unknown';
-      if (!tally[name]) tally[name] = { name, sales: 0 };
-      tally[name].sales += Number(item.subtotal || item.total || 0);
-    }
-  }
-  return Object.values(tally)
-    .sort((a, b) => b.sales - a.sales)
-    .slice(0, 5);
-}
+/**
+ * The dashboard.
+ *
+ * <p>Extended rather than replaced: the operational cards, stock alerts and
+ * recent orders below are the ones that were here before, and they still work
+ * the same way.
+ *
+ * <p>The financial figures at the top are new in where they come from. They used
+ * to be assembled in the browser from lists of sales and purchase orders — the
+ * same list the screens use, filtered the same way — which meant "gross profit"
+ * was really "revenue minus everything ever purchased", and a figure on this page
+ * could disagree with the one on the profit and loss report. They now come from
+ * the backend's calculation layer over validated records: revenue net of
+ * returns, cost of goods from the cost frozen on each sale line rather than
+ * today's purchase price, cash from recorded payments, and expenses from
+ * approved claims only.
+ *
+ * <p>Where a figure needs a permission the reader does not hold, it is not
+ * shown and the reason is stated. The panel is gated on
+ * {@code FINANCIAL_REPORT_VIEW} for that reason — a cashier sees the operational
+ * picture and is told why the money is not there, rather than being sent to a
+ * screen that would not load either.
+ */
 
 export default function DashboardPage() {
-  const { data: products = [], isLoading: loadingProducts, error: productsError } = useProducts();
-  const { data: sales = [], isLoading: loadingSales, error: salesError } = useSales();
-  const { data: purchases = [], isLoading: loadingPurchases, error: purchasesError } = usePurchases();
-  const [dashStats, setDashStats] = useState<any>(null);
-  const [statsError, setStatsError] = useState<ReturnType<typeof labelApiError> | null>(null);
+  const { hasPermission } = useAuth();
+  const [range, setRange] = useState<DateRange>(() => lastNDays(30));
+  const [horizon, setHorizon] = useState(14);
 
-  // Fetch real dashboard stats from backend
-  useEffect(() => {
-    let cancelled = false;
-    apiClient.get('/dashboard/stats')
-      .then(res => {
-        if (cancelled) return;
-        setDashStats(res.data?.data ?? null);
-        setStatsError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setDashStats(null);
-        setStatsError(labelApiError('Dashboard statistics', err));
-      });
-    return () => { cancelled = true; };
-  }, []);
+  const maySeeMoney = hasPermission('FINANCIAL_REPORT_VIEW');
+  const maySeeAi = hasPermission('AI_INSIGHT_VIEW') || hasPermission('AI_FORECAST_VIEW');
 
-  // ── KPI calculations from real data ──────────────────────────────────────
-  const totalSales = dashStats?.totalRevenue ?? sales.reduce((s: number, o: any) => s + Number(o.finalAmount || o.total || 0), 0);
-  const totalPurchases = dashStats?.totalPurchaseAmount ?? purchases.reduce((s: number, o: any) => s + Number(o.totalAmount || o.total || 0), 0);
-  const grossProfit = dashStats?.grossProfit ?? (totalSales - totalPurchases);
+  const { data: products = [], isLoading: loadingProducts } = useProducts();
 
-  const lowStock = products.filter((p: any) => p.quantity > 0 && p.reorderLevel && p.quantity <= p.reorderLevel);
-  const outOfStock = products.filter((p: any) => p.quantity === 0);
-  const recentSales = (sales as any[]).slice(0, 5);
+  const financial = useDashboardFinancial(range, maySeeMoney);
+  const ai = useAiDashboard(range, horizon, maySeeAi);
 
-  const loading = loadingProducts || loadingSales || loadingPurchases;
+  const money = financial.data;
 
-  /**
-   * Each failed request keeps its own stable identity (`label`) as the
-   * React key. Using the error message as the key was the bug: several
-   * unreachable-backend failures all collapse to the same message, so
-   * React saw duplicate keys. The label also makes the message useful.
-   */
-  const dataErrors = [
-    productsError && labelApiError('Products', productsError),
-    salesError && labelApiError('Sales', salesError),
-    purchasesError && labelApiError('Purchases', purchasesError),
-  ]
-    // 403s are permission issues, not backend failures — suppress from the banner
-    .filter((e): e is ReturnType<typeof labelApiError> => Boolean(e) && e!.status !== 403);
+  const stock = useMemo(() => {
+    const low = products.filter(
+      (p) => p.quantity > 0 && p.reorderLevel && p.quantity <= p.reorderLevel,
+    );
+    const out = products.filter((p) => p.quantity === 0);
+    return { low, out };
+  }, [products]);
 
-  const bannerStatsError = statsError && statsError.status !== 403 ? statsError : null;
-
-  // ── Chart data derived from real orders ───────────────────────────────────
-  const salesTrend = buildSalesTrend(sales, purchases);
-  const topProducts = buildTopProducts(sales);
-
-  const statusVariant: Record<string, 'success' | 'info' | 'default' | 'danger'> = {
-    PAID: 'success', PENDING: 'info', CANCELLED: 'danger',
-    paid: 'success', pending: 'info', cancelled: 'danger',
+  const percentChange = (current: number, previous: number) => {
+    if (!previous) return null;
+    return ((current - previous) / Math.abs(previous)) * 100;
   };
 
   return (
     <div className="space-y-6">
-      {(bannerStatsError || dataErrors.length > 0) && (
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 space-y-1"
-        >
-          {bannerStatsError && (
-            <p className="font-medium">
-              {bannerStatsError.label}: {bannerStatsError.status === null
-                ? 'Cannot reach the server. Please make sure the app is running and try again.'
-                : bannerStatsError.message}
-            </p>
-          )}
-          {dataErrors.length > 0 && (
-            <p>Some data could not be loaded. Please reload the page.</p>
-          )}
-          <ul className="list-disc pl-5 space-y-0.5">
-            {dataErrors.map((error) => (
-              <li key={error.label}>
-                <span className="font-medium">{error.label}:</span>{' '}
-                {error.status === null
-                  ? 'Cannot reach the server.'
-                  : error.message}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
-        ) : (
-          <>
-            <StatCard title="Total Revenue" value={formatCurrency(totalSales)} changeLabel="from sales" icon={<ShoppingCart size={22} />} color="blue" />
-            <StatCard title="Total Purchases" value={formatCurrency(totalPurchases)} changeLabel="cost of goods" icon={<TruckIcon size={22} />} color="emerald" />
-            <StatCard title="Gross Profit" value={formatCurrency(grossProfit)} changeLabel="revenue − purchases" icon={<TrendingUp size={22} />} color="purple" />
-            <StatCard title="Products in Stock" value={String(dashStats?.activeProducts ?? products.filter((p: any) => p.active).length)} changeLabel={`${outOfStock.length} out of stock`} icon={<Package size={22} />} color="amber" />
-          </>
+      {/* ── Controls ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter value={range} onChange={setRange} />
+        {financial.isFetching && (
+          <span className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Loader2 size={13} className="animate-spin" /> Updating
+          </span>
         )}
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <h3 className="font-semibold text-gray-800 dark:text-gray-200">Sales & Purchases Trend (Last 6 Months)</h3>
-          </CardHeader>
-          <CardContent>
-            {salesTrend.every(m => m.sales === 0 && m.purchases === 0) ? (
-              <div className="h-[260px] flex items-center justify-center text-gray-400 text-sm">
-                No transaction data yet — create sales and purchases to see the trend.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={salesTrend}>
-                  <defs>
-                    <linearGradient id="sales" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563EB" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="purchases" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Area type="monotone" dataKey="sales" stroke="#2563EB" fill="url(#sales)" strokeWidth={2} name="Sales" />
-                  <Area type="monotone" dataKey="purchases" stroke="#10B981" fill="url(#purchases)" strokeWidth={2} name="Purchases" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+      {financial.error && (
+        <ErrorBanner
+          title="Financial figures could not be loaded"
+          error={financial.error}
+          onRetry={() => financial.refetch()}
+        >
+          The operational figures below are unaffected — only the money is
+          missing.
+        </ErrorBanner>
+      )}
 
+      {/* ── Money ────────────────────────────────────────────────────────── */}
+      {!maySeeMoney ? (
         <Card>
-          <CardHeader>
-            <h3 className="font-semibold text-gray-800 dark:text-gray-200">Top Products by Revenue</h3>
-          </CardHeader>
-          <CardContent>
-            {topProducts.length === 0 ? (
-              <div className="h-[260px] flex items-center justify-center text-gray-400 text-sm text-center px-4">
-                No sales data yet — complete sales orders to see top products.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={topProducts} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="sales" fill="#2563EB" radius={[0, 4, 4, 0]} name="Revenue" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+          <CardContent className="py-6 text-center">
+            <Wallet size={20} className="mx-auto text-gray-400 mb-2" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Financial figures need the financial reports permission
+            </p>
+            <p className="mt-1 text-xs text-gray-400 max-w-md mx-auto">
+              Sales, costs, margins and balances are restricted to roles that are
+              accountable for them. The operational picture below is still accurate.
+            </p>
           </CardContent>
         </Card>
-      </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {financial.isLoading || !money ? (
+              Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+            ) : (
+              <>
+                <StatCard
+                  title="Net Sales"
+                  value={formatCurrency(money.netSales)}
+                  change={percentChange(money.netSales, money.previousNetSales) ?? undefined}
+                  changeLabel={`vs ${formatCurrency(money.previousNetSales)}`}
+                  icon={<ShoppingCart size={22} />}
+                  color="blue"
+                />
+                <StatCard
+                  title="Gross Profit"
+                  value={formatCurrency(money.grossProfit)}
+                  change={
+                    percentChange(money.grossProfit, money.previousGrossProfit) ??
+                    undefined
+                  }
+                  changeLabel={`${money.grossMarginPercent.toFixed(1)}% margin`}
+                  icon={<TrendingUp size={22} />}
+                  color="emerald"
+                />
+                <StatCard
+                  title="Net Profit"
+                  value={formatCurrency(money.netProfit)}
+                  change={
+                    percentChange(money.netProfit, money.previousNetProfit) ??
+                    undefined
+                  }
+                  changeLabel={`${money.netMarginPercent.toFixed(1)}% margin`}
+                  icon={<TrendingUp size={22} />}
+                  color="purple"
+                />
+                <StatCard
+                  title="Net Cash Flow"
+                  value={formatCurrency(money.netCashFlow)}
+                  changeLabel={`${formatCurrency(money.cashReceived)} in, ${formatCurrency(money.cashPaidToSuppliers)} out`}
+                  icon={<Banknote size={22} />}
+                  color={money.netCashFlow >= 0 ? 'emerald' : 'red'}
+                />
+              </>
+            )}
+          </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Recent Sales */}
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-200">Recent Sales Orders</h3>
-              <a href="/sales" className="text-sm text-blue-600 hover:underline">View all</a>
+          {money?.insufficientData && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+              <p className="font-medium">
+                Very little trading is recorded in this period
+              </p>
+              <p className="mt-1">
+                The figures above are calculated correctly, but they rest on too
+                few transactions to mean much, and percentages built on them will
+                swing wildly. {money.basis}
+              </p>
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {recentSales.length === 0 ? (
-              <div className="py-12 text-center text-gray-400 text-sm">
-                No sales yet. Create your first sale order.
-              </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800/50">
-                  <tr>
-                    {['Reference', 'Customer', 'Date', 'Total', 'Status'].map((h: string) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                  {recentSales.map((sale: any) => (
-                    <tr key={sale.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      <td className="px-4 py-3 font-mono text-xs text-blue-600">{sale.reference || sale.orderNumber}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{sale.customerName}</td>
-                      <td className="px-4 py-3 text-gray-500">{formatDate(sale.date || sale.createdAt || '')}</td>
-                      <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">{formatCurrency(Number(sale.finalAmount || sale.total || 0))}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant={statusVariant[sale.status] ?? 'default'}>{sale.status}</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </CardContent>
-        </Card>
+          )}
 
-        {/* Stock Alerts */}
+          <FinancialDetail money={money} range={range} />
+        </>
+      )}
+
+      {/* ── Intelligence ─────────────────────────────────────────────────── */}
+      {maySeeAi && (
+        <>
+          {ai.error && (
+            <ErrorBanner
+              title="Analysis could not be produced"
+              error={ai.error}
+              onRetry={() => ai.refetch()}
+            >
+              Every figure above comes from the same records, so they are
+              unaffected — only the forecasts and commentary are missing.
+            </ErrorBanner>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-2">
+              <ForecastChart
+                forecast={ai.data?.forecast ?? undefined}
+                isLoading={ai.isLoading}
+                horizon={horizon}
+                onHorizonChange={setHorizon}
+              />
+            </div>
+            <AssistantPanel range={range} />
+          </div>
+
+          <AiInsightPanel
+            insights={ai.data?.insights}
+            anomalies={ai.data?.anomalies}
+            recommendations={ai.data?.recommendations}
+            isLoading={ai.isLoading}
+            error={ai.error}
+            onRetry={() => ai.refetch()}
+          />
+        </>
+      )}
+
+      {/* ── Stock and operations ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <StockAlerts low={stock.low} out={stock.out} loading={loadingProducts} />
+
+        <WarehouseMovement enabled={maySeeAi} range={range} />
+
         <Card>
           <CardHeader>
             <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-amber-500" /> Stock Alerts
+              <Package size={16} className="text-blue-500" /> Where to go next
             </h3>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {outOfStock.length > 0 && (
-              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
-                <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-2">OUT OF STOCK ({outOfStock.length})</p>
-                {(outOfStock as any[]).map((p: any) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-1">
-                    <span className="text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
-                    <Badge variant="danger">0 {p.unit}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-            {lowStock.length > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">LOW STOCK ({lowStock.length})</p>
-                {(lowStock as any[]).slice(0, 5).map((p: any) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-1">
-                    <span className="text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
-                    <Badge variant="warning">{p.quantity} {p.unit}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-            {lowStock.length === 0 && outOfStock.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">All stock levels are healthy ✓</p>
+          <CardContent className="space-y-1.5 text-sm">
+            <ReportLink href="/reports/financial" label="Income, expenses and cash flow" />
+            <ReportLink href="/reports/sales" label="Sales and gross profit" />
+            <ReportLink href="/reports/purchases" label="Purchases and supplier balances" />
+            <ReportLink href="/reports/inventory-value" label="Inventory valuation" />
+            <ReportLink href="/reports/inventory" label="Stock movements and transfers" />
+            {maySeeMoney && (
+              <ReportLink href="/finance/profit-loss" label="Profit and loss" />
             )}
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// ── Financial detail ─────────────────────────────────────────────────────────
+
+/**
+ * The figures behind the headline numbers.
+ *
+ * <p>Each row states where its number comes from, because "cash received" and
+ * "invoiced" are not the same thing and a reader who has been told that once
+ * will not have to guess. The links open the report that produced each figure,
+ * so nothing here is a number only this page can explain.
+ */
+function FinancialDetail({
+  money,
+  range,
+}: {
+  money: import('@/lib/api/aiApi').DashboardFinancial | undefined;
+  range: DateRange;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!money) return null;
+
+  const rows: Array<{ label: string; value: number; note: string }> = [
+    {
+      label: 'Sales before returns',
+      value: money.grossSales,
+      note: 'Everything invoiced in the period',
+    },
+    {
+      label: 'Net sales',
+      value: money.netSales,
+      note: 'After approved sales returns. Sales tax is excluded — it is a liability, not income.',
+    },
+    {
+      label: 'Cost of goods sold',
+      value: money.cogs,
+      note: 'The cost recorded on each sale line when it was sold, so a later price change cannot rewrite past profit.',
+    },
+    {
+      label: 'Operating expenses',
+      value: money.operatingExpenses,
+      note: 'Approved claims only. A claim nobody has agreed to is not yet a cost.',
+    },
+    {
+      label: 'Cash received from customers',
+      value: money.cashReceived,
+      note: 'Payments actually recorded. An unpaid invoice is not collected income.',
+    },
+    {
+      label: 'Cash paid to suppliers',
+      value: money.cashPaidToSuppliers,
+      note: 'Supplier payments recorded as made.',
+    },
+    {
+      label: 'Owed by customers',
+      value: money.accountsReceivable,
+      note: 'Invoiced and not yet paid.',
+    },
+    {
+      label: 'Owed to suppliers',
+      value: money.accountsPayable,
+      note: 'Received and not yet paid. A purchase order is not a liability until the goods arrive.',
+    },
+    {
+      label: 'Stock at cost',
+      value: money.inventoryValue,
+      note: 'Weighted-average cost of everything currently on hand.',
+    },
+    {
+      label: 'Ordered, not yet received',
+      value: money.purchaseCostOrderedNotReceived,
+      note: 'Committed to suppliers. Shown separately because it is not yet stock and not yet a payable.',
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-200">
+              Where these figures come from
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {formatDate(range.from)} – {formatDate(range.to)} ·{' '}
+              {money.salesCount} sales, {money.itemsSold} units
+            </p>
+          </div>
+          <span className="text-xs text-blue-600 shrink-0 ml-3">
+            {open ? 'Hide' : 'Show'}
+          </span>
+        </button>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="pt-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs font-semibold uppercase text-gray-400">
+                <th className="py-2 pr-4">Figure</th>
+                <th className="py-2 pr-4 text-right">Amount</th>
+                <th className="py-2">What it counts</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+              {rows.map((row) => (
+                <tr key={row.label}>
+                  <td className="py-2 pr-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    {row.label}
+                  </td>
+                  <td className="py-2 pr-4 text-right font-medium tabular-nums text-gray-800 dark:text-gray-200 whitespace-nowrap">
+                    {formatCurrency(row.value)}
+                  </td>
+                  <td className="py-2 text-xs text-gray-500 dark:text-gray-400">
+                    {row.note}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-gray-400">{money.basis}</p>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ── Stock alerts ─────────────────────────────────────────────────────────────
+
+function StockAlerts({
+  low,
+  out,
+  loading,
+}: {
+  low: any[];
+  out: any[];
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" /> Stock Alerts
+          </h3>
+          {low.length + out.length > 0 && (
+            <Badge variant="warning">{low.length + out.length}</Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <div className="h-24 rounded-lg bg-gray-100 dark:bg-gray-700/50 animate-pulse" />
+        ) : out.length === 0 && low.length === 0 ? (
+          <div className="py-6 text-center">
+            <p className="text-sm text-gray-500">Every product is above its reorder level</p>
+            <p className="mt-1 text-xs text-gray-400">
+              Nothing is out of stock and nothing is running low.
+            </p>
+          </div>
+        ) : (
+          <>
+            {out.length > 0 && (
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-2">
+                  OUT OF STOCK ({out.length})
+                </p>
+                <ul className="space-y-1">
+                  {out.slice(0, 5).map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex justify-between items-center text-sm"
+                    >
+                      <span className="text-gray-700 dark:text-gray-300 truncate">
+                        {p.name}
+                      </span>
+                      <Badge variant="danger">0</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {low.length > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">
+                  LOW STOCK ({low.length})
+                </p>
+                <ul className="space-y-1">
+                  {low.slice(0, 5).map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex justify-between items-center text-sm"
+                    >
+                      <span className="text-gray-700 dark:text-gray-300 truncate">
+                        {p.name}
+                      </span>
+                      <Badge variant="warning">{p.quantity}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {low.length + out.length > 10 && (
+              <p className="text-xs text-gray-400 text-center">
+                <Link href="/products" className="text-blue-600 hover:underline">
+                  See all {low.length + out.length}
+                </Link>
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Warehouse movement ───────────────────────────────────────────────────────
+
+/**
+ * How much stock each warehouse moved in the period.
+ *
+ * <p>Units rather than value: a transfer moves stock between warehouses the
+ * business already owns, so it changes no total and reporting it as cash in or
+ * out would be wrong. Counting issued and received units per warehouse keeps
+ * that distinction visible.
+ */
+function WarehouseMovement({
+  enabled,
+  range,
+}: {
+  enabled: boolean;
+  range: DateRange;
+}) {
+  const [data, setData] = useState<
+    Array<{
+      warehouseId: number;
+      unitsOnHand: number;
+      unitsIssued: number;
+      unitsReceived: number;
+      unitsTransferred: number;
+      turnoverRatio: number;
+    }> | null
+  >(null);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    import('@/lib/api/aiApi')
+      .then(({ aiApi }) => aiApi.warehouses(30))
+      .then((rows) => {
+        if (!cancelled) setData(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, range.from, range.to]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+          <TruckIcon size={16} className="text-emerald-500" /> Warehouse Activity
+        </h3>
+      </CardHeader>
+      <CardContent>
+        {!enabled ? (
+          <p className="py-6 text-center text-xs text-gray-400">
+            Needs the inventory reporting permission.
+          </p>
+        ) : !data ? (
+          <div className="h-24 rounded-lg bg-gray-100 dark:bg-gray-700/50 animate-pulse" />
+        ) : data.length === 0 ? (
+          <p className="py-6 text-center text-xs text-gray-400">
+            No stock movements recorded in this period.
+          </p>
+        ) : (
+          <ul className="space-y-2.5">
+            {data.slice(0, 5).map((row) => (
+              <li key={row.warehouseId} className="text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    Warehouse {row.warehouseId}
+                  </span>
+                  <span className="text-xs text-gray-500 tabular-nums">
+                    {row.unitsOnHand} on hand
+                  </span>
+                </div>
+                <div className="mt-1 flex gap-2 text-[11px] text-gray-400">
+                  <span className="inline-flex items-center gap-0.5">
+                    <ArrowUpRight size={10} className="text-emerald-500" />
+                    {row.unitsReceived} in
+                  </span>
+                  <span className="inline-flex items-center gap-0.5">
+                    <ArrowDownRight size={10} className="text-red-400" />
+                    {row.unitsIssued} out
+                  </span>
+                  {row.unitsTransferred > 0 && (
+                    <span>{row.unitsTransferred} transferred</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 text-xs text-gray-400">
+          A transfer moves stock between warehouses the business already owns. It
+          is neither a sale nor a purchase, and it changes no total.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Shared bits ──────────────────────────────────────────────────────────────
+
+function ReportLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between rounded-md px-2 py-1.5 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-blue-600 dark:hover:text-blue-400"
+    >
+      {label}
+      <ArrowUpRight size={13} />
+    </Link>
+  );
+}
+
+function ErrorBanner({
+  title,
+  error,
+  onRetry,
+  children,
+}: {
+  title: string;
+  error: unknown;
+  onRetry: () => void;
+  children?: React.ReactNode;
+}) {
+  const labelled = labelApiError(title, error);
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200"
+    >
+      <p className="font-medium">
+        {title}:{' '}
+        {labelled.status === null
+          ? 'cannot reach the server'
+          : labelled.message}
+      </p>
+      {children && <p className="mt-1 text-xs">{children}</p>}
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
+      >
+        <RefreshCw size={12} /> Try again
+      </button>
     </div>
   );
 }

@@ -124,6 +124,19 @@ public class SecurityConfig {
                                                 // Login, register, refresh token, etc.
                                                 .requestMatchers("/api/v1/auth/**").permitAll()
 
+                                                // The customer chatbot. No staff JWT
+                                                // exists for a shopper, so these are
+                                                // authenticated by the session token
+                                                // inside the request instead. The
+                                                // global rate-limit filter still
+                                                // bounds them per IP.
+                                                .requestMatchers(
+                                                        "/api/v1/chatbot/customer/session",
+                                                        "/api/v1/chatbot/customer/ask",
+                                                        "/api/v1/chatbot/customer/conversations",
+                                                        "/api/v1/chatbot/customer/conversations/**")
+                                                .permitAll()
+
                                                 // Public health check (no sensitive data; show-details=never).
                                                 // "/actuator/health/**" rather than the
                                                 // exact path: the liveness/readiness

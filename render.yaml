@@ -13,6 +13,8 @@
 #   - SUPER_ADMIN_PASSWORD
 #   - DATABASE_PASSWORD  (auto-linked below, but verify)
 #   - REDIS_PASSWORD     (auto-linked below, but verify)
+#   - CHATBOT_API_KEY or OPENAI_API_KEY  (only if the assistant's optional
+#     LLM phrasing layer is switched on; see docs/chatbot.md)
 
 databases:
   - name: stockflow-db
@@ -152,6 +154,83 @@ services:
         value: "30"
       - key: CACHE_PRODUCT_TTL
         value: "120"
+
+      # ── Intelligence service ───────────────────────────────────────────────
+      # Forecasts, anomaly alerts and reorder advice are computed from this
+      # application's own recorded transactions, in Java, inside this service.
+      #
+      # There is deliberately no AI_PROVIDER_API_KEY here. Nothing reads one:
+      # the models are implemented in com.inventory.backend.ai and evaluated by
+      # backtesting on held-out history. A variable nothing reads is a variable
+      # that eventually gets a real secret pasted into it and committed.
+      #
+      # Set AI_ENABLED to "false" to switch every /api/v1/ai endpoint off.
+      # Reports, dashboards and financial figures keep working — they come from
+      # the reporting layer, not from these models.
+      - key: AI_ENABLED
+        value: "true"
+      - key: AI_HISTORY_DAYS
+        value: "540"
+      - key: AI_DEMAND_HISTORY_DAYS
+        value: "365"
+      - key: AI_CONFIDENCE
+        value: "0.95"
+      - key: AI_DAILY_HORIZON
+        value: "14"
+      - key: AI_MAX_DEMAND_MODELS
+        value: "25"
+      - key: AI_MIN_DEMAND_OBSERVATIONS
+        value: "28"
+      # A day is raised only when it is both statistically unusual and
+      # materially different in money. See docs/intelligence.md.
+      - key: AI_ANOMALY_THRESHOLD
+        value: "3.5"
+      - key: AI_ANOMALY_MIN_OBSERVATIONS
+        value: "8"
+      - key: AI_ANOMALY_MIN_RELATIVE_DEVIATION
+        value: "0.30"
+      - key: AI_LARGE_MOVEMENT_THRESHOLD
+        value: "50"
+      - key: AI_SLOW_MOVING_DAYS
+        value: "60"
+      - key: AI_DEFAULT_LEAD_TIME_DAYS
+        value: "7"
+      - key: AI_SERVICE_LEVEL
+        value: "0.95"
+      # Leave on. Turning this off means a figure already reported can no
+      # longer be traced to the model and training period that produced it.
+      - key: AI_PERSIST_MODEL_VERSIONS
+        value: "true"
+      - key: AI_ASSISTANT_MIN_CONFIDENCE
+        value: "0.35"
+      - key: REPORT_EXPORT_MAX_ROWS
+        value: "10000"
+
+      # ── Business assistant (docs/chatbot.md) ──────────────────────────────
+      # Deterministic by default: the assistant answers from the same services
+      # the reports use, and CHATBOT_PROVIDER=deterministic means no outbound
+      # request is ever made. To let a model re-phrase already-validated tool
+      # results, set CHATBOT_PROVIDER=openai-compatible in the dashboard and
+      # add CHATBOT_API_KEY (or OPENAI_API_KEY) as a secret there — never in
+      # this file. With CHATBOT_LLM_PHRASED=false the backend makes zero
+      # outbound LLM requests even if a key is configured, and a configured
+      # model is verified against the account at startup before it is used.
+      - key: CHATBOT_ENABLED
+        value: "true"
+      - key: CHATBOT_PROVIDER
+        value: deterministic
+      - key: CHATBOT_API_URL
+        value: https://api.openai.com/v1/chat/completions
+      - key: CHATBOT_MODEL
+        value: gpt-4o-mini
+      - key: CHATBOT_LLM_PHRASED
+        value: "true"
+      - key: CHATBOT_TIMEOUT_MS
+        value: "15000"
+      - key: CHATBOT_MAX_TOKENS
+        value: "900"
+      - key: CHATBOT_MIN_CONFIDENCE
+        value: "0.45"
 
       # ── Super-admin bootstrap (set real values in dashboard) ──────────────
       - key: SUPER_ADMIN_USERNAME

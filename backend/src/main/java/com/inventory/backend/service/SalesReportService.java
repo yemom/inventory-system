@@ -1,6 +1,8 @@
 package com.inventory.backend.service;
 
 import com.inventory.backend.dto.SaleOrderDTO;
+import com.inventory.backend.finance.FinancialCalculationService;
+import com.inventory.backend.finance.FinancialSummary;
 import com.inventory.backend.model.SaleOrder;
 import com.inventory.backend.model.SaleOrderItem;
 import com.inventory.backend.repository.SaleOrderRepository;
@@ -9,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -16,52 +19,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Sales reporting.
+ *
+ * <p>Cost of goods sold here used to be {@code product.purchasePrice × quantity},
+ * which reports today's purchase price as the cost of goods sold last quarter and
+ * therefore restates every historical sale whenever a price changes. It now
+ * reads the weighted-average cost snapshotted on each sale line, and every figure
+ * in the summary comes from {@link FinancialCalculationService} so this report,
+ * the profit and loss report and the dashboard cannot disagree.
+ */
 @Service
 @RequiredArgsConstructor
 public class SalesReportService {
 
     private final SaleOrderRepository saleOrderRepository;
     private final SaleOrderService saleOrderService;
+    private final FinancialCalculationService calculations;
     private final jakarta.persistence.EntityManager em;
 
+    /**
+     * The sales report.
+     *
+     * @param from inclusive lower bound on the transaction date; null for no bound
+     * @param to   inclusive upper bound; null for no bound
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> salesReport(LocalDateTime from, LocalDateTime to,
                                            Long customerId, Long productId,
                                            Long sellerId, String paymentMethod, String status) {
-        StringBuilder jpql = new StringBuilder("""
-                SELECT DISTINCT s.id FROM SaleOrder s
-                LEFT JOIN s.items i
-                LEFT JOIN i.product p
-                LEFT JOIN s.customer c
-                LEFT JOIN s.createdBy u
-                WHERE 1 = 1
-                """);
-        if (from != null) jpql.append(" AND s.createdAt >= :from");
-        if (to != null) jpql.append(" AND s.createdAt <= :to");
-        if (customerId != null) jpql.append(" AND c.id = :customerId");
-        if (productId != null) jpql.append(" AND p.id = :productId");
-        if (sellerId != null) jpql.append(" AND u.id = :sellerId");
-        if (paymentMethod != null && !paymentMethod.isBlank()) jpql.append(" AND s.paymentMethod = :paymentMethod");
-        if (status != null && !status.isBlank()) jpql.append(" AND s.status = :status");
-
-        jakarta.persistence.Query q = em.createQuery(jpql.toString());
-        if (from != null) q.setParameter("from", from);
-        if (to != null) q.setParameter("to", to);
-        if (customerId != null) q.setParameter("customerId", customerId);
-        if (productId != null) q.setParameter("productId", productId);
-        if (sellerId != null) q.setParameter("sellerId", sellerId);
-        if (paymentMethod != null && !paymentMethod.isBlank()) q.setParameter("paymentMethod", paymentMethod);
-        if (status != null && !status.isBlank()) q.setParameter("status", status);
-
-        @SuppressWarnings("unchecked")
-        List<Long> ids = q.getResultList();
-
-        List<SaleOrder> sales = ids.isEmpty()
-                ? List.of()
-                : saleOrderRepository.findByIdsWithItems(ids);
-        sales = sales.stream()
-                .sorted(Comparator.comparing(SaleOrder::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .collect(Collectors.toList());
+        List<SaleOrder> sales = findSales(from, to, customerId, productId,
+                sellerId, paymentMethod, status);
 
         BigDecimal grossSales = BigDecimal.ZERO;
         BigDecimal discount = BigDecimal.ZERO;
@@ -72,32 +60,46 @@ public class SalesReportService {
         long transactionCount = 0;
 
         for (SaleOrder s : sales) {
-            if ("CANCELLED".equalsIgnoreCase(s.getStatus())) continue;
+            if ("CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                continue;
+            }
             transactionCount++;
-            grossSales = grossSales.add(nz(s.getTotalAmount()));
             discount = discount.add(nz(s.getDiscount()));
             tax = tax.add(nz(s.getTax()));
-            netSales = netSales.add(nz(s.getFinalAmount()));
-            if (s.getItems() != null) {
-                for (SaleOrderItem item : s.getItems()) {
-                    int qty = item.getQuantity() != null ? item.getQuantity() : 0;
-                    itemsSold += qty;
-                    if (item.getProduct() != null && item.getProduct().getPurchasePrice() != null) {
-                        cogs = cogs.add(item.getProduct().getPurchasePrice().multiply(new BigDecimal(qty)));
-                    }
-                }
+            if (s.getItems() == null) {
+                continue;
             }
+            for (SaleOrderItem item : s.getItems()) {
+                int quantity = item.getQuantity() != null ? item.getQuantity() : 0;
+                int returned = item.getQuantityReturned() != null ? item.getQuantityReturned() : 0;
+                int netQuantity = quantity - returned;
+                itemsSold += netQuantity;
+
+                // Line revenue before the order-level discount.
+                grossSales = grossSales.add(nz(item.getSubtotal()));
+
+                // The snapshot cost, not the product's current purchase price.
+                BigDecimal unitCost = item.getUnitCost() != null
+                        ? item.getUnitCost()
+                        : (item.getProduct() != null ? nz(item.getProduct().getPurchasePrice()) : BigDecimal.ZERO);
+                cogs = cogs.add(unitCost.multiply(BigDecimal.valueOf(netQuantity)));
+            }
+            netSales = netSales.add(nz(s.getTotalAmount()).subtract(nz(s.getDiscount())));
         }
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("transactionCount", transactionCount);
         summary.put("itemsSold", itemsSold);
-        summary.put("grossSales", grossSales);
-        summary.put("discount", discount);
-        summary.put("tax", tax);
-        summary.put("netSales", netSales);
-        summary.put("cogs", cogs);
-        summary.put("grossProfit", netSales.subtract(cogs));
+        summary.put("grossSales", money(grossSales));
+        summary.put("discount", money(discount));
+        summary.put("tax", money(tax));
+        summary.put("netSales", money(netSales));
+        summary.put("cogs", money(cogs));
+        summary.put("grossProfit", money(netSales.subtract(cogs)));
+        summary.put("grossMarginPercent", netSales.signum() == 0 ? BigDecimal.ZERO
+                : money(netSales.subtract(cogs)).multiply(BigDecimal.valueOf(100))
+                        .divide(netSales, 1, java.math.RoundingMode.HALF_UP));
+        summary.put("costingMethod", "Weighted average, snapshotted on each sale line");
 
         List<SaleOrderDTO> saleDtos = sales.stream()
                 .map(saleOrderService::toDTO)
@@ -112,40 +114,65 @@ public class SalesReportService {
     /**
      * Profit and loss for a period.
      *
-     * <p>Derived from the same figures as the sales report but presented as the
-     * commercial view: what came in, what the goods cost, what is left. Kept as a
-     * separate method so the controller can gate it on {@code PROFIT_LOSS_READ}
-     * alone — a Supervisor is allowed the sales report and not this one.
+     * <p>Delegated to the central calculation layer rather than recomputed here.
+     * The two figures are now the same figure by construction, which is the only
+     * way two financial screens can be trusted to agree.
      */
     @Transactional(readOnly = true)
     public Map<String, Object> profitLossReport(LocalDateTime from, LocalDateTime to) {
-        Map<String, Object> sales = salesReport(from, to, null, null, null, null, null);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> summary = (Map<String, Object>) sales.get("summary");
+        LocalDate fromDate = from == null ? LocalDateTime.now().minusDays(29).toLocalDate()
+                : from.toLocalDate();
+        LocalDate toDate = to == null ? LocalDateTime.now().toLocalDate() : to.toLocalDate();
 
-        BigDecimal netSales = nz((BigDecimal) summary.get("netSales"));
-        BigDecimal cogs = nz((BigDecimal) summary.get("cogs"));
-        BigDecimal grossProfit = netSales.subtract(cogs);
-        BigDecimal tax = nz((BigDecimal) summary.get("tax"));
+        FinancialSummary summary = calculations.summarise(fromDate, toDate);
 
         Map<String, Object> report = new LinkedHashMap<>();
-        report.put("from", from);
-        report.put("to", to);
-        report.put("transactionCount", summary.get("transactionCount"));
-        report.put("itemsSold", summary.get("itemsSold"));
-        report.put("netSales", netSales);
-        report.put("cogs", cogs);
-        report.put("grossProfit", grossProfit);
-        report.put("grossMarginPercent", netSales.signum() == 0
-                ? BigDecimal.ZERO
-                : grossProfit.multiply(BigDecimal.valueOf(100))
-                        .divide(netSales, 2, java.math.RoundingMode.HALF_UP));
-        report.put("tax", tax);
-        report.put("discount", summary.get("discount"));
+        report.put("from", summary.from());
+        report.put("to", summary.to());
+        report.put("transactionCount", summary.salesCount());
+        report.put("itemsSold", summary.itemsSold());
+        report.put("grossSales", summary.grossSales());
+        report.put("discount", summary.discountsGiven());
+        report.put("netSales", summary.netSales());
+        report.put("tax", summary.netSalesTax());
+        report.put("cogs", summary.costOfGoodsSold());
+        report.put("grossProfit", summary.grossProfit());
+        report.put("grossMarginPercent", summary.grossMarginPercent());
+        report.put("operatingExpenses", summary.operatingExpenses());
+        report.put("netProfit", summary.netProfit());
+        report.put("netMarginPercent", summary.netMarginPercent());
+        report.put("cashReceived", summary.cashReceived());
+        report.put("netCashFlow", summary.netCashFlow());
+        report.put("accountsReceivable", summary.accountsReceivable());
+        report.put("accountsPayable", summary.accountsPayable());
+        report.put("inventoryValue", summary.inventoryValue());
+        report.put("stockLossValue", summary.stockLossValue());
+        report.put("expensesByCategory", summary.expensesByCategory());
+        report.put("basis", summary.basis());
+        report.put("insufficientData", summary.insufficientData());
         return report;
     }
 
-    private BigDecimal nz(BigDecimal v) {
+    private List<SaleOrder> findSales(LocalDateTime from, LocalDateTime to, Long customerId,
+                                      Long productId, Long sellerId, String paymentMethod,
+                                      String status) {
+        List<Long> ids = saleOrderRepository.findSaleIdsForReport(
+                from, to, customerId, productId, sellerId, paymentMethod, status);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return saleOrderRepository.findByIdsWithItems(ids).stream()
+                .sorted(Comparator.comparing(SaleOrder::getCreatedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .collect(Collectors.toList());
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP)
+                : value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }
 }
