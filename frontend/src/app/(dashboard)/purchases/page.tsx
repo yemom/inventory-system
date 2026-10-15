@@ -61,10 +61,10 @@ export default function PurchasesPage() {
         searchPlaceholder="Search orders..."
         actions={row => (
           <div className="flex items-center justify-end gap-1">
-            <button onClick={() => setViewOrder(row as unknown as PurchaseOrder)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-emerald-600">
+            <button onClick={() => setViewOrder(row as unknown as PurchaseOrder)} aria-label={`View order ${(row as any).orderNumber ?? ''}`} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-emerald-600">
               <Eye size={15} />
             </button>
-            <button onClick={() => setDeleteTarget(row as unknown as PurchaseOrder)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600">
+            <button onClick={() => setDeleteTarget(row as unknown as PurchaseOrder)} aria-label={`Cancel order ${(row as any).orderNumber ?? ''}`} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600">
               <Trash2 size={15} />
             </button>
           </div>
@@ -84,7 +84,11 @@ export default function PurchasesPage() {
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>{['Product', 'Qty', 'Unit Cost', 'Total'].map((h: any) => <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">{h}</th>)}</tr>
               </thead>
-              <tbody>{viewOrder.items.map((item: any, i: number) => (
+              <tbody>{(viewOrder.items ?? []).map((item: any, i: number) => (
+                // Guarded: a purchase order with no lines is a valid record, and
+                // the backend omits `items` entirely in that case. Without the
+                // guard, opening such an order threw a TypeError that replaced
+                // the whole dashboard segment with the error boundary.
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{item.productName}</td>
                   <td className="px-3 py-2">{item.quantity}</td>

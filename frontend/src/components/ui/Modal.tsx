@@ -7,12 +7,18 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /**
+   * Accessible name for a dialog that draws its own heading in the body rather
+   * than in the header — a confirmation, for example. Without it the dialog has
+   * no name at all, and a screen reader announces only "dialog".
+   */
+  ariaLabel?: string;
   children: React.ReactNode;
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-export default function Modal({ open, onClose, title, children, className, size = 'md' }: ModalProps) {
+export default function Modal({ open, onClose, title, ariaLabel, children, className, size = 'md' }: ModalProps) {
   const titleId = useId();
 
   if (!open) return null;
@@ -31,6 +37,7 @@ export default function Modal({ open, onClose, title, children, className, size 
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={!title ? ariaLabel : undefined}
         className={cn('relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4', sizes[size], className)}
       >
         {title && (

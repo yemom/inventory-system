@@ -33,7 +33,13 @@ export default function AiReportPage() {
   const [horizon, setHorizon] = useState(14);
 
   const maySeeModels = hasPermission('AI_MODEL_VIEW');
-  const ai = useAiDashboard(range, horizon, true);
+  // Gate the fetch on the same permission the endpoint enforces. Hardcoded
+  // `true` meant every visit by a user without AI_INSIGHT_VIEW /
+  // AI_FORECAST_VIEW fired a request the backend could only refuse with 403 —
+  // a guaranteed console error and a console full of failed calls for a page
+  // they are not permitted to read.
+  const maySeeAi = hasPermission('AI_INSIGHT_VIEW') || hasPermission('AI_FORECAST_VIEW');
+  const ai = useAiDashboard(range, horizon, maySeeAi);
   const models = useModelHistory(undefined, maySeeModels);
 
   return (

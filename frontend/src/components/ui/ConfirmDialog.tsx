@@ -21,7 +21,7 @@ export default function ConfirmDialog({
   loading,
 }: ConfirmDialogProps) {
   return (
-    <Modal open={open} onClose={onClose} size="sm">
+    <Modal open={open} onClose={onClose} size="sm" ariaLabel={title}>
       <div className="flex flex-col items-center text-center gap-4">
         <AlertTriangle size={40} className="text-amber-500" />
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>

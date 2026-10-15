@@ -44,6 +44,7 @@ public class CreatePurchaseOrderRequest {
     private LocalDate expectedDeliveryDate;
     private LocalDate dueDate;
 
-    @NotNull
-    private List<CreatePurchaseOrderItem> items;
+    @NotNull(message = "a purchase must have at least one line")
+    @jakarta.validation.Valid
+    private List<@NotNull(message = "a purchase line cannot be null") CreatePurchaseOrderItem> items;
 }

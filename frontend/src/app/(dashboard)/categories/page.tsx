@@ -249,7 +249,10 @@ export default function CategoriesPage() {
         message = axiosError.response?.data?.message || message;
       }
 
-      if (error instanceof Error && error.message) {
+      // Only when the error carries no response of its own. An Axios error always
+      // does, and its `message` is "Request failed with status 500" — which
+      // replaced the server's own sentence about what was wrong.
+      if (error instanceof Error && error.message && !(error as any).response) {
         message = error.message;
       }
 
@@ -305,7 +308,10 @@ export default function CategoriesPage() {
         message = axiosError.response?.data?.message || message;
       }
 
-      if (error instanceof Error && error.message) {
+      // Only when the error carries no response of its own. An Axios error always
+      // does, and its `message` is "Request failed with status 500" — which
+      // replaced the server's own sentence about what was wrong.
+      if (error instanceof Error && error.message && !(error as any).response) {
         message = error.message;
       }
 

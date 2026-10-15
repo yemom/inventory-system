@@ -10,7 +10,19 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   rightIcon?: React.ReactNode;
 }
 
-export default function Input({ label, error, hint, leftIcon, rightIcon, className, id, ...props }: InputProps) {
+/**
+ * `forwardRef` is what makes this usable from `react-hook-form`.
+ *
+ * <p>React strips `ref` from the props of a plain function component before the
+ * component body runs, so `{...register('amount')}` on this input passed RHF no
+ * DOM node at all — focus-on-error and the field-level rules that depend on the
+ * element silently did nothing, and React logged "Function components cannot be
+ * given refs" for every one. Forwarding the ref hands RHF the real element.
+ */
+const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
+  { label, error, hint, leftIcon, rightIcon, className, id, ...props },
+  ref,
+) {
   // useId gives a stable, unique id so the <label> can actually point at the
   // input. It previously had no `htmlFor` at all, which left every labelled
   // field in the app unassociated: clicking the label did not focus the control
@@ -28,6 +40,7 @@ export default function Input({ label, error, hint, leftIcon, rightIcon, classNa
       <div className="relative">
         {leftIcon && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{leftIcon}</span>}
         <input
+          ref={ref}
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={error || hint ? `${inputId}-help` : undefined}
@@ -48,4 +61,6 @@ export default function Input({ label, error, hint, leftIcon, rightIcon, classNa
       {error && <p id={`${inputId}-help`} className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );
-}
+});
+
+export default Input;

@@ -20,6 +20,7 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState({
     name: '', phone: '', email: '', address: '', customerType: 'RETAIL', creditLimit: 0
   });
@@ -44,6 +45,10 @@ export default function CustomersPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Guarded while in flight: two clicks reach here before the first request
+    // resolves, and the second one creates a duplicate customer.
+    if (creating) return;
+    setCreating(true);
     try {
       await customersApi.create(formData);
       toast('success', 'Customer created successfully');
@@ -51,6 +56,8 @@ export default function CustomersPage() {
       loadCustomers();
     } catch (e: any) {
       toast('error', 'Creation failed');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -98,7 +105,7 @@ export default function CustomersPage() {
           />
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="outline" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Create Customer</Button>
+            <Button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create Customer'}</Button>
           </div>
         </form>
       </Modal>

@@ -1,5 +1,31 @@
 import apiClient, { fetchAllPages } from './apiClient';
 
+/**
+ * Stock movement types.
+ *
+ * The backend records the reason as well as the direction — a purchase receipt
+ * and a sales return are both stock coming in, but they mean different things to
+ * a reader — so this is the full set from {@code StockMovement.TYPE_*}, not the
+ * four directions. Typing it as the four directions meant every one of the
+ * others was a type error the moment a screen tried to render it.
+ */
+export type StockMovementType =
+  | 'OPENING'
+  | 'IN'
+  | 'PURCHASE_RECEIPT'
+  | 'SALE'
+  | 'OUT'
+  | 'TRANSFER_OUT'
+  | 'TRANSFER_IN'
+  | 'TRANSFER'
+  | 'SALES_RETURN'
+  | 'PURCHASE_RETURN'
+  | 'DAMAGE'
+  | 'EXPIRY'
+  | 'LOSS'
+  | 'ADJUSTMENT'
+  | 'STOCK_COUNT';
+
 export interface StockMovement {
   id: number;
 
@@ -13,11 +39,7 @@ export interface StockMovement {
 
   warehouseName?: string;
 
-  type:
-  | 'IN'
-  | 'OUT'
-  | 'TRANSFER'
-  | 'ADJUSTMENT';
+  type: StockMovementType | string;
 
   quantity: number;
 

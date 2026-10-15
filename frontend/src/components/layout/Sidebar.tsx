@@ -118,6 +118,18 @@ const navItems: NavItem[] = [
 
 const DEFAULT_EXPANDED = ['Inventory', 'Sales', 'Finance', 'Purchases'];
 
+/**
+ * The avatar letter for a user.
+ *
+ * <p>Defensive about both fields being absent or blank: indexing the first
+ * character of an empty string throws, and a sidebar that crashes on an
+ * account with no display name takes the whole dashboard with it.
+ */
+function initial(user: { fullName?: string; username?: string } | null): string {
+  const name = (user?.fullName || user?.username || '').trim();
+  return name ? name[0].toUpperCase() : '?';
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, hasPermission } = useAuth();
@@ -269,12 +281,12 @@ export default function Sidebar() {
         <div className={cn('px-3 py-3 border-t border-gray-700/60 shrink-0', collapsed && 'flex justify-center')}>
           {collapsed ? (
             <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
-              {(user.fullName || user.username)[0].toUpperCase()}
+              {initial(user)}
             </div>
           ) : (
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0">
-                {(user.fullName || user.username)[0].toUpperCase()}
+                {initial(user)}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-white truncate">{user.fullName || user.username}</p>

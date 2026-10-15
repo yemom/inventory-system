@@ -72,9 +72,27 @@ export default function InventoryReportPage() {
   const cost = Number(valuation?.totals?.totalValueAtCost ?? 0);
   const units = Number(valuation?.totals?.totalUnits ?? 0);
 
-  const byCategory = rows.reduce<Record<string, { units: number; cost: number }>>(
+  // Reorder levels are not part of a valuation — it answers "what is this
+  // worth", not "is this enough" — so the low-stock figure is read from the
+  // report that does compare quantity to each product's reorder level. Reading
+  // it off a valuation row could only ever compare against `undefined`, which
+  // silently reduced "low or out of stock" to "quantity is zero".
+  const { data: stock } = useQuery({
+    queryKey: ['report', 'inventory-low-stock'],
+    queryFn: () => reportsApi.get('inventory', {}),
+    retry: false,
+  });
+  const needsReordering = stock
+    ? Number(stock.lowStockCount ?? 0) + Number(stock.outOfStockCount ?? 0)
+    : null;
+
+  // Grouped by the warehouse the stock actually sits in. This keyed on the first
+  // word of the product *name*, so a panel headed "Where the value sits — stock
+  // is valued per warehouse" was really ranking products called "Coffee…",
+  // "Tea…" and "Sugar…" by value.
+  const byWarehouse = rows.reduce<Record<string, { units: number; cost: number }>>(
     (acc, row) => {
-      const key = String(row.product ?? '—').split(' ')[0];
+      const key = String(row.warehouse ?? 'Unassigned');
       acc[key] ??= { units: 0, cost: 0 };
       acc[key].units += Number(row.quantity ?? 0);
       acc[key].cost += Number(row.valueAtCost ?? 0);
@@ -116,16 +134,8 @@ export default function InventoryReportPage() {
         />
         <StatCard
           title="Low or Out of Stock"
-          value={
-            valuation
-              ? String(
-                  rows.filter(
-                    (r) => Number(r.quantity ?? 0) <= (r.reorderLevel ?? 0),
-                  ).length,
-                )
-              : '…'
-          }
-          changeLabel="lines at or below reorder level"
+          value={needsReordering === null ? '…' : String(needsReordering)}
+          changeLabel="products at or below their reorder level"
           color="red"
           icon={<AlertTriangle size={20} />}
         />
@@ -143,13 +153,13 @@ export default function InventoryReportPage() {
             </p>
           </div>
           <div className="px-4 py-3">
-            {Object.keys(byCategory).length === 0 ? (
+            {Object.keys(byWarehouse).length === 0 ? (
               <p className="py-4 text-center text-xs text-gray-400">
                 Nothing is currently held in stock.
               </p>
             ) : (
               <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-2 text-sm">
-                {Object.entries(byCategory)
+                {Object.entries(byWarehouse)
                   .sort((a, b) => b[1].cost - a[1].cost)
                   .slice(0, 10)
                   .map(([key, stats]) => (

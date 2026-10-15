@@ -62,10 +62,17 @@ export default function TopNavbar() {
           {dark ? <Sun size={17} /> : <Moon size={17} />}
         </button>
 
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+        {/* Notifications. There is no notification service yet, so this is shown
+            disabled rather than live-looking: a red badge on a button that does
+            nothing reads as "you have alerts" when the truth is "not built". */}
+        <button
+          disabled
+          aria-label="Notifications (not available yet)"
+          title="Notifications are not available yet"
+          className="relative p-2 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed"
+        >
           <Bell size={17} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white dark:ring-gray-800" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-gray-300 rounded-full ring-2 ring-white dark:ring-gray-800 dark:bg-gray-600" />
         </button>
 
         <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1" />

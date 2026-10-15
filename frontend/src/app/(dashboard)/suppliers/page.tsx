@@ -19,6 +19,7 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState({
     companyName: '', contactPerson: '', phone: '', email: '', address: '', taxNumber: ''
   });
@@ -43,6 +44,10 @@ export default function SuppliersPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Guarded while in flight: two clicks reach here before the first request
+    // resolves, and the second one creates a duplicate supplier.
+    if (creating) return;
+    setCreating(true);
     try {
       await suppliersApi.create(formData);
       toast('success', 'Supplier created successfully');
@@ -50,6 +55,8 @@ export default function SuppliersPage() {
       loadSuppliers();
     } catch (e: any) {
       toast('error', 'Creation failed');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -91,7 +98,7 @@ export default function SuppliersPage() {
           <Input label="Tax Number" value={formData.taxNumber} onChange={e => setFormData({...formData, taxNumber: e.target.value})} />
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="outline" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Create Supplier</Button>
+            <Button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create Supplier'}</Button>
           </div>
         </form>
       </Modal>

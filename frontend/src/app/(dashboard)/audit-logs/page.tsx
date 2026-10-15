@@ -5,6 +5,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Badge from '@/components/ui/Badge';
 import ErrorState from '@/components/ui/ErrorState';
 import { useAuditLogs } from '@/hooks/useUsers';
+import { formatDate } from '@/lib/utils';
 
 export default function AuditLogsPage() {
   const { data: logs = [], isLoading, error, refetch } = useAuditLogs();
@@ -14,7 +15,9 @@ export default function AuditLogsPage() {
   };
 
   const columns: Column<any>[] = [
-    { key: 'timestamp', label: 'Timestamp', render: v => new Date(String(v)).toLocaleString() },
+    // `formatDate` rather than `new Date(String(v))`: a row with no timestamp
+    // rendered the literal text "Invalid Date" in a timestamp column.
+    { key: 'timestamp', label: 'Timestamp', render: v => formatDate(String(v ?? '')) },
     { key: 'username', label: 'User', render: v => <span className="font-medium">{String(v)}</span> },
     { key: 'action', label: 'Action', render: v => <Badge variant={actionColors[String(v)] ?? 'default'}>{String(v)}</Badge> },
     { key: 'resource', label: 'Resource', render: (v, row) => <span className="font-mono text-xs">{String(v)} {row.resourceId ? `#${row.resourceId}` : ''}</span> },
