@@ -25,11 +25,14 @@ import DateRangeFilter, {
 import AiInsightPanel from '@/components/ai/AiInsightPanel';
 import ForecastChart from '@/components/ai/ForecastChart';
 import AssistantPanel from '@/components/ai/AssistantPanel';
+import SalesSummaryPanel from '@/components/dashboard/SalesSummaryPanel';
+import SalesOrderTable from '@/components/dashboard/SalesOrderTable';
 import { useAiDashboard, useDashboardFinancial } from '@/hooks/useAiDashboard';
 import { useProducts } from '@/hooks/useProducts';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { labelApiError } from '@/lib/api/apiErrors';
+import { sectionOrderFor } from '@/lib/dashboard/roleDashboard';
 
 /**
  * The dashboard.
@@ -56,7 +59,7 @@ import { labelApiError } from '@/lib/api/apiErrors';
  */
 
 export default function DashboardPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [range, setRange] = useState<DateRange>(() => lastNDays(30));
   const [horizon, setHorizon] = useState(14);
 
@@ -95,6 +98,21 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/*
+        Sections are declared once and ordered by role. A cashier's own trading
+        comes first because that is their question; a supervisor's floor comes
+        first because that is theirs. Every section is still gated on the
+        permission its data requires, so ordering is presentation only — it
+        cannot make an unreadable figure appear.
+      */}
+      <RoleOrderedSections order={sectionOrderFor(user?.role)}>
+        <Section name="sales-summary">
+          <SalesSummaryPanel range={range} />
+        </Section>
+        <Section name="orders">
+          <SalesOrderTable limit={8} />
+        </Section>
+
       {financial.error && (
         <ErrorBanner
           title="Financial figures could not be loaded"
@@ -106,7 +124,14 @@ export default function DashboardPage() {
         </ErrorBanner>
       )}
 
+      {/* ── Sales record ─────────────────────────────────────────────────── */}
+      <SalesSummaryPanel range={range} />
+
+      {/* ── The orders behind those figures ──────────────────────────────── */}
+      <SalesOrderTable limit={8} />
+
       {/* ── Money ────────────────────────────────────────────────────────── */}
+      <Section name="financials">
       {!maySeeMoney ? (
         <Card>
           <CardContent className="py-6 text-center">
@@ -184,8 +209,10 @@ export default function DashboardPage() {
           <FinancialDetail money={money} range={range} />
         </>
       )}
+      </Section>
 
       {/* ── Intelligence ─────────────────────────────────────────────────── */}
+      <Section name="forecast">
       {maySeeAi && (
         <>
           {ai.error && (
@@ -221,8 +248,10 @@ export default function DashboardPage() {
           />
         </>
       )}
+      </Section>
 
       {/* ── Stock and operations ─────────────────────────────────────────── */}
+      <Section name="stock">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <StockAlerts low={stock.low} out={stock.out} loading={loadingProducts} />
 
@@ -246,8 +275,63 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </Section>
+      </RoleOrderedSections>
     </div>
   );
+}
+
+// ── Role ordering ───────────────────────────────────────────────────────────
+
+/**
+ * Renders its children in the order the viewer's role asks for.
+ *
+ * <p>A child tagged with a section name goes where that name appears in the
+ * order; anything untagged — the date filter, the three-column operations row —
+ * stays at the end, where structural furniture belongs. Sections the role does
+ * not name are still rendered: the order is a preference, not a filter, and a
+ * card going missing because a role's list was not updated would be a silent
+ * removal of information somebody is entitled to.
+ */
+function RoleOrderedSections({
+  order,
+  children,
+}: {
+  order: string[];
+  children: React.ReactNode;
+}) {
+  const named = new Map<string, React.ReactNode>();
+  const trailing: React.ReactNode[] = [];
+
+  React.Children.forEach(children, (child) => {
+    const name = (child as { props?: { section?: string } })?.props?.section;
+    if (name) {
+      named.set(name, child);
+    } else {
+      trailing.push(child);
+    }
+  });
+
+  return (
+    <>
+      {order.map((name) => {
+        const child = named.get(name);
+        return child ? <React.Fragment key={name}>{child}</React.Fragment> : null;
+      })}
+      {trailing}
+    </>
+  );
+}
+
+/** Tags a block with the section name it is ordered by. Renders its children. */
+function Section({
+  name,
+  children,
+}: {
+  name: string;
+  children: React.ReactNode;
+}) {
+  return <div data-section={name}>{children}</div>;
 }
 
 // ── Financial detail ─────────────────────────────────────────────────────────
@@ -496,22 +580,43 @@ function WarehouseMovement({
       turnoverRatio: number;
     }> | null
   >(null);
+  const [warehousePanelFailed, setWarehousePanelFailed] = React.useState(false);
+  const [warehousePanelReload, setWarehousePanelReload] = React.useState(0);
+
+  // The panel honours the period the dashboard is filtered to. It asked for a
+  // hardcoded 30 days while depending on `range`, so changing the date filter
+  // re-fetched a number that never changed.
+  const warehouseWindowDays = React.useMemo(() => {
+    const from = new Date(range.from).getTime();
+    const to = new Date(range.to).getTime();
+    if (Number.isFinite(from) && Number.isFinite(to) && to >= from) {
+      return Math.min(365, Math.max(1, Math.round((to - from) / 86_400_000) + 1));
+    }
+    return 30;
+  }, [range.from, range.to]);
 
   React.useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    setWarehousePanelFailed(false);
     import('@/lib/api/aiApi')
-      .then(({ aiApi }) => aiApi.warehouses(30))
+      .then(({ aiApi }) => aiApi.warehouses(warehouseWindowDays))
       .then((rows) => {
         if (!cancelled) setData(rows);
       })
       .catch(() => {
-        if (!cancelled) setData(null);
+        // A failure is not an absence of data. Leaving `data` null made the
+        // panel render its loading skeleton forever, with no error and no way
+        // to retry — indistinguishable from "still calculating".
+        if (!cancelled) {
+          setData(null);
+          setWarehousePanelFailed(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [enabled, range.from, range.to]);
+  }, [enabled, warehouseWindowDays, warehousePanelReload]);
 
   return (
     <Card>
@@ -525,6 +630,19 @@ function WarehouseMovement({
           <p className="py-6 text-center text-xs text-gray-400">
             Needs the inventory reporting permission.
           </p>
+        ) : warehousePanelFailed ? (
+          <div className="py-6 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Warehouse activity could not be loaded.
+            </p>
+            <button
+              type="button"
+              onClick={() => setWarehousePanelReload(n => n + 1)}
+              className="mt-2 text-xs font-medium text-blue-600 hover:underline"
+            >
+              Try again
+            </button>
+          </div>
         ) : !data ? (
           <div className="h-24 rounded-lg bg-gray-100 dark:bg-gray-700/50 animate-pulse" />
         ) : data.length === 0 ? (

@@ -120,10 +120,53 @@ function parseOrThrow<T>(schema: z.ZodType<T>, data: unknown, what: string): T {
   return result.data;
 }
 
+/** One page of orders, with the totals the server counted. */
+export interface SaleOrderPage {
+  content: SaleOrder[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
 export const salesApi = {
   list: async (): Promise<SaleOrder[]> => {
     const orders = await fetchAllPages<unknown>('/sales');
     return orders.map((order) => parseOrThrow(saleOrderSchema, order, 'sale order list'));
+  },
+
+  /**
+   * One page of orders.
+   *
+   * <p>Used where only the newest slice is on screen — a dashboard table, say.
+   * `list` walks every page to build a total count, which is the right answer
+   * for a report and the wrong cost for a screen showing 10 rows.
+   *
+   * <p>The page is validated the same way `list` is, so a shape change shows up
+   * here rather than as an undefined field in a table cell.
+   */
+  page: async (params: {
+    page?: number; size?: number; sort?: string; search?: string;
+    status?: string; paymentStatus?: string;
+  } = {}): Promise<SaleOrderPage> => {
+    const res = await apiClient.get('/sales', { params });
+    const data = res.data?.data ?? res.data;
+    const page: {
+      content?: unknown[];
+      totalElements?: number;
+      totalPages?: number;
+      number?: number;
+      size?: number;
+    } = data ?? {};
+    return {
+      content: (page.content ?? []).map((order: unknown) =>
+        parseOrThrow(saleOrderSchema, order, 'sale order page'),
+      ),
+      totalElements: page.totalElements ?? 0,
+      totalPages: page.totalPages ?? 0,
+      number: page.number ?? 0,
+      size: page.size ?? (params.size ?? 20),
+    };
   },
 
   get: async (id: string | number): Promise<SaleOrder> => {

@@ -249,6 +249,94 @@ class CashierSaleVisibilityIntegrationTest extends BaseIntegrationTest {
                 "the page itself is already scoped to them");
     }
 
+    // ── filtering ───────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a Cashier's filtered list is still scoped to their own sales")
+    void cashierFilterCannotWidenScope() throws Exception {
+        // Search for the colleague's order number. Even a term that matches it
+        // exactly must not surface it: the scope is applied alongside the
+        // filter, not before it.
+        String orderNumber = saleOrderRepository.findById(otherSaleId)
+                .orElseThrow().getOrderNumber();
+
+        String response = mockMvc.perform(get("/api/v1/sales")
+                        .param("search", orderNumber)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstCashierToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        assertFalse(response.contains("\"id\":" + otherSaleId),
+                "searching for a colleague's order number must not return it — "
+                        + "the search term is matched inside the caller's own rows");
+    }
+
+    @Test
+    @DisplayName("search finds the caller's own order by its number")
+    void cashierCanSearchOwnOrder() throws Exception {
+        String orderNumber = saleOrderRepository.findById(ownSaleId)
+                .orElseThrow().getOrderNumber();
+
+        String response = mockMvc.perform(get("/api/v1/sales")
+                        .param("search", orderNumber)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstCashierToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        assertTrue(response.contains("\"id\":" + ownSaleId),
+                "their own order must be findable by its number");
+    }
+
+    @Test
+    @DisplayName("a filter that matches nothing is an empty page, not the unfiltered list")
+    void filterIsAppliedNotIgnored() throws Exception {
+        String response = mockMvc.perform(get("/api/v1/sales")
+                        .param("search", "no-such-order-anywhere-zzz")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        var data = json.readTree(response).path("data");
+        assertEquals(0, data.path("content").size(),
+                "a term matching nothing must return nothing");
+        assertEquals(0, data.path("totalElements").asLong(),
+                "and the total must agree, or paging would offer pages that do not exist");
+    }
+
+    @Test
+    @DisplayName("the status filter narrows the result rather than being ignored")
+    void statusFilterNarrowsResults() throws Exception {
+        String unmatched = mockMvc.perform(get("/api/v1/sales")
+                        .param("status", "NOT_A_REAL_STATUS")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        var data = json.readTree(unmatched).path("data");
+        assertEquals(0, data.path("content").size(),
+                "a status no order holds must match no orders — this is what "
+                        + "proves the predicate reached the database");
+    }
+
+    @Test
+    @DisplayName("an empty filter is no filter, not a search for nothing")
+    void blankFilterIsIgnored() throws Exception {
+        String blank = mockMvc.perform(get("/api/v1/sales")
+                        .param("search", "   ")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        String absent = mockMvc.perform(get("/api/v1/sales")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + supervisorToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        assertEquals(json.readTree(absent).path("data").path("totalElements").asLong(),
+                json.readTree(blank).path("data").path("totalElements").asLong(),
+                "a whitespace filter is the same request as no filter");
+    }
+
     // ── a single sale ───────────────────────────────────────────────────────
 
     @Test

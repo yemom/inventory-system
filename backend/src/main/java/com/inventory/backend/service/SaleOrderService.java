@@ -48,7 +48,23 @@ public class SaleOrderService {
      */
     @Transactional(readOnly = true)
     public Page<SaleOrderDTO> listSales(Pageable pageable) {
+        return listSales(pageable, null, null, null);
+    }
+
+    /**
+     * The sales the caller is allowed to see, filtered in the database.
+     *
+     * <p>The filters are applied by the query rather than by dropping rows in
+     * Java, so a page of ten matching orders is a page of ten orders — not the
+     * tenth page of the whole ledger with most of it discarded afterwards.
+     */
+    @Transactional(readOnly = true)
+    public Page<SaleOrderDTO> listSales(Pageable pageable, String search,
+                                        String status, String paymentStatus) {
         User actor = currentUser();
+        String term = blankToNull(search);
+        String statusFilter = blankToNull(status);
+        String paymentFilter = blankToNull(paymentStatus);
 
         if (!canSeeEveryonesSales(actor)) {
             // An anonymous caller sees nothing; a real one sees their own page,
@@ -58,17 +74,22 @@ public class SaleOrderService {
             if (actor == null) {
                 return new PageImpl<>(List.of(), pageable, 0);
             }
-            return saleOrderRepository.findBySellerWithDetails(actor.getId(), pageable)
+            return saleOrderRepository
+                    .searchBySellerWithDetails(actor.getId(), term, statusFilter, paymentFilter, pageable)
                     .map(this::toDTO);
         }
 
-        // Use fetch join to avoid N+1 queries when accessing items, products, customers
-        List<SaleOrder> orders = saleOrderRepository.findAllWithDetails(pageable);
-        List<SaleOrderDTO> dtos = orders.stream().map(this::toDTO).collect(Collectors.toList());
+        // Fetch-joined, so the DTO mapper does not become one query per order's
+        // items. The count comes from the same query, which is what makes the
+        // pagination metadata agree with the filters actually applied.
+        return saleOrderRepository
+                .searchWithDetails(term, statusFilter, paymentFilter, pageable)
+                .map(this::toDTO);
+    }
 
-        // Get total count for pagination metadata
-        long total = saleOrderRepository.count();
-        return new PageImpl<>(dtos, pageable, total);
+    /** An empty or whitespace-only filter means "no filter", not "match nothing". */
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /**

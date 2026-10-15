@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import apiClient, { SESSION_EXPIRED_EVENT } from "@/lib/api/apiClient";
+import { homeForRole } from "@/lib/dashboard/roleDashboard";
 
 export type Role =
   | "SUPER_ADMIN"
@@ -93,7 +94,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     setUser(loggedIn);
     localStorage.setItem("auth_user", JSON.stringify(loggedIn));
-    router.push("/dashboard");
+    // Land on the page that answers this person's question first. Every role
+    // currently shares the dashboard, but the mapping is the single place that
+    // would change if a role ever needs its own landing page, rather than a
+    // role name being sprinkled through the login handler.
+    router.push(homeForRole(loggedIn.role));
   };
 
   const logout = () => {

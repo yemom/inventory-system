@@ -27,7 +27,7 @@ export default function StatCard({ title, value, change, changeLabel, icon, colo
         <div className="flex-1">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-          {change !== undefined && (
+          {change !== undefined ? (
             <div className="flex items-center gap-1 mt-2">
               {isPositive ? <TrendingUp size={14} className="text-emerald-500" /> : <TrendingDown size={14} className="text-red-500" />}
               <span className={cn('text-xs font-medium', isPositive ? 'text-emerald-600' : 'text-red-600')}>
@@ -35,6 +35,15 @@ export default function StatCard({ title, value, change, changeLabel, icon, colo
               </span>
               {changeLabel && <span className="text-xs text-gray-400">{changeLabel}</span>}
             </div>
+          ) : (
+            // A caption is worth showing on its own. Rendering it only
+            // alongside a change meant that "2 completed" or "still owing" —
+            // exactly the qualifiers that stop a number being read as the
+            // whole truth — disappeared whenever there was nothing to compare
+            // against, which is most of the time.
+            changeLabel && (
+              <p className="mt-2 text-xs text-gray-400">{changeLabel}</p>
+            )
           )}
         </div>
         {icon && <div className={cn('p-3 rounded-xl', colorMap[color])}>{icon}</div>}

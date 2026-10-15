@@ -27,8 +27,12 @@ public class SaleOrderController {
     @GetMapping
     @PreAuthorize("hasAuthority('SALE_READ')")
     public ResponseEntity<ApiResponse<Page<SaleOrderDTO>>> listSales(
-            @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.ok(saleOrderService.listSales(pageable)));
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String paymentStatus) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                saleOrderService.listSales(pageable, search, status, paymentStatus)));
     }
 
     @PostMapping

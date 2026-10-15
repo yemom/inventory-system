@@ -103,6 +103,24 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
     List<SaleOrder> findByIdsWithItems(@Param("ids") List<Long> ids);
 
     /**
+     * One sale by its order number, with the rows the caller displays.
+     *
+     * <p>Scoped in the query for the same reason the customer lookups below are:
+     * loading every sale in the business to pick one out of it in memory means
+     * an accidental print, a debugger or a future fetch join becomes a
+     * disclosure — and it is simply more expensive.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            WHERE UPPER(s.orderNumber) = UPPER(:orderNumber)
+            """)
+    Optional<SaleOrder> findByOrderNumberWithDetails(@Param("orderNumber") String orderNumber);
+
+    /**
      * Sales carrying an unresolved void or refund request.
      *
      * <p>Used by the approval queue. The status is a parameter rather than a
@@ -140,6 +158,73 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
             """)
     Page<SaleOrder> findBySellerWithDetails(
             @Param("sellerId") Long sellerId,
+            Pageable pageable);
+
+    /**
+     * A page of sales, filtered in the database.
+     *
+     * <p>Search and status filters belong here rather than in the browser: a
+     * table that loads every order and hides rows client-side cannot page
+     * correctly and sends the whole ledger over the wire to show ten of them.
+     * Every filter is nullable and simply absent when not supplied, so an
+     * unfiltered call is the same query with no predicates.
+     *
+     * <p>The caller is <b>not</b> scoped here. That is deliberate and is applied
+     * by {@link SaleOrderService}, which knows who is asking; putting the seller
+     * in this signature as well would make it too easy to forget on one of the
+     * two paths and silently widen a cashier's view.
+     *
+     * <p>The filters are cast to {@code varchar} because a bare {@code :search IS NULL}
+     * comparison leaves Hibernate with nothing to infer the parameter's type
+     * from, and it binds the null as {@code bytea} — which PostgreSQL then
+     * refuses with "function lower(bytea) does not exist". The cast gives the
+     * driver the type up front.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            WHERE (CAST(:search AS string) IS NULL
+                   OR LOWER(s.orderNumber) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(COALESCE(s.customer.name, '')) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
+              AND (CAST(:status AS string) IS NULL OR s.status = CAST(:status AS string))
+              AND (CAST(:paymentStatus AS string) IS NULL
+                   OR s.paymentStatus = CAST(:paymentStatus AS string))
+            """)
+    Page<SaleOrder> searchWithDetails(
+            @Param("search") String search,
+            @Param("status") String status,
+            @Param("paymentStatus") String paymentStatus,
+            Pageable pageable);
+
+    /**
+     * The same filters, scoped to one seller.
+     *
+     * <p>The count comes from this query rather than from a table-wide one, so
+     * the pagination metadata cannot disclose how large the whole ledger is to a
+     * caller who is only entitled to their own page of it.
+     */
+    @Query("""
+            SELECT DISTINCT s FROM SaleOrder s
+            LEFT JOIN FETCH s.items i
+            LEFT JOIN FETCH i.product
+            LEFT JOIN FETCH s.customer
+            LEFT JOIN FETCH s.createdBy
+            WHERE s.createdBy.id = :sellerId
+              AND (CAST(:search AS string) IS NULL
+                   OR LOWER(s.orderNumber) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(COALESCE(s.customer.name, '')) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
+              AND (CAST(:status AS string) IS NULL OR s.status = CAST(:status AS string))
+              AND (CAST(:paymentStatus AS string) IS NULL
+                   OR s.paymentStatus = CAST(:paymentStatus AS string))
+            """)
+    Page<SaleOrder> searchBySellerWithDetails(
+            @Param("sellerId") Long sellerId,
+            @Param("search") String search,
+            @Param("status") String status,
+            @Param("paymentStatus") String paymentStatus,
             Pageable pageable);
 
     /**
