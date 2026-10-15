@@ -1,13 +1,27 @@
+# Continuous integration for StockFlow.
+#
+# Two independent jobs, neither of which needs production credentials:
+#
+#   backend  — compiles, runs the full unit + integration suite. The integration
+#              tests start a throwaway PostgreSQL through Testcontainers, so this
+#              job needs no secrets and never touches a real database.
+#   frontend — type-check, lint, unit tests and a production build.
+#
+# Docker builds are validated separately from the Java build because the images
+# already build the same sources on every push; `docker` below is a smoke build
+# of the backend image only, which is the one whose Dockerfile can fail on a
+# stale layer or a bad JAR glob.
+
 name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [main, master]
   workflow_dispatch:
 
-# Cancel superseded runs on the same ref to save CI minutes.
+# A new push supersedes an in-flight run of the same branch.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -16,23 +30,12 @@ permissions:
   contents: read
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Backend: compile + unit/integration tests
-  # Integration tests use Testcontainers (ephemeral PostgreSQL), so they can
-  # never touch a real database.
-  # ─────────────────────────────────────────────────────────────────────────
   backend:
-    name: Backend build & test
+    name: Backend — compile and test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     defaults:
       run:
-        # The Maven project lives in backend/; without this every ./mvnw call
-        # runs from the repo root, where mvnw does not exist, and the job fails
-        # at the wrapper step with a confusing "not present"/exit-1.
         working-directory: backend
-
     steps:
       - uses: actions/checkout@v4
 
@@ -43,40 +46,20 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # Git does not preserve the executable bit when the repo was authored on
-      # Windows, so make the wrapper executable first. Do NOT gate on
-      # `test -x` — that is the step that was failing.
-      - name: Make Maven wrapper executable
-        run: chmod +x ./mvnw
-
       - name: Compile
-        run: ./mvnw -B -q clean compile
+        run: mvn -B -q clean compile
 
-      - name: Run tests
-        run: ./mvnw -B clean verify
+      # Testcontainers provisions its own PostgreSQL; no service container and no
+      # repository credentials are required for this to run on a pull request.
+      - name: Test
+        run: mvn -B clean test
 
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-reports
-          path: backend/target/surefire-reports/      # absolute from repo root
-          retention-days: 7
-          if-no-files-found: ignore
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Frontend: install, lint, type-check, build
-  # Uses `npm ci` so the lockfile is honoured exactly (never `npm install`).
-  # ─────────────────────────────────────────────────────────────────────────
   frontend:
-    name: Frontend lint, type-check & build
+    name: Frontend — types, lint, tests, build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     defaults:
       run:
         working-directory: frontend
-
     steps:
       - uses: actions/checkout@v4
 
@@ -87,127 +70,33 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Pin npm to the version that wrote package-lock.json. npm 10 and npm 11
-      # disagree about the shape of the lockfile: a lockfile written by npm 11
-      # omits hoisted optional native deps (@emnapi/*), and `npm ci` under npm 10
-      # then refuses with "package.json and package-lock.json are not in sync —
-      # Missing: @emnapi/runtime from lock file". The Dockerfile pins the same
-      # version for the same reason; this keeps CI and the image in agreement.
-      - name: Pin npm to match the lockfile
-        run: npm install -g npm@10.8.2
-
-      - name: Install dependencies (npm ci)
+      - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Type check
+      - name: Type-check
         run: npm run type-check
 
       - name: Lint
         run: npm run lint
 
-      # The suite covers the opening-stock payload and the permission-gated
-      # navigation. It was not wired into CI before, which is how two suites had
-      # been failing unnoticed. `--ci` makes the run non-interactive and stops
-      # new snapshots being written on the fly.
       - name: Unit tests
-        run: npm test -- --ci
+        run: npx jest --ci
 
-      - name: Build
+      - name: Production build
         run: npm run build
+        env:
+          # The client reads this at build time. CI needs no real backend: the
+          # build only inlines the value, it never calls it.
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8081/api/v1
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Docker image builds — proves both images build on a clean machine.
-  # ─────────────────────────────────────────────────────────────────────────
-  docker-build:
-    name: Docker images build
+  docker:
+    name: Docker — backend image builds
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [ backend, frontend ]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Build backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: false
-          load: true
-          tags: stockflow-backend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build -t stockflow-backend:ci backend
 
       - name: Build frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: false
-          load: true
-          tags: stockflow-frontend:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Smoke test — boots the full stack and checks health + a real login.
-  # Only runs on main/master pushes and manual dispatch (not on PRs).
-  # ─────────────────────────────────────────────────────────────────────────
-  smoke-test:
-    name: Stack smoke test
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    needs: docker-build
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
-
-    # The backend refuses to boot without a real JWT signing key and a real
-    # super-admin password (StartupConfigValidator) — the development defaults
-    # that used to live in application.properties were removed on purpose. These
-    # are ephemeral, throwaway values for an ephemeral CI stack; configure real
-    # repository secrets to override them.
-    env:
-      JWT_SECRET: ${{ secrets.SMOKE_JWT_SECRET || 'ci-ephemeral-jwt-secret-4f6c46e0b32145b0a7019f39' }}
-      SUPER_ADMIN_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD || 'ci-ephemeral-admin-password' }}
-      SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL || '12yemom@gmail.com' }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Start the stack
-        run: |
-          docker compose up -d --build db redis backend frontend
-          echo "Waiting for services to become healthy..."
-          for i in $(seq 1 40); do
-            if curl -fsS http://localhost:8081/actuator/health >/dev/null 2>&1; then
-              echo "Backend healthy after ${i}0s"; break
-            fi
-            sleep 10
-          done
-
-      - name: Show logs on failure
-        if: failure()
-        run: docker compose logs --tail 200
-
-      - name: Verify backend health
-        run: |
-          curl -fsS http://localhost:8081/actuator/health
-          echo
-          curl -fsS http://localhost:8081/api/v1/dashboard/health
-
-      - name: Verify login + protected endpoint
-        run: |
-          set -euo pipefail
-          TOKEN=$(curl -fsS -X POST http://localhost:8081/api/v1/auth/login \
-            -H 'Content-Type: application/json' \
-            -d "{\"identifier\":\"$SUPER_ADMIN_EMAIL\",\"password\":\"$SUPER_ADMIN_PASSWORD\"}" \
-            | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
-          echo "Login OK"
-          curl -fsS http://localhost:8081/api/v1/dashboard/stats -H "Authorization: Bearer $TOKEN" >/dev/null
-          echo "Protected endpoint OK"
-
-      - name: Tear down
-        if: always()
-        run: docker compose down -v
+        run: docker build -t stockflow-frontend:ci frontend

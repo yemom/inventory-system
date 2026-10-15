@@ -649,6 +649,39 @@ holds.
 | `GET /api/v1/dashboard/stats` | `DASHBOARD_VIEW` | Operational counts. No money. |
 | `GET /api/v1/dashboard/financial` | `FINANCIAL_REPORT_VIEW` | Net sales, gross and net profit, margins, cash, receivables, payables, inventory value. |
 | `GET /api/v1/dashboard/insights` | `AI_INSIGHT_VIEW` | Explanations, alerts and recommended actions. |
+| `GET /api/v1/dashboard/sales-summary` | `DASHBOARD_VIEW` | Orders, completed sales, gross, discounts, returns, net, collected, outstanding and average order value for a period. **Scoped on the server**: a caller holding `SALES_REPORT_VIEW` sees every seller (`scope: ALL_SALES`), anyone else sees only the orders they recorded (`scope: OWN_SALES`). There is no parameter that widens this. |
+| `GET /api/v1/sales` | `SALE_READ` | Orders, paginated. Accepts `search` (order number or customer name), `status`, `paymentStatus` and standard Spring `Pageable` parameters. All filters are applied **in the database**, and the same seller scoping applies as above. |
+
+### Multi-warehouse: which location a transaction belongs to
+
+With **one** active warehouse the backend resolves it and no screen asks.
+With **two or more** the caller must say, because stock leaves a specific place
+and the movement is recorded against it. Guessing would put inventory somewhere
+nobody chose.
+
+| Situation | Result |
+|---|---|
+| One active warehouse, no `warehouseId` sent | Resolved automatically. Sale succeeds. |
+| Two or more active, no `warehouseId` sent | **`409 WAREHOUSE_REQUIRED`** — "Choose the warehouse this transaction belongs to." The POS shows a picker and disables **Complete Sale** until one is chosen. |
+| A `warehouseId` that does not exist | `400` — the warehouse is not found. |
+| Named warehouse has insufficient stock | `400` — "Insufficient stock for 'X' in Y. Available: N, Requested: M." |
+
+A `409` here is deliberate and is not an outage. It means *this request needs
+different input*. It used to arrive as a `500`, which told the cashier the
+application had crashed at the moment they were trying to take money.
+
+**Creating a product with opening stock in a multi-warehouse business** needs a
+warehouse too. The product form shows "Opening Stock Warehouse" when more than
+one is active. Without it the opening balance is recorded with no location, and
+the new product starts life holding stock that no till can draw on.
+
+`warehouse_stock` holds the authoritative per-location balance;
+`products.quantity` is republished from it on every movement. On first start, if
+`warehouse_stock` is empty but a movement ledger exists, the balances are
+**rebuilt from that ledger** (`WarehouseStockBackfillRunner`). This is a
+derivation, not a guess — the rebuilt totals are reconciled against
+`products.quantity` and logged as a mismatch if they disagree. It runs only when
+the table is empty, so it never overwrites live balances.
 
 **Every financial figure comes from the backend calculation service.** It used to
 be assembled in the browser from lists of sales and purchase orders, filtered the
@@ -1002,6 +1035,13 @@ The API base URL is configured using:
 ```text
 NEXT_PUBLIC_API_BASE_URL
 ```
+
+A second variable, `API_INTERNAL_BASE_URL`, is **server-side only**. Inside
+Docker Compose the backend is reachable at `backend:8080`, a hostname the
+browser cannot resolve, so Next.js server components use this one while the
+browser uses the public URL. It falls back to `NEXT_PUBLIC_API_BASE_URL` when
+unset. Neither variable should ever carry a secret: both are inlined into the
+client bundle, which is why they carry URLs and nothing else.
 
 The client automatically attaches the JWT token to authenticated requests.
 
@@ -1469,14 +1509,37 @@ These are the actual results of a full run, not an expectation.
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend | `mvn -B test` | **435 tests, 63 classes - 0 failures, 0 errors** |
-| Frontend | `npx jest --ci` | **191 tests, 16 suites - all passing** |
+| Backend | `mvn -B test` | **448 tests - 0 failures, 0 errors** |
+| Frontend | `npx jest --ci` | **218 tests, 20 suites - all passing** |
 | Frontend types | `npx tsc --noEmit` | **clean** |
-| Frontend lint | `npm run lint` | **0 errors**, 51 warnings, all in pre-existing files |
-| Frontend build | `npm run build` | **compiles**, 44 routes prerendered |
+| Frontend lint | `npm run lint` | **0 errors**, 55 warnings, all in pre-existing files |
+| Frontend build | `npm run build` | **compiles**, routes prerendered |
+
+Run the two suites **one at a time**. Both fork workers and together they exceed
+the machine's memory: the backend's forked JVM dies with "The forked VM
+terminated without properly saying goodbye", and jest workers fail with heap
+allocation errors. Neither is a test failure — both are resource exhaustion, and
+both pass when run alone.
 
 The backend integration tests need a working Docker daemon for Testcontainers.
 Docker Desktop being stopped is the most common reason they appear to hang.
+
+### Two things that will waste your time if you do not know them
+
+**Currency is formatted with a non-breaking space.** `formatCurrency(750)` returns
+`ETB\u00A0750.00` — the character between `ETB` and the digits is `U+00A0`, not
+`U+0020`. Testing Library's exact string matcher does not normalise it, so
+`screen.getByText(formatCurrency(750))` fails even when the text is on screen and
+character-for-character correct. Assert with a pattern (`getByText(/750\.00/)`)
+or look the element up by its row label instead. Do not "fix" this by changing
+`formatCurrency`; the output is correct and the matcher is the limitation.
+
+**A nullable query parameter needs an explicit cast.** In a JPQL predicate like
+`:search IS NULL OR LOWER(s.orderNumber) LIKE ...`, Hibernate has nothing to
+infer the parameter's type from and binds the null as `bytea`. PostgreSQL then
+refuses the whole query with `function lower(bytea) does not exist` — and only
+when the parameter happens to be null, so it looks like an intermittent failure.
+Write `CAST(:search AS string)`.
 
 ## Backend
 
@@ -2088,6 +2151,110 @@ npm run build
 
 ---
 
+# Deployment
+
+The application is built to run in two places: the Spring Boot API on **Render**
+and the Next.js frontend on **Vercel**. Both are configured from environment
+variables; nothing secret belongs in the repository.
+
+## What is deployed where
+
+| Piece | Host | Built from | Reachable at |
+|---|---|---|---|
+| API (Spring Boot) | Render web service | `backend/Dockerfile` | `https://inventory-system-pm18.onrender.com` |
+| Frontend (Next.js) | Vercel | `frontend/` (auto-detected Next.js build) | your Vercel domain |
+| PostgreSQL | Render managed database (`stockflow-db`) | — | private network |
+| Redis | Render managed Redis | — | private network |
+
+`render.yaml` in this repository declares the whole backend stack — database,
+Redis, API and health check — so a new Render service can be created straight
+from the blueprint. The frontend is not in that file: Vercel deploys it from
+this Git repository using its own Next.js preset.
+
+## Backend environment variables (Render)
+
+Set these in the Render service's **Environment** tab. The ones marked *secret*
+must never be committed and must never appear in the frontend.
+
+| Variable | Required | Example | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | *secret* | `postgresql://stockflow:…@dpg-…/stockflow_db` | Render injects this when the service is linked to the database |
+| `DATABASE_USERNAME` | *secret* | `stockflow` | |
+| `DATABASE_PASSWORD` | *secret* | `…` | |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | no | `redis`, `6379`, `…` | Without them, rate limiting degrades but the app still starts |
+| `JWT_SECRET` | *secret* | `openssl rand -hex 32` | **No default.** The backend refuses to start without a strong one |
+| `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` | *secret* | `admin`, ≥ 12 chars | Seeds the first super-admin on an empty database |
+| `CORS_ALLOWED_ORIGINS` | yes in production | `https://your-app.vercel.app` | Comma-separated exact origins; without it the browser reports an opaque network error |
+| `CHATBOT_PROVIDER` | no | `deterministic` | `deterministic` (default, no outbound request) or `openai-compatible` |
+| `CHATBOT_API_KEY` or `OPENAI_API_KEY` | no | `sk-…` | Server-side secret for the optional phrasing layer only |
+| `CHATBOT_LLM_PHRASED` | no | `true` | `false` guarantees zero outbound LLM requests |
+
+See `.env-example` for the complete list with safe placeholders, and
+[docs/deployment.md](docs/deployment.md) for the full reference.
+
+## Frontend environment variables (Vercel)
+
+| Variable | Required | Value | Notes |
+|---|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | **yes** | `https://inventory-system-pm18.onrender.com/api/v1` | Baked into the browser bundle at **build time** |
+| `NEXT_PUBLIC_APP_URL` | no | `https://your-app.vercel.app` | Used for absolute links |
+
+> **The one thing to get right.** `NEXT_PUBLIC_API_BASE_URL` is inlined when the
+> site is built, not when it is served, so changing it in the dashboard requires
+> a **redeploy**, not just a restart. If it is not set, the client falls back to
+> `http://localhost:8081/api/v1` — which is right for `docker compose up` and
+> wrong for anything else: every request from a user's browser would go to their
+> own machine. Nothing about it is secret; it is public by construction.
+
+## Health checks
+
+The API exposes `GET /actuator/health` (and `GET /api/v1/dashboard/health`).
+Point Render's health check path at `/actuator/health`. The first request after
+a long idle period can take 30–60s while the instance scales up — the frontend's
+request timeout is 60s for exactly this reason.
+
+## Manual actions a dashboard requires
+
+These cannot be done from the repository and must be set once per environment:
+
+1. Create the Render blueprint from `render.yaml`, or create the service by hand.
+2. Link the PostgreSQL database and Redis to the service (Render does not pass
+   them automatically unless the blueprint is used).
+3. Set `JWT_SECRET` and `SUPER_ADMIN_PASSWORD` before the first deploy — the
+   backend refuses to start without them.
+4. Set `CORS_ALLOWED_ORIGINS` to the exact Vercel domain.
+5. In Vercel, set `NEXT_PUBLIC_API_BASE_URL` to the Render API origin and
+   redeploy.
+
+## Verifying a deployment
+
+```bash
+curl -s https://inventory-system-pm18.onrender.com/actuator/health
+curl -s "https://inventory-system-pm18.onrender.com/api/v1/dashboard/stats"   # 401 without a token
+```
+
+No live deployment was verified while preparing this documentation; treat the
+URLs above as configuration, not as a claim that a deploy has been tested.
+
+---
+
+# Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+| Job | Runs |
+|---|---|
+| `backend` | `mvn -B clean compile`, then `mvn -B clean test` (Testcontainers starts its own PostgreSQL) |
+| `frontend` | `npm ci`, `npm run type-check`, `npm run lint`, `npx jest --ci`, `npm run build` |
+| `docker` | `docker build` for both images |
+
+No job needs production credentials: the integration tests provision their own
+database, and the frontend build only inlines the API URL it is given. Workflow
+runs on GitHub-hosted runners with the Docker daemon available, which is what
+Testcontainers needs.
+
+---
+
 # Quality Standards
 
 Changes to StockFlow should aim to maintain:
@@ -2160,7 +2327,7 @@ unavailable model — falls back to the deterministic reply. See
 `PROFIT_LOSS_READ`, `RECEIVABLE_READ` and `PAYABLE_READ`. AI permissions are
 read-only by construction.
 
-**Tests: 435 backend, 191 frontend, all passing**, plus a clean type-check, lint
+**Tests: 448 backend, 218 frontend, all passing**, plus a clean type-check, lint
 and production build. Actual results are under [Testing](#testing).
 
 ## Known limitations

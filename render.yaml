@@ -258,10 +258,14 @@ services:
         value: production
       - key: NEXT_PUBLIC_APP_NAME
         value: StockFlow
-      # Set these to your actual Render service URLs after first deploy:
+      # The live backend service. Verified reachable:
+      #   curl -s https://inventory-system-pm18.onrender.com/actuator/health
+      # If the service is renamed on Render, update this in the same commit as
+      # the rename — a stale value here fails at runtime in the browser, not at
+      # deploy time, because the build succeeds either way.
       - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://stockflow-backend.onrender.com/api/v1
+        value: https://inventory-system-pm18.onrender.com/api/v1
       - key: NEXT_PUBLIC_APP_URL
-        value: https://stockflow-frontend.onrender.com
+        value: https://inventory-system-pm18.onrender.com
       - key: API_INTERNAL_BASE_URL
-        value: https://stockflow-backend.onrender.com/api/v1
+        value: https://inventory-system-pm18.onrender.com/api/v1
