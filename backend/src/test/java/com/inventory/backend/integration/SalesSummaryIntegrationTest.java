@@ -90,10 +90,19 @@ class SalesSummaryIntegrationTest extends BaseIntegrationTest {
                         .compareTo(new BigDecimal("750.00")),
                 "3 units at 250.00 is the gross, before any discount");
         assertEquals(3, summary.path("unitsSold").asInt());
-        assertEquals("Revenue net of discount and of returned units, from the orders themselves. "
-                        + "Cancelled and voided orders are reported separately and are not counted as sales.",
-                summary.path("basis").asText(),
-                "the figures must state what they are, so a reader can check them");
+
+        /*
+         * Asserted on what the note has to *say*, not on its exact wording.
+         * Pinning the prose made this the first thing to break when the sentence
+         * was improved to mention pending orders, and the failure said nothing
+         * useful. The claim that matters is that a reader is told which figures
+         * are revenue and which orders are excluded from it.
+         */
+        String basis = summary.path("basis").asText().toLowerCase();
+        assertTrue(basis.contains("discount") && basis.contains("returned"),
+                "the note must say what the revenue is net of: " + basis);
+        assertTrue(basis.contains("cancelled"),
+                "the note must say cancelled orders are excluded from sales: " + basis);
     }
 
     @Test

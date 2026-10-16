@@ -113,7 +113,7 @@ services:
       # authenticated calls to this API. Vercel preview deployments each get a
       # unique hostname, so add them explicitly if you need them.
       - key: CORS_ALLOWED_ORIGINS
-        value: https://inventory-system-blush-mu.vercel.app
+        value: https://yemom-inventory-system.vercel.app
 
       # ── JWT (set the real value in the Render dashboard) ──────────────────
       - key: JWT_SECRET
