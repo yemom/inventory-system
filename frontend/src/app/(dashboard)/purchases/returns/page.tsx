@@ -14,6 +14,7 @@ import Select from '@/components/ui/Select';
 import { Card, CardContent } from '@/components/ui/Card';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { returnsApi } from '@/lib/api/aiApi';
+import { toApiError } from '@/lib/api/apiErrors';
 import { usePurchases } from '@/hooks/usePurchases';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -229,16 +230,39 @@ export default function PurchaseReturnsPage() {
   ];
 
   if (error) {
+    /*
+     * The wording used to assert this was "a failure to reach the server", and
+     * offered a Try again button. But the usual cause is a 403: this page asks
+     * for RETURN_READ, and a Supervisor holds PURCHASE_READ without it. Saying
+     * the server was unreachable sent people to check a service that was
+     * answering perfectly, and retrying a permission denial can never succeed.
+     *
+     * So the real failure is described, and the retry button is offered only
+     * when retrying could actually help.
+     */
+    const failure = toApiError(error);
+    const status = failure.status;
+    const retryable = failure.isNetworkError || status === null || status >= 500;
+
     return (
       <Card>
         <CardContent className="py-6 text-center text-sm text-gray-500">
-          Returns could not be loaded. That is a failure to reach the server, not
-          an absence of returns.
-          <div className="mt-3">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Try again
-            </Button>
-          </div>
+          <p className="font-medium text-gray-700 dark:text-gray-300">
+            Returns could not be loaded
+          </p>
+          <p className="mt-1 text-xs">{failure.message}</p>
+
+          {retryable ? (
+            <div className="mt-3">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-gray-400">
+              Retrying will not change this result.
+            </p>
+          )}
         </CardContent>
       </Card>
     );

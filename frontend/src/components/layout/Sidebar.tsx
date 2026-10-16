@@ -66,7 +66,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'New Purchase', href: '/purchases/new', anyOf: ['PURCHASE_CREATE'] },
       { label: 'Purchase Orders', href: '/purchases', anyOf: ['PURCHASE_READ'] },
-      { label: 'Returns', href: '/purchases/returns', anyOf: ['PURCHASE_READ'] },
+      { label: 'Returns', href: '/purchases/returns', anyOf: ['RETURN_READ'] },
       { label: 'Suppliers', href: '/suppliers', anyOf: ['SUPPLIER_READ'] },
     ],
   },

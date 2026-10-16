@@ -36,17 +36,20 @@ const payVariant: Record<string, 'success' | 'warning' | 'danger'> = {
 export default function SalesPage() {
   const router = useRouter();
   const { data: sales = [], isLoading, error, refetch } = useSales();
-  const deleteSale = useDeleteSale();
   const { toast } = useToast();
   const [viewOrder, setViewOrder] = useState<SaleOrder | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SaleOrder | null>(null);
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    try { await deleteSale.mutateAsync(String(deleteTarget.id)); toast('success', 'Order deleted'); }
-    catch { toast('error', 'Delete failed'); }
-    finally { setDeleteTarget(null); }
-  };
+  /*
+   * There is deliberately no "delete order" here.
+   *
+   * The list previously offered one, and it could never work: the API has no
+   * DELETE on a sale, so every press returned 405 Method Not Allowed. Beyond
+   * being a control that does nothing, deleting a recorded sale is the wrong
+   * operation for an accounting system — it would erase the audit trail and
+   * leave the stock movements it posted behind with nothing referencing them.
+   * A sale is reversed through void-request/void-approve or a refund, both of
+   * which record who did it and why.
+   */
 
   const rows = React.useMemo(
     () =>
@@ -126,16 +129,7 @@ export default function SalesPage() {
             >
               <Eye size={15} />
             </button>
-            <button
-              type="button"
-              title="Delete order"
-              aria-label={`Delete order ${row.reference}`}
-              onClick={() => setDeleteTarget(row as unknown as SaleOrder)}
-              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600"
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
+            </div>
         )}
       />
 
@@ -186,9 +180,7 @@ export default function SalesPage() {
         )}
       </Modal>
 
-      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete}
-        title="Delete Order" message={`Delete order ${deleteTarget?.reference}?`} confirmLabel="Delete" loading={deleteSale.isPending} />
-    </div>
+      </div>
     </ErrorBoundary>
   );
 }

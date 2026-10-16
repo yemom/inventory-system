@@ -95,7 +95,13 @@ export default function InventoryStaffDashboard() {
             <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
             <span className="ml-1">Refresh Stock</span>
           </Button>
-          <Link href="/inventory/adjustments/new">
+          {/*
+            Points at the adjustments list, which owns the "New Adjustment"
+            form. There is no /inventory/adjustments/new route — this link
+            404'd — and duplicating the form here would be a second way to
+            post the same thing, free to drift from the first.
+          */}
+          <Link href="/inventory/adjustments">
             <Button size="sm">
               <PackagePlus size={14} className="mr-1" /> New Adjustment
             </Button>
