@@ -2363,6 +2363,20 @@ These are real and are stated rather than hidden:
 Nothing in this list is a placeholder. Every figure shown comes from a persisted
 transaction, and every claim made by the intelligence layer is traceable to the
 records and the model that produced it.
+
+## Open items that need a decision, not a fix
+
+These are outstanding because they change someone's books or someone's
+deployment. None is safe to resolve unilaterally.
+
+| Item | What happens until it is decided |
+|---|---|
+| **`NEXT_PUBLIC_API_BASE_URL` on Vercel** | The deployed frontend calls `/api/v1/*` on its own origin and every request 404s. Set it to `https://inventory-system-pm18.onrender.com/api/v1` in the Vercel project settings and redeploy. Verified reachable from this repo. |
+| **`CHATBOT_API_KEY` / `OPENAI_API_KEY` return 401** | The configured key is rejected by the provider. The deterministic fallback is what actually runs, and the UI labels it as such. No live model call is claimed anywhere. Either supply a working key or remove the variable so the intent is clear. |
+| **Multi-warehouse stock attribution** | The POS resolves the sale to the first active warehouse rather than asking. Stock leaves the warehouse listed first. Change the ordering on the Warehouses screen, or restore a picker, if that is wrong. |
+| **Concurrent writes use check-then-act** | Sales, purchases and stock adjustments read a balance and then write it back. `WarehouseStockRepository` takes a pessimistic lock on the row, which serialises the stock path, but no `@Version` column exists on `Product`, `SaleOrder` or `PurchaseOrder`, so a lost update remains possible on non-stock fields under real concurrency. |
+| **Historical data has no warehouse** | Movements predating warehouse attribution carry a null warehouse and were credited to the oldest active warehouse. `WarehouseStockBackfillRunner` reconciles the result against `products.quantity` and logs any disagreement; it has never reported one. |
+
 ---
 
 # Contribution
