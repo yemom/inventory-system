@@ -79,19 +79,22 @@ export default function CashierDashboard() {
     for (let h = 7; h <= 21; h++) {
       const hStr = String(h);
       const actualSales = summary.hourlySales[hStr] ?? 0;
-      const dist = forecast?.hourlyDistribution?.find((d) => d.hour === h);
-      const historicalAvg = dist?.historicalAvgSales ?? 0;
 
       points.push({
         hour: `${h.toString().padStart(2, '0')}:00`,
         hourNum: h,
         actualSales: h <= currentHour ? actualSales : null,
-        historicalAvg: Math.round(historicalAvg),
+        // The API sends peak hours, not a per-hour historical average. The
+        // previous code looked for `hourlyDistribution`, which no endpoint
+        // returns, so every value defaulted to 0 and the "Historical Average"
+        // bar rendered as a flat line at zero: a chart of nothing, labelled as
+        // though it were history. Peak hours are the real signal available.
+        isPeak: (forecast?.peakHours ?? []).includes(h),
         isCurrent: h === currentHour,
       });
     }
     return points;
-  }, [summary?.hourlySales, forecast?.hourlyDistribution]);
+  }, [summary?.hourlySales, forecast?.peakHours]);
 
   // Prepare payment method distribution data
   const paymentData = useMemo(() => {
@@ -263,7 +266,8 @@ export default function CashierDashboard() {
           </h2>
           {forecast && (
             <span className="text-xs text-gray-400">
-              Model: {forecast.algorithm} • Historical: {forecast.historicalDaysSampled} days ({forecast.historicalOrdersCount} orders)
+              Model: {forecast.algorithm ?? 'none'} • Historical:{' '}
+              {forecast.historyDays} days ({forecast.observationCount} orders)
             </span>
           )}
         </div>
@@ -284,10 +288,10 @@ export default function CashierDashboard() {
                     Expected Remaining Today
                   </p>
                   <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100 font-mono">
-                    {formatCurrency(forecast.todayExpectedRemainingNetSales)}
+                    {formatCurrency(forecast.expectedRemainderToday)}
                   </p>
                   <p className="mt-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                    <Clock size={12} /> ~{forecast.todayExpectedRemainingOrders} more orders expected
+                    <Clock size={12} /> ~{forecast.expectedRemainderTodayOrders} more orders expected
                   </p>
                 </CardContent>
               </Card>
@@ -298,10 +302,10 @@ export default function CashierDashboard() {
                     Projected Full Day Total
                   </p>
                   <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100 font-mono">
-                    {formatCurrency(forecast.todayExpectedTotalNetSales)}
+                    {formatCurrency(forecast.expectedTodayTotal)}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    Observed so far: {formatCurrency(forecast.todayObservedNetSales)}
+                    Observed so far: {formatCurrency(forecast.todaySalesSoFar)}
                   </p>
                 </CardContent>
               </Card>
@@ -312,10 +316,10 @@ export default function CashierDashboard() {
                     Next Business Day Forecast
                   </p>
                   <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100 font-mono">
-                    {formatCurrency(forecast.nextDayExpectedNetSales)}
+                    {formatCurrency(forecast.expectedNextDaySales)}
                   </p>
                   <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
-                    Target: ~{forecast.nextDayExpectedOrders} completed orders
+                    Target: ~{forecast.expectedNextDayOrders} completed orders
                   </p>
                 </CardContent>
               </Card>
@@ -326,10 +330,10 @@ export default function CashierDashboard() {
                     AOV Benchmark
                   </p>
                   <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100 font-mono">
-                    {formatCurrency(forecast.currentAverageOrderValue)}
+                    {formatCurrency(forecast.currentAov)}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    Historical baseline: {formatCurrency(forecast.historicalAverageOrderValue)}
+                    Historical baseline: {formatCurrency(forecast.expectedAov)}
                   </p>
                 </CardContent>
               </Card>
@@ -345,12 +349,28 @@ export default function CashierDashboard() {
                   </h3>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
+                  {/*
+                    The AI block is optional: the backend omits it entirely when
+                    no provider is configured and it has nothing deterministic
+                    to fall back on. Reading through it unconditionally threw
+                    "Cannot read properties of undefined" and took the entire
+                    dashboard down with it. When it is absent the cards below
+                    simply do not appear, and the reason is stated.
+                  */}
+                  {!forecast.aiInsights ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      No written analysis is available for this period. The
+                      figures above are still calculated from your recorded
+                      sales.
+                    </p>
+                  ) : (
+                    <>
                   <div className="rounded-lg bg-blue-50/70 p-3 dark:bg-blue-950/20">
                     <p className="font-medium text-blue-900 dark:text-blue-300 text-xs">
                       Baseline Performance
                     </p>
                     <p className="mt-0.5 text-xs text-blue-800 dark:text-blue-200">
-                      {forecast.aiExplanations.baselineComparison}
+                      {forecast.aiInsights.baselineComparison}
                     </p>
                   </div>
 
@@ -359,7 +379,7 @@ export default function CashierDashboard() {
                       Peak Rush Hours
                     </p>
                     <p className="mt-0.5 text-xs text-purple-800 dark:text-purple-200">
-                      {forecast.aiExplanations.peakHoursExplanation}
+                      {forecast.aiInsights.peakHoursExplanation}
                     </p>
                   </div>
 
@@ -368,7 +388,7 @@ export default function CashierDashboard() {
                       High-Velocity Product Demand
                     </p>
                     <p className="mt-0.5 text-xs text-emerald-800 dark:text-emerald-200">
-                      {forecast.aiExplanations.productDemandSummary}
+                      {forecast.aiInsights.productDemandExplanation}
                     </p>
                   </div>
 
@@ -377,13 +397,17 @@ export default function CashierDashboard() {
                       Actionable Cashier Recommendation
                     </p>
                     <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200">
-                      {forecast.aiExplanations.operationalRecommendation}
+                      {forecast.aiInsights.operationalRecommendation}
                     </p>
                   </div>
 
                   <p className="text-[11px] text-gray-400 italic">
-                    Reliability: {forecast.aiExplanations.decisionReadiness}
+                    Reliability: {forecast.aiInsights.decisionReadiness}
+                    {forecast.aiInsights.aiEnriched === false &&
+                      ' (deterministic — no AI provider configured)'}
                   </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -412,23 +436,23 @@ export default function CashierDashboard() {
                         >
                           <div>
                             <p className="font-medium text-gray-900 dark:text-gray-100">
-                              {p.productName}
+                              {p.name}
                             </p>
                             <p className="text-[11px] font-mono text-gray-400">
-                              SKU: {p.sku} • {p.recent14DaysUnits} units recently (vs {p.prior14DaysUnits} prior)
+                              SKU: {p.sku} • {p.unitsSoldRecent} units recently (vs {p.unitsSoldPrior} prior)
                             </p>
                           </div>
                           <Badge
                             variant={
-                              p.trend === 'INCREASING'
+                              p.direction === 'INCREASING'
                                 ? 'success'
-                                : p.trend === 'DECREASING'
+                                : p.direction === 'DECREASING'
                                 ? 'danger'
                                 : 'default'
                             }
                           >
-                            {p.trend === 'INCREASING' ? '▲ High Demand' : p.trend === 'DECREASING' ? '▼ Slowing' : '● Steady'}
-                            {p.growthPercent ? ` (${p.growthPercent > 0 ? '+' : ''}${p.growthPercent.toFixed(0)}%)` : ''}
+                            {p.direction === 'INCREASING' ? '▲ High Demand' : p.direction === 'DECREASING' ? '▼ Slowing' : '● Steady'}
+                            {p.trendPercent ? ` (${p.trendPercent > 0 ? '+' : ''}${p.trendPercent.toFixed(0)}%)` : ''}
                           </Badge>
                         </div>
                       ))}
@@ -476,12 +500,6 @@ export default function CashierDashboard() {
                     dataKey="actualSales"
                     name="Today's Sales"
                     fill="#3b82f6"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="historicalAvg"
-                    name="Historical Average"
-                    fill="#cbd5e1"
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -549,7 +567,7 @@ export default function CashierDashboard() {
       </div>
 
       {/* ── 7-Day Forward Horizon Forecast ──────────────────────────────── */}
-      {forecast?.next7DaysForecast && forecast.next7DaysForecast.length > 0 && (
+      {forecast?.next7DaysDailyForecast && forecast.next7DaysDailyForecast.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -564,7 +582,7 @@ export default function CashierDashboard() {
             <div className="h-60 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
-                  data={forecast.next7DaysForecast}
+                  data={forecast.next7DaysDailyForecast ?? []}
                   margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />

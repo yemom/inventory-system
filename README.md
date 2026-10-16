@@ -1526,7 +1526,7 @@ These are the actual results of a full run, not an expectation.
 | Suite | Command | Result |
 |---|---|---|
 | Backend | `mvn -B test` | **448 tests - 0 failures, 0 errors** |
-| Frontend | `npx jest --ci` | **218 tests, 20 suites - all passing** |
+| Frontend | `npx jest --ci` | **222 tests, 21 suites - all passing** |
 | Frontend types | `npx tsc --noEmit` | **clean** |
 | Frontend lint | `npm run lint` | **0 errors**, 55 warnings, all in pre-existing files |
 | Frontend build | `npm run build` | **compiles**, routes prerendered |
@@ -2343,7 +2343,7 @@ unavailable model — falls back to the deterministic reply. See
 `PROFIT_LOSS_READ`, `RECEIVABLE_READ` and `PAYABLE_READ`. AI permissions are
 read-only by construction.
 
-**Tests: 448 backend, 218 frontend, all passing**, plus a clean type-check, lint
+**Tests: 448 backend, 222 frontend, all passing**, plus a clean type-check, lint
 and production build. Actual results are under [Testing](#testing).
 
 ## Known limitations

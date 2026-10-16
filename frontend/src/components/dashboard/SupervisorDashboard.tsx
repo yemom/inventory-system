@@ -100,15 +100,18 @@ export default function SupervisorDashboard() {
     const points = [];
     for (let h = 8; h <= 21; h++) {
       const hStr = String(h);
-      const dist = forecast?.hourlyDistribution?.find((d) => d.hour === h);
       points.push({
         hour: `${h}:00`,
         todaySales: summary.hourlySales[hStr] ?? 0,
-        historicalAvg: Math.round(dist?.historicalAvgSales ?? 0),
+        // Peak hours are what the API actually reports. The previous code asked
+        // for `hourlyDistribution`, which no endpoint returns, so this was
+        // always 0 and the "Historical Average" series drew a flat line at zero
+        // labelled as history.
+        isPeak: (forecast?.peakHours ?? []).includes(h),
       });
     }
     return points;
-  }, [summary?.hourlySales, forecast?.hourlyDistribution]);
+  }, [summary?.hourlySales, forecast?.peakHours]);
 
   const handleApprove = async (id: number, type: 'void' | 'refund') => {
     try {
@@ -343,7 +346,6 @@ export default function SupervisorDashboard() {
                   <Tooltip formatter={(val: any) => [formatCurrency(Number(val)), 'Sales']} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Bar dataKey="todaySales" name="Today Sales" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="historicalAvg" name="Historical Average" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -403,7 +405,7 @@ export default function SupervisorDashboard() {
       </div>
 
       {/* ── AI Operational Recommendations ─────────────────────────────── */}
-      {forecast?.aiExplanations && (
+      {forecast?.aiInsights && (
         <Card className="bg-gradient-to-r from-purple-50/40 via-blue-50/30 to-white dark:from-purple-950/10 dark:via-blue-950/10 dark:to-gray-900">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -413,7 +415,7 @@ export default function SupervisorDashboard() {
                   Supervisor Operational Briefing
                 </p>
                 <p className="text-xs text-gray-700 dark:text-gray-300">
-                  {forecast.aiExplanations.peakHoursExplanation} {forecast.aiExplanations.operationalRecommendation}
+                  {forecast.aiInsights.peakHoursExplanation} {forecast.aiInsights.operationalRecommendation}
                 </p>
               </div>
             </div>

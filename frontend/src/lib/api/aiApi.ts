@@ -435,6 +435,44 @@ export interface HourlyDemandDistribution {
   historicalAvgSales: number;
 }
 
+/**
+ * Demand trend for one product, over the two most recent 14-day windows.
+ *
+ * <p>Names mirror `ForecastingService.ProductDemandTrend` exactly. They did
+ * not before: the page read `productName`, `recent14DaysUnits`, `growthPercent`
+ * and `trend`, none of which the backend ever sent. The names it did send are
+ * `name`, `unitsSoldRecent`, `unitsSoldPrior`, `trendPercent` and `direction`.
+ */
+export interface ProductDemandTrend {
+  productId: number | null;
+  sku: string;
+  name: string;
+  unitsSoldRecent: number;
+  unitsSoldPrior: number;
+  trendPercent: number;
+  direction: 'INCREASING' | 'DECREASING' | 'STABLE' | string;
+}
+
+/**
+ * Plain-language readings of the forecast, produced by the AI layer.
+ *
+ * <p>Nullable as a whole: the backend omits the block entirely when it has no
+ * provider configured and no deterministic text to fall back to. It was typed
+ * as always-present, so the page dereferenced it unconditionally and threw
+ * "Cannot read properties of undefined (reading 'baselineComparison')" — which
+ * took the whole dashboard down rather than hiding one card.
+ */
+export interface OperationalAiExplanations {
+  baselineComparison?: string | null;
+  peakHoursExplanation?: string | null;
+  productDemandExplanation?: string | null;
+  operationalRecommendation?: string | null;
+  decisionReadiness?: string | null;
+  /** False when the text was produced deterministically, not by a provider. */
+  aiEnriched?: boolean;
+}
+
+/** One day of the seven-day projection. */
 export interface DailyForecastPoint {
   date: string;
   expectedSales: number;
@@ -443,47 +481,48 @@ export interface DailyForecastPoint {
   expectedOrders: number;
 }
 
-export interface ProductDemandTrend {
-  productId: number;
-  productName: string;
-  sku: string;
-  recent14DaysUnits: number;
-  prior14DaysUnits: number;
-  growthPercent: number;
-  trend: 'INCREASING' | 'DECREASING' | 'STABLE';
-}
-
-export interface OperationalAiExplanations {
-  baselineComparison: string;
-  peakHoursExplanation: string;
-  productDemandSummary: string;
-  operationalRecommendation: string;
-  decisionReadiness: string;
-}
-
+/**
+ * `GET /api/v1/dashboard/operational-forecast`.
+ *
+ * <p>Mirrors `ForecastingService.OperationalSalesForecast` field for field.
+ * `available` false means there was not enough recorded trading to model at
+ * all; the numbers are then present but meaningless and the UI must say so
+ * rather than plot them.
+ */
 export interface OperationalSalesForecast {
-  scope: 'OWN_SALES' | 'ALL_SALES';
-  warehouseId: number | null;
-  sellerId: number | null;
-  generationTime: string;
-  algorithm: string;
-  historicalDaysSampled: number;
-  historicalOrdersCount: number;
-  sufficientHistory: boolean;
-  todayObservedNetSales: number;
-  todayObservedOrders: number;
-  todayExpectedRemainingNetSales: number;
-  todayExpectedRemainingOrders: number;
-  todayExpectedTotalNetSales: number;
-  nextDayExpectedNetSales: number;
-  nextDayExpectedOrders: number;
-  currentAverageOrderValue: number;
-  historicalAverageOrderValue: number;
-  hourlyDistribution: HourlyDemandDistribution[];
-  next7DaysForecast: DailyForecastPoint[];
-  productTrends: ProductDemandTrend[];
-  peakHours: string[];
-  aiExplanations: OperationalAiExplanations;
+  available: boolean;
+  scope: 'OWN_SALES' | 'ALL_SALES' | string;
+  cashierName: string | null;
+  branch: string | null;
+  asOfDate: string;
+  generatedAt: string;
+  algorithm: string | null;
+  historyDays: number;
+  observationCount: number;
+  confidenceLevel: number | null;
+  mae: number | null;
+  rmse: number | null;
+  mapePercent: number | null;
+  isReliable: boolean;
+  reliabilityExplanation: string | null;
+  todaySalesSoFar: number;
+  expectedRemainderToday: number;
+  expectedTodayTotal: number;
+  expectedNextDaySales: number;
+  expected7DaySalesTotal: number;
+  next7DaysDailyForecast: DailyForecastPoint[] | null;
+  todayOrdersSoFar: number;
+  expectedRemainderTodayOrders: number;
+  expectedTodayTotalOrders: number;
+  expectedNextDayOrders: number;
+  next7DaysOrderForecast: number[] | null;
+  currentAov: number | null;
+  expectedAov: number | null;
+  productTrends: ProductDemandTrend[] | null;
+  /** Hours of the day as integers, not labels. */
+  peakHours: number[] | null;
+  peakHoursDescription: string | null;
+  aiInsights: OperationalAiExplanations | null;
 }
 
 export const dashboardApi = {
