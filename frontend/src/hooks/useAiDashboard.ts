@@ -51,6 +51,23 @@ export function useSalesSummary(range: DateRangeParams, enabled = true) {
 }
 
 /**
+ * Operational sales forecast with short-horizon intraday, next-day, and 7-day
+ * trajectory, product demand trends, peak hours, and deterministic AI explanations.
+ */
+export function useOperationalForecast(
+  params?: { warehouseId?: number; cashierId?: number },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['dashboard', 'operational-forecast', params?.warehouseId, params?.cashierId],
+    queryFn: () => dashboardApi.operationalForecast(params),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/**
  * The whole AI dashboard in one request.
  *
  * <p>One request rather than five so the page renders from a single consistent
@@ -130,6 +147,7 @@ export function useModelHistory(modelKey?: string, enabled = true) {
 export default {
   useDashboardFinancial,
   useSalesSummary,
+  useOperationalForecast,
   useAiDashboard,
   useAiInsights,
   useReorderRecommendations,

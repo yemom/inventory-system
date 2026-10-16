@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +50,7 @@ public class SaleOrderService {
      */
     @Transactional(readOnly = true)
     public Page<SaleOrderDTO> listSales(Pageable pageable) {
-        return listSales(pageable, null, null, null);
+        return listSales(pageable, null, null, null, null, null);
     }
 
     /**
@@ -61,10 +63,19 @@ public class SaleOrderService {
     @Transactional(readOnly = true)
     public Page<SaleOrderDTO> listSales(Pageable pageable, String search,
                                         String status, String paymentStatus) {
+        return listSales(pageable, search, status, paymentStatus, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<SaleOrderDTO> listSales(Pageable pageable, String search,
+                                        String status, String paymentStatus,
+                                        LocalDate from, LocalDate to) {
         User actor = currentUser();
         String term = blankToNull(search);
         String statusFilter = blankToNull(status);
         String paymentFilter = blankToNull(paymentStatus);
+        LocalDateTime fromDt = from != null ? from.atStartOfDay() : null;
+        LocalDateTime toDt = to != null ? to.atTime(LocalTime.MAX) : null;
 
         if (!canSeeEveryonesSales(actor)) {
             // An anonymous caller sees nothing; a real one sees their own page,
@@ -75,7 +86,7 @@ public class SaleOrderService {
                 return new PageImpl<>(List.of(), pageable, 0);
             }
             return saleOrderRepository
-                    .searchBySellerWithDetails(actor.getId(), term, statusFilter, paymentFilter, pageable)
+                    .searchBySellerWithDetails(actor.getId(), term, statusFilter, paymentFilter, fromDt, toDt, pageable)
                     .map(this::toDTO);
         }
 
@@ -83,7 +94,7 @@ public class SaleOrderService {
         // items. The count comes from the same query, which is what makes the
         // pagination metadata agree with the filters actually applied.
         return saleOrderRepository
-                .searchWithDetails(term, statusFilter, paymentFilter, pageable)
+                .searchWithDetails(term, statusFilter, paymentFilter, fromDt, toDt, pageable)
                 .map(this::toDTO);
     }
 

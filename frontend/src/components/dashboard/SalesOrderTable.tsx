@@ -35,7 +35,17 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
  * dash, because `branch` is free text on the user and genuinely can be absent;
  * inventing one would put a name against a transaction that never had it.
  */
-export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
+export default function SalesOrderTable({
+  limit = 8,
+  defaultFromDate = '',
+  defaultToDate = '',
+  title = 'Recent orders',
+}: {
+  limit?: number;
+  defaultFromDate?: string;
+  defaultToDate?: string;
+  title?: string;
+}) {
   const { hasPermission, user } = useAuth();
   const maySeeEveryone = hasPermission('SALES_REPORT_VIEW');
 
@@ -43,6 +53,8 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
   const [debounced, setDebounced] = useState('');
   const [status, setStatus] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
+  const [fromDate, setFromDate] = useState(defaultFromDate);
+  const [toDate, setToDate] = useState(defaultToDate);
   const [page, setPage] = useState(0);
 
   // Debounced so that typing a customer name is one request, not one per key.
@@ -55,10 +67,10 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
   // that now has one page shows an empty table with no obvious reason.
   useEffect(() => {
     setPage(0);
-  }, [debounced, status, paymentStatus]);
+  }, [debounced, status, paymentStatus, fromDate, toDate]);
 
   const query = useQuery({
-    queryKey: ['sales', 'dashboard-page', debounced, status, paymentStatus, page, limit],
+    queryKey: ['sales', 'dashboard-page', debounced, status, paymentStatus, fromDate, toDate, page, limit],
     queryFn: () =>
       salesApi.page({
         page,
@@ -67,6 +79,8 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
         search: debounced || undefined,
         status: status || undefined,
         paymentStatus: paymentStatus || undefined,
+        from: fromDate || undefined,
+        to: toDate || undefined,
       }),
     // Keeps the previous page on screen while the next loads, so paging does
     // not flash an empty table between requests.
@@ -91,9 +105,9 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
             <Receipt size={16} className="text-blue-500" />
-            Recent orders
+            {title}
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="sr-only" htmlFor="dash-order-search">
               Search orders
             </label>
@@ -109,9 +123,39 @@ export default function SalesOrderTable({ limit = 8 }: { limit?: number }) {
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
                 placeholder="Order number or customer"
-                className="w-56 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-1.5 pl-8 pr-3 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-48 sm:w-56 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-1.5 pl-8 pr-3 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                title="Filter from date"
+                aria-label="Filter from date"
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
+              />
+              <span>–</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                title="Filter to date"
+                aria-label="Filter to date"
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
+              />
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setFromDate(''); setToDate(''); }}
+                  className="text-xs text-blue-600 hover:underline px-1"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
             <label className="sr-only" htmlFor="dash-order-status">
               Filter by order status
             </label>

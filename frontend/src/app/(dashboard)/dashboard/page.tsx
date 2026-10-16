@@ -26,6 +26,10 @@ import AiInsightPanel from '@/components/ai/AiInsightPanel';
 import ForecastChart from '@/components/ai/ForecastChart';
 import AssistantPanel from '@/components/ai/AssistantPanel';
 import SalesOrderTable from '@/components/dashboard/SalesOrderTable';
+import CashierDashboard from '@/components/dashboard/CashierDashboard';
+import SupervisorDashboard from '@/components/dashboard/SupervisorDashboard';
+import InventoryStaffDashboard from '@/components/dashboard/InventoryStaffDashboard';
+import AccountantDashboard from '@/components/dashboard/AccountantDashboard';
 import { useAiDashboard, useDashboardFinancial } from '@/hooks/useAiDashboard';
 import { useProducts } from '@/hooks/useProducts';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -85,17 +89,111 @@ export default function DashboardPage() {
     return ((current - previous) / Math.abs(previous)) * 100;
   };
 
+  const userRole = user?.role;
+  const isElevatedRole =
+    userRole === 'SUPER_ADMIN' || userRole === 'MANAGER' || userRole === 'ACCOUNTANT';
+  const [activeTab, setActiveTab] = useState<'default' | 'cashier' | 'supervisor' | 'inventory' | 'accountant'>('default');
+
+  if (userRole === 'CASHIER') {
+    return <CashierDashboard />;
+  }
+
+  if (userRole === 'SUPERVISOR') {
+    return <SupervisorDashboard />;
+  }
+
+  if (userRole === 'INVENTORY_STAFF' || userRole === 'STOREKEEPER') {
+    return <InventoryStaffDashboard />;
+  }
+
+  if (userRole === 'ACCOUNTANT') {
+    return <AccountantDashboard />;
+  }
+
   return (
     <div className="space-y-6">
-      {/* ── Controls ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <DateRangeFilter value={range} onChange={setRange} />
-        {financial.isFetching && (
-          <span className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Loader2 size={13} className="animate-spin" /> Updating
+      {/* ── Role View Switcher for Administrators & Managers ──────────────── */}
+      {isElevatedRole && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
+          <div className="flex items-center gap-1.5 rounded-lg bg-gray-100 p-1 dark:bg-gray-800 text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setActiveTab('default')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'default'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Executive BI
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('cashier')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'cashier'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Cashier Shift View
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('supervisor')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'supervisor'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Floor Supervisor View
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('inventory')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'inventory'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Inventory Staff View
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('accountant')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'accountant'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Accountant View
+            </button>
+          </div>
+          <span className="text-xs text-gray-500">
+            Active Role: <strong className="text-gray-800 dark:text-gray-200">{user?.role}</strong>
           </span>
-        )}
-      </div>
+        </div>
+      )}
+
+      {activeTab === 'cashier' && <CashierDashboard />}
+      {activeTab === 'supervisor' && <SupervisorDashboard />}
+      {activeTab === 'inventory' && <InventoryStaffDashboard />}
+      {activeTab === 'accountant' && <AccountantDashboard />}
+
+      {activeTab === 'default' && (
+        <>
+          {/* ── Controls ─────────────────────────────────────────────────────── */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <DateRangeFilter value={range} onChange={setRange} />
+            {financial.isFetching && (
+              <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Loader2 size={13} className="animate-spin" /> Updating
+              </span>
+            )}
+          </div>
 
       {/*
         Sections are declared once and ordered by role. A cashier's own trading
@@ -267,6 +365,8 @@ export default function DashboardPage() {
       </div>
       </Section>
       </RoleOrderedSections>
+        </>
+      )}
     </div>
   );
 }
@@ -294,7 +394,9 @@ function RoleOrderedSections({
   const trailing: React.ReactNode[] = [];
 
   React.Children.forEach(children, (child) => {
-    const name = (child as { props?: { section?: string } })?.props?.section;
+    const name =
+      (child as { props?: { name?: string; section?: string } })?.props?.name ??
+      (child as { props?: { name?: string; section?: string } })?.props?.section;
     if (name) {
       named.set(name, child);
     } else {

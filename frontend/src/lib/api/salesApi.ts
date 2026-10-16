@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import apiClient, { fetchAllPages } from './apiClient';
 
 /**
@@ -157,7 +157,7 @@ export const salesApi = {
    */
   page: async (params: {
     page?: number; size?: number; sort?: string; search?: string;
-    status?: string; paymentStatus?: string;
+    status?: string; paymentStatus?: string; from?: string; to?: string;
   } = {}): Promise<SaleOrderPage> => {
     const res = await apiClient.get('/sales', { params });
     const data = res.data?.data ?? res.data;

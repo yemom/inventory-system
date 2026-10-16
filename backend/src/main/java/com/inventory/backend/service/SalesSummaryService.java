@@ -72,10 +72,12 @@ public class SalesSummaryService {
         int ordersCreated = orders.size();
         int cancelled = 0;
         int voided = 0;
+        int pending = 0;
         int completed = 0;
         int unitsSold = 0;
         BigDecimal gross = BigDecimal.ZERO;
         BigDecimal discounts = BigDecimal.ZERO;
+        BigDecimal tax = BigDecimal.ZERO;
         BigDecimal returns = BigDecimal.ZERO;
         BigDecimal collected = BigDecimal.ZERO;
         BigDecimal outstanding = BigDecimal.ZERO;
@@ -87,7 +89,7 @@ public class SalesSummaryService {
                 continue;
             }
             String status = order.getStatus() == null ? "" : order.getStatus();
-            if ("CANCELLED".equals(status)) {
+            if ("CANCELLED".equalsIgnoreCase(status)) {
                 cancelled++;
                 continue;
             }
@@ -118,10 +120,20 @@ public class SalesSummaryService {
                 continue;
             }
 
+            // Pending orders are not completed sales. Any collected deposit or
+            // payment is accounted for, but the order is reported as pending.
+            if ("PENDING".equalsIgnoreCase(status)) {
+                pending++;
+                collected = collected.add(paid);
+                outstanding = outstanding.add(net.subtract(paid).max(BigDecimal.ZERO));
+                continue;
+            }
+
             completed++;
             unitsSold += orderUnits;
             gross = gross.add(lineRevenue);
             discounts = discounts.add(discount);
+            tax = tax.add(nz(order.getTax()));
             returns = returns.add(returnedValue);
             collected = collected.add(paid);
             outstanding = outstanding.add(net.subtract(paid).max(BigDecimal.ZERO));
@@ -142,12 +154,16 @@ public class SalesSummaryService {
         out.put("from", start.toString());
         out.put("to", end.toString());
         out.put("scope", sellerScope == null ? "ALL_SALES" : "OWN_SALES");
+        out.put("cashierName", actor != null ? actor.getFullName() : null);
+        out.put("branch", actor != null ? actor.getBranch() : null);
         out.put("ordersCreated", ordersCreated);
         out.put("completedSales", completed);
+        out.put("pendingOrders", pending);
         out.put("cancelledOrders", cancelled);
         out.put("voidedOrders", voided);
         out.put("grossSales", gross);
         out.put("discounts", discounts);
+        out.put("tax", tax);
         out.put("returns", returns);
         out.put("netSales", netSales);
         out.put("amountCollected", collected);
@@ -159,7 +175,7 @@ public class SalesSummaryService {
         out.put("paymentMethods", byMethod);
         out.put("hourlySales", byHour);
         out.put("basis", "Revenue net of discount and of returned units, from the orders themselves. "
-                + "Cancelled and voided orders are reported separately and are not counted as sales.");
+                + "Cancelled, voided, and pending orders are reported separately and pending orders are not counted as completed sales.");
         return out;
     }
 

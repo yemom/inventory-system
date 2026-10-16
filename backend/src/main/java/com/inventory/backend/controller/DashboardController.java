@@ -2,6 +2,7 @@ package com.inventory.backend.controller;
 
 import com.inventory.backend.ai.AnomalyDetectionService;
 import com.inventory.backend.ai.FinancialInsightService;
+import com.inventory.backend.ai.ForecastingService;
 import com.inventory.backend.ai.InventoryOptimizationService;
 import com.inventory.backend.dto.ApiResponse;
 import com.inventory.backend.finance.FinancialCalculationService;
@@ -48,6 +49,7 @@ public class DashboardController {
     private final InventoryOptimizationService inventoryService;
     private final AnomalyDetectionService anomalyService;
     private final SalesSummaryService salesSummaryService;
+    private final ForecastingService forecastingService;
 
     /**
      * Operational figures only: counts and stock alerts.
@@ -118,6 +120,7 @@ public class DashboardController {
 
         stats.put("cashReceived", current.cashReceived());
         stats.put("cashPaidToSuppliers", current.cashPaidToSuppliers());
+        stats.put("cashRefunded", current.cashRefunded());
         stats.put("netCashFlow", current.netCashFlow());
         stats.put("accountsReceivable", current.accountsReceivable());
         stats.put("accountsPayable", current.accountsPayable());
@@ -125,10 +128,14 @@ public class DashboardController {
         stats.put("inventoryValue", current.inventoryValue());
         stats.put("stockLossValue", current.stockLossValue());
         stats.put("stockLossUnits", current.stockLossUnits());
+        stats.put("purchaseCostReceived", current.purchaseCostReceived());
         stats.put("purchaseCostOrderedNotReceived", current.purchaseCostOrderedNotReceived());
 
         stats.put("salesCount", current.salesCount());
         stats.put("itemsSold", current.itemsSold());
+        stats.put("expenseCount", current.expenseCount());
+        stats.put("paymentCount", current.paymentCount());
+        stats.put("expensesByCategory", current.expensesByCategory());
 
         stats.put("previousNetSales", previous.netSales());
         stats.put("previousGrossProfit", previous.grossProfit());
@@ -170,6 +177,20 @@ public class DashboardController {
             @RequestParam(required = false) Long warehouseId) {
         return ResponseEntity.ok(ApiResponse.ok("Sales summary",
                 salesSummaryService.summarise(from, to, warehouseId)));
+    }
+
+    /**
+     * Operational sales forecast with remainder of day, next day, 7-day daily projection,
+     * order volume, AOV, demand trends, and AI explanations.
+     * Scoped server-side so Cashiers only receive their own store/branch predictions.
+     */
+    @GetMapping("/operational-forecast")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ResponseEntity<ApiResponse<ForecastingService.OperationalSalesForecast>> operationalForecast(
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) Long sellerId) {
+        return ResponseEntity.ok(ApiResponse.ok("Operational sales forecast",
+                forecastingService.forecastOperationalSales(warehouseId, sellerId)));
     }
 
     @GetMapping("/insights")

@@ -192,11 +192,15 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
               AND (CAST(:status AS string) IS NULL OR s.status = CAST(:status AS string))
               AND (CAST(:paymentStatus AS string) IS NULL
                    OR s.paymentStatus = CAST(:paymentStatus AS string))
+              AND (CAST(:from AS java.time.LocalDateTime) IS NULL OR COALESCE(s.transactionDate, s.createdAt) >= :from)
+              AND (CAST(:to AS java.time.LocalDateTime) IS NULL OR COALESCE(s.transactionDate, s.createdAt) <= :to)
             """)
     Page<SaleOrder> searchWithDetails(
             @Param("search") String search,
             @Param("status") String status,
             @Param("paymentStatus") String paymentStatus,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
             Pageable pageable);
 
     /**
@@ -219,12 +223,16 @@ public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
               AND (CAST(:status AS string) IS NULL OR s.status = CAST(:status AS string))
               AND (CAST(:paymentStatus AS string) IS NULL
                    OR s.paymentStatus = CAST(:paymentStatus AS string))
+              AND (CAST(:from AS java.time.LocalDateTime) IS NULL OR COALESCE(s.transactionDate, s.createdAt) >= :from)
+              AND (CAST(:to AS java.time.LocalDateTime) IS NULL OR COALESCE(s.transactionDate, s.createdAt) <= :to)
             """)
     Page<SaleOrder> searchBySellerWithDetails(
             @Param("sellerId") Long sellerId,
             @Param("search") String search,
             @Param("status") String status,
             @Param("paymentStatus") String paymentStatus,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
             Pageable pageable);
 
     /**

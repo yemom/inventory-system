@@ -19,6 +19,16 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 
 // A module-level value so a test can move the app between routes.
 let currentPath = '/dashboard';
+
+/*
+ * The sidebar renders every permitted item in every test, and each test types
+ * into a live search. On a loaded machine that takes longer than Jest's 5s
+ * default, and the same tests pass in a few hundred milliseconds when run
+ * alone — which is what made this suite look like a flake. It is not one: the
+ * work is real, it is only slow under contention. The timeout is raised rather
+ * than the suite split, so the failure stays a failure.
+ */
+jest.setTimeout(30_000);
 jest.mock('next/navigation', () => ({ usePathname: () => currentPath }));
 jest.mock('@/lib/auth/AuthProvider', () => ({ useAuth: jest.fn() }));
 

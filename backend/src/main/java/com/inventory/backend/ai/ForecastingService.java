@@ -1,18 +1,26 @@
 package com.inventory.backend.ai;
 
+import com.inventory.backend.model.SaleOrder;
 import com.inventory.backend.model.SaleOrderItem;
+import com.inventory.backend.model.User;
 import com.inventory.backend.model.WarehouseStock;
 import com.inventory.backend.repository.ProductRepository;
 import com.inventory.backend.repository.SaleOrderRepository;
 import com.inventory.backend.repository.StockMovementRepository;
 import com.inventory.backend.repository.WarehouseStockRepository;
+import com.inventory.backend.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 
 /**
@@ -387,5 +395,449 @@ public class ForecastingService {
             return new DemandForecast(productId, false, List.of(), List.of(), List.of(),
                     null, null, null, null, null, 0, null, reason, observations);
         }
+    }
+
+    // ── Operational & Cashier Forecasting ─────────────────────────────────────
+
+    /**
+     * Operational forecast and AI-assisted insights for staff and cashiers.
+     * Scoped server-side to the authenticated user's permissions and branch.
+     */
+    @Transactional(readOnly = true)
+    public OperationalSalesForecast forecastOperationalSales(Long warehouseId, Long requestedSellerId) {
+        User actor = currentUser();
+        boolean canSeeEveryone = canSeeEveryonesSales();
+        Long sellerScope = canSeeEveryone ? requestedSellerId : (actor != null ? actor.getId() : -1L);
+        String scope = sellerScope == null ? "ALL_SALES" : "OWN_SALES";
+        String cashierName = (sellerScope != null && actor != null && sellerScope.equals(actor.getId()))
+                ? actor.getFullName() : (sellerScope != null ? "Seller #" + sellerScope : "All Staff");
+        String branch = actor != null ? actor.getBranch() : null;
+
+        LocalDate today = LocalDate.now();
+        int historyLookback = properties.getHistoryDays() > 0 ? Math.min(properties.getHistoryDays(), 60) : 30;
+        LocalDate historyStart = today.minusDays(historyLookback);
+
+        List<SaleOrder> orders = saleOrderRepository.findSalesForPeriod(
+                historyStart.atStartOfDay(), today.atTime(LocalTime.MAX),
+                null, warehouseId, sellerScope, null, false);
+
+        // Separate today vs historical past days
+        BigDecimal todaySalesSoFar = BigDecimal.ZERO;
+        int todayOrdersSoFar = 0;
+
+        Map<LocalDate, BigDecimal> salesByDay = new LinkedHashMap<>();
+        Map<LocalDate, Integer> ordersByDay = new LinkedHashMap<>();
+        Map<Integer, BigDecimal> salesByHourHistory = new HashMap<>();
+        BigDecimal totalHistoricalHourlySales = BigDecimal.ZERO;
+
+        // Populate days
+        for (LocalDate d = historyStart; !d.isAfter(today); d = d.plusDays(1)) {
+            salesByDay.put(d, BigDecimal.ZERO);
+            ordersByDay.put(d, 0);
+        }
+
+        // Product velocity tracking: last 14 days vs prior 14 days
+        LocalDate recentWindowStart = today.minusDays(14);
+        LocalDate priorWindowStart = today.minusDays(28);
+        Map<Long, Integer> productUnitsRecent = new HashMap<>();
+        Map<Long, Integer> productUnitsPrior = new HashMap<>();
+        Map<Long, String> productNames = new HashMap<>();
+        Map<Long, String> productSkus = new HashMap<>();
+
+        for (SaleOrder order : orders) {
+            if (order == null || "CANCELLED".equalsIgnoreCase(order.getStatus()) || isVoided(order)) {
+                continue;
+            }
+            LocalDate orderDate = order.getTransactionDate() != null
+                    ? order.getTransactionDate().toLocalDate()
+                    : (order.getCreatedAt() != null ? order.getCreatedAt().toLocalDate() : today);
+
+            BigDecimal finalAmt = order.getFinalAmount() != null ? order.getFinalAmount() : BigDecimal.ZERO;
+
+            if (orderDate.equals(today)) {
+                if (!"PENDING".equalsIgnoreCase(order.getStatus())) {
+                    todaySalesSoFar = todaySalesSoFar.add(finalAmt);
+                    todayOrdersSoFar++;
+                }
+            } else {
+                salesByDay.compute(orderDate, (k, v) -> (v == null ? BigDecimal.ZERO : v).add(finalAmt));
+                ordersByDay.compute(orderDate, (k, v) -> (v == null ? 0 : v) + 1);
+
+                int hour = order.getCreatedAt() != null ? order.getCreatedAt().getHour() : -1;
+                if (hour >= 0) {
+                    salesByHourHistory.merge(hour, finalAmt, BigDecimal::add);
+                    totalHistoricalHourlySales = totalHistoricalHourlySales.add(finalAmt);
+                }
+            }
+
+            // Products
+            if (order.getItems() != null) {
+                for (SaleOrderItem item : order.getItems()) {
+                    if (item.getProduct() != null && item.getProduct().getId() != null) {
+                        Long pId = item.getProduct().getId();
+                        productNames.putIfAbsent(pId, item.getProduct().getName());
+                        productSkus.putIfAbsent(pId, item.getProduct().getSku());
+                        int qty = Math.max(0, (item.getQuantity() != null ? item.getQuantity() : 0)
+                                - (item.getQuantityReturned() != null ? item.getQuantityReturned() : 0));
+                        if (!orderDate.isBefore(recentWindowStart)) {
+                            productUnitsRecent.merge(pId, qty, Integer::sum);
+                        } else if (!orderDate.isBefore(priorWindowStart) && orderDate.isBefore(recentWindowStart)) {
+                            productUnitsPrior.merge(pId, qty, Integer::sum);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Daily series for past days
+        List<Double> pastSalesValues = new ArrayList<>();
+        List<Double> pastOrdersValues = new ArrayList<>();
+        for (LocalDate d = historyStart; d.isBefore(today); d = d.plusDays(1)) {
+            pastSalesValues.add(salesByDay.getOrDefault(d, BigDecimal.ZERO).doubleValue());
+            pastOrdersValues.add(ordersByDay.getOrDefault(d, 0).doubleValue());
+        }
+
+        double[] salesSeries = pastSalesValues.stream().mapToDouble(Double::doubleValue).toArray();
+        double[] ordersSeries = pastOrdersValues.stream().mapToDouble(Double::doubleValue).toArray();
+
+        int observations = salesSeries.length;
+        double totalHistoricalSales = Arrays.stream(salesSeries).sum();
+        double meanDailySales = TimeSeries.mean(salesSeries);
+        double meanDailyOrders = TimeSeries.mean(ordersSeries);
+
+        boolean hasData = observations >= 5 && totalHistoricalSales > 0;
+        boolean isReliable = observations >= 14 && hasData;
+
+        // Hourly distribution & peak hours
+        int currentHour = LocalDateTime.now().getHour();
+        double remainingFraction = 0.0;
+        double passedFraction = 0.0;
+        List<Integer> peakHours = new ArrayList<>();
+
+        if (totalHistoricalHourlySales.compareTo(BigDecimal.ZERO) > 0) {
+            final double grandHourlyTotal = totalHistoricalHourlySales.doubleValue();
+            salesByHourHistory.entrySet().stream()
+                    .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                    .limit(3)
+                    .forEach(e -> peakHours.add(e.getKey()));
+            Collections.sort(peakHours);
+
+            for (int h = 0; h < 24; h++) {
+                double fraction = salesByHourHistory.getOrDefault(h, BigDecimal.ZERO).doubleValue() / grandHourlyTotal;
+                if (h > currentHour) {
+                    remainingFraction += fraction;
+                } else {
+                    passedFraction += fraction;
+                }
+            }
+        } else {
+            // Default business day distribution: 9 AM to 8 PM
+            int businessHours = 12;
+            int startHour = 8;
+            for (int h = 0; h < 24; h++) {
+                double frac = (h >= startHour && h < startHour + businessHours) ? (1.0 / businessHours) : 0.0;
+                if (h > currentHour) {
+                    remainingFraction += frac;
+                } else {
+                    passedFraction += frac;
+                }
+            }
+            peakHours.addAll(List.of(11, 12, 14, 15));
+        }
+
+        String peakHoursDesc = formatPeakHours(peakHours);
+
+        // Expected remainder today
+        BigDecimal expectedRemainderToday;
+        int expectedRemainderTodayOrders;
+
+        if (currentHour >= 21) {
+            expectedRemainderToday = BigDecimal.ZERO;
+            expectedRemainderTodayOrders = 0;
+        } else {
+            double baseDaily = Math.max(meanDailySales, todaySalesSoFar.doubleValue());
+            double remEstimate = baseDaily * Math.min(1.0, remainingFraction);
+            if (passedFraction > 0.20 && todaySalesSoFar.compareTo(BigDecimal.ZERO) > 0) {
+                double currentPace = (todaySalesSoFar.doubleValue() / Math.max(0.1, passedFraction)) * remainingFraction;
+                remEstimate = 0.6 * remEstimate + 0.4 * currentPace;
+            }
+            expectedRemainderToday = BigDecimal.valueOf(Math.max(0.0, round(remEstimate)));
+
+            double remOrders = Math.max(meanDailyOrders, (double) todayOrdersSoFar) * Math.min(1.0, remainingFraction);
+            expectedRemainderTodayOrders = (int) Math.round(Math.max(0.0, remOrders));
+        }
+
+        BigDecimal expectedTodayTotal = todaySalesSoFar.add(expectedRemainderToday);
+        int expectedTodayTotalOrders = todayOrdersSoFar + expectedRemainderTodayOrders;
+
+        // Next 7 days forecast
+        List<ForecastPoint> next7DaysDailyForecast = new ArrayList<>();
+        List<Integer> next7DaysOrderForecast = new ArrayList<>();
+        BigDecimal expected7DaySalesTotal = BigDecimal.ZERO;
+        BigDecimal expectedNextDaySales = BigDecimal.ZERO;
+        int expectedNextDayOrders = (int) Math.round(meanDailyOrders);
+
+        String algorithm = "Baseline Moving Average";
+        Double mae = null;
+        Double rmse = null;
+        Double mape = null;
+
+        if (hasData) {
+            TimeSeries.ForecastFit fit = TimeSeries.selectBestModel(salesSeries, Math.min(7, salesSeries.length / 4));
+            if (fit.available()) {
+                algorithm = fit.algorithm();
+                mae = round(fit.mae());
+                rmse = round(fit.rmse());
+                mape = fit.mape() != null ? round(fit.mape() * 100) : null;
+            }
+            double[] point = fit.forecast();
+            double sigma = TimeSeries.standardDeviation(salesSeries);
+            double z = TimeSeries.zScoreFor(properties.getConfidence());
+            double[][] bounds = TimeSeries.predictionBounds(point, sigma, z);
+
+            for (int i = 0; i < Math.min(7, point.length); i++) {
+                LocalDate fcDate = today.plusDays(i + 1L);
+                double val = Math.max(0.0, round(point[i]));
+                double low = Math.max(0.0, round(bounds[0][i]));
+                double up = Math.max(val, round(bounds[1][i]));
+                next7DaysDailyForecast.add(new ForecastPoint(fcDate, val, low, up));
+                expected7DaySalesTotal = expected7DaySalesTotal.add(BigDecimal.valueOf(val));
+
+                // Order forecast
+                int fcOrders = Math.max(1, (int) Math.round(meanDailyOrders * (meanDailySales > 0 ? (val / meanDailySales) : 1.0)));
+                next7DaysOrderForecast.add(fcOrders);
+            }
+        } else {
+            algorithm = "Simple Trend Baseline";
+            for (int i = 0; i < 7; i++) {
+                LocalDate fcDate = today.plusDays(i + 1L);
+                next7DaysDailyForecast.add(new ForecastPoint(fcDate, round(meanDailySales), 0.0, round(meanDailySales * 1.5)));
+                next7DaysOrderForecast.add(Math.max(0, (int) Math.round(meanDailyOrders)));
+                expected7DaySalesTotal = expected7DaySalesTotal.add(BigDecimal.valueOf(meanDailySales));
+            }
+        }
+
+        if (!next7DaysDailyForecast.isEmpty()) {
+            expectedNextDaySales = BigDecimal.valueOf(next7DaysDailyForecast.get(0).value());
+            expectedNextDayOrders = next7DaysOrderForecast.get(0);
+        }
+
+        // AOV
+        BigDecimal currentAov = todayOrdersSoFar > 0
+                ? todaySalesSoFar.divide(BigDecimal.valueOf(todayOrdersSoFar), 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        int totalOrdersCount = Arrays.stream(ordersSeries).mapToInt(d -> (int) d).sum();
+        BigDecimal expectedAov = totalOrdersCount > 0
+                ? BigDecimal.valueOf(totalHistoricalSales).divide(BigDecimal.valueOf(totalOrdersCount), 2, RoundingMode.HALF_UP)
+                : currentAov;
+
+        // Product trends
+        List<OperationalSalesForecast.ProductDemandTrend> productTrends = new ArrayList<>();
+        Set<Long> allProductIds = new HashSet<>(productUnitsRecent.keySet());
+        allProductIds.addAll(productUnitsPrior.keySet());
+
+        for (Long pId : allProductIds) {
+            int recent = productUnitsRecent.getOrDefault(pId, 0);
+            int prior = productUnitsPrior.getOrDefault(pId, 0);
+            if (recent == 0 && prior == 0) continue;
+            double changePct = prior > 0
+                    ? ((double) (recent - prior) / prior) * 100.0
+                    : (recent > 0 ? 100.0 : 0.0);
+            String direction = changePct >= 15.0 ? "INCREASING" : (changePct <= -15.0 ? "DECREASING" : "STABLE");
+            productTrends.add(new OperationalSalesForecast.ProductDemandTrend(
+                    pId,
+                    productSkus.getOrDefault(pId, "P-" + pId),
+                    productNames.getOrDefault(pId, "Product #" + pId),
+                    recent,
+                    prior,
+                    round(changePct),
+                    direction
+            ));
+        }
+
+        productTrends.sort((a, b) -> Integer.compare(b.unitsSoldRecent(), a.unitsSoldRecent()));
+        if (productTrends.size() > 5) {
+            productTrends = productTrends.subList(0, 5);
+        }
+
+        // AI Explanations
+        String reliabilityExplanation = isReliable
+                ? String.format("High confidence forecast derived from %d trading days of transaction records.", observations)
+                : (hasData
+                ? String.format("Moderate preliminary estimate based on %d days of sales records. As more orders occur, confidence will improve.", observations)
+                : "Insufficient transaction records for this scope. Estimates are based on initial trading activity.");
+
+        String baselineComparison;
+        if (meanDailySales > 0) {
+            double diff = expectedTodayTotal.doubleValue() - meanDailySales;
+            double diffPct = round((diff / meanDailySales) * 100.0);
+            baselineComparison = diffPct >= 0
+                    ? String.format("Today's projected sales total of ETB %,.2f is pacing +%.1f%% above your recent daily baseline of ETB %,.2f.",
+                    expectedTodayTotal.doubleValue(), diffPct, meanDailySales)
+                    : String.format("Today's projected sales total of ETB %,.2f is pacing %.1f%% below your recent daily baseline of ETB %,.2f.",
+                    expectedTodayTotal.doubleValue(), Math.abs(diffPct), meanDailySales);
+        } else {
+            baselineComparison = String.format("Recorded sales today stand at ETB %,.2f across %d order(s).",
+                    todaySalesSoFar.doubleValue(), todayOrdersSoFar);
+        }
+
+        String peakHoursExplanation = String.format(
+                "Peak sales volume historically concentrates around %s, which represents the strongest trading window for this scope.",
+                peakHoursDesc);
+
+        String productDemandExplanation;
+        if (!productTrends.isEmpty()) {
+            OperationalSalesForecast.ProductDemandTrend topTrending = productTrends.get(0);
+            productDemandExplanation = String.format(
+                    "Highest observed velocity is for '%s' (%d units recent). Demand trend is %s.",
+                    topTrending.name(), topTrending.unitsSoldRecent(), topTrending.direction().toLowerCase());
+        } else {
+            productDemandExplanation = "Product-level velocity will automatically detail top demand items as line-item history accumulates.";
+        }
+
+        String operationalRecommendation = String.format(
+                "Prepare register and replenish inventory ahead of peak trading (%s). Ensure all cash/bank transaction slips are reconciled promptly.",
+                peakHoursDesc);
+
+        String decisionReadiness = isReliable
+                ? "Forecast confidence is sufficient to support restocking, cash preparation, and staffing decisions."
+                : "Treat forecasts as directional guidelines while building further transaction history.";
+
+        OperationalSalesForecast.AiExplanations aiInsights = new OperationalSalesForecast.AiExplanations(
+                baselineComparison,
+                peakHoursExplanation,
+                productDemandExplanation,
+                operationalRecommendation,
+                decisionReadiness,
+                false
+        );
+
+        return new OperationalSalesForecast(
+                true,
+                scope,
+                cashierName,
+                branch,
+                today,
+                LocalDateTime.now(),
+                algorithm,
+                observations,
+                orders.size(),
+                properties.getConfidence(),
+                mae,
+                rmse,
+                mape,
+                isReliable,
+                reliabilityExplanation,
+                todaySalesSoFar,
+                expectedRemainderToday,
+                expectedTodayTotal,
+                expectedNextDaySales,
+                expected7DaySalesTotal,
+                next7DaysDailyForecast,
+                todayOrdersSoFar,
+                expectedRemainderTodayOrders,
+                expectedTodayTotalOrders,
+                expectedNextDayOrders,
+                next7DaysOrderForecast,
+                currentAov,
+                expectedAov,
+                productTrends,
+                peakHours,
+                peakHoursDesc,
+                aiInsights
+        );
+    }
+
+    private static String formatPeakHours(List<Integer> hours) {
+        if (hours == null || hours.isEmpty()) {
+            return "11:00 AM – 3:00 PM";
+        }
+        int minH = hours.stream().min(Integer::compareTo).orElse(11);
+        int maxH = hours.stream().max(Integer::compareTo).orElse(15);
+        return formatHour(minH) + " – " + formatHour(maxH + 1);
+    }
+
+    private static String formatHour(int h) {
+        int hour12 = h % 12 == 0 ? 12 : h % 12;
+        String ampm = h < 12 || h == 24 ? "AM" : "PM";
+        return hour12 + ":00 " + ampm;
+    }
+
+    private boolean isVoided(SaleOrder order) {
+        return order.getVoidStatus() != null && "APPROVED".equalsIgnoreCase(order.getVoidStatus());
+    }
+
+    private User currentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails principal)) {
+            return null;
+        }
+        return principal.getUser();
+    }
+
+    private boolean canSeeEveryonesSales() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(granted -> "SALES_REPORT_VIEW".equals(granted.getAuthority())
+                        || "REPORT_VIEW".equals(granted.getAuthority()));
+    }
+
+    // ── Operational sales forecast record ─────────────────────────────────────
+
+    public record OperationalSalesForecast(
+            boolean available,
+            String scope,
+            String cashierName,
+            String branch,
+            LocalDate asOfDate,
+            LocalDateTime generatedAt,
+            String algorithm,
+            int historyDays,
+            int observationCount,
+            double confidenceLevel,
+            Double mae,
+            Double rmse,
+            Double mapePercent,
+            boolean isReliable,
+            String reliabilityExplanation,
+            BigDecimal todaySalesSoFar,
+            BigDecimal expectedRemainderToday,
+            BigDecimal expectedTodayTotal,
+            BigDecimal expectedNextDaySales,
+            BigDecimal expected7DaySalesTotal,
+            List<ForecastPoint> next7DaysDailyForecast,
+            int todayOrdersSoFar,
+            int expectedRemainderTodayOrders,
+            int expectedTodayTotalOrders,
+            int expectedNextDayOrders,
+            List<Integer> next7DaysOrderForecast,
+            BigDecimal currentAov,
+            BigDecimal expectedAov,
+            List<ProductDemandTrend> productTrends,
+            List<Integer> peakHours,
+            String peakHoursDescription,
+            AiExplanations aiInsights
+    ) {
+        public record ProductDemandTrend(
+                Long productId,
+                String sku,
+                String name,
+                int unitsSoldRecent,
+                int unitsSoldPrior,
+                double trendPercent,
+                String direction
+        ) {}
+
+        public record AiExplanations(
+                String baselineComparison,
+                String peakHoursExplanation,
+                String productDemandExplanation,
+                String operationalRecommendation,
+                String decisionReadiness,
+                boolean aiEnriched
+        ) {}
     }
 }

@@ -178,15 +178,20 @@ export interface DashboardFinancial {
   netMarginPercent: number;
   cashReceived: number;
   cashPaidToSuppliers: number;
+  cashRefunded?: number;
   netCashFlow: number;
   accountsReceivable: number;
   accountsPayable: number;
+  purchaseCostReceived?: number;
+  purchaseCostOrderedNotReceived: number;
   inventoryValue: number;
   stockLossValue: number;
   stockLossUnits: number;
-  purchaseCostOrderedNotReceived: number;
   salesCount: number;
   itemsSold: number;
+  expenseCount?: number;
+  paymentCount?: number;
+  expensesByCategory?: Array<{ category: string; amount: number }>;
   previousNetSales: number;
   previousGrossProfit: number;
   previousNetProfit: number;
@@ -403,21 +408,82 @@ export interface SalesSummary {
   scope: 'OWN_SALES' | 'ALL_SALES';
   ordersCreated: number;
   completedSales: number;
+  pendingOrders?: number;
   cancelledOrders: number;
   voidedOrders: number;
   grossSales: number;
   discounts: number;
+  tax?: number;
   returns: number;
   netSales: number;
   amountCollected: number;
   outstanding: number;
   unitsSold: number;
   averageOrderValue: number;
+  cashierName?: string | null;
+  branch?: string | null;
   /** Net sales per payment method. */
   paymentMethods: Record<string, number>;
   /** Net sales per hour of the day, keyed "0".."23". */
   hourlySales: Record<string, number>;
   basis: string;
+}
+
+export interface HourlyDemandDistribution {
+  hour: number;
+  percentage: number;
+  historicalAvgSales: number;
+}
+
+export interface DailyForecastPoint {
+  date: string;
+  expectedSales: number;
+  lowerBound: number;
+  upperBound: number;
+  expectedOrders: number;
+}
+
+export interface ProductDemandTrend {
+  productId: number;
+  productName: string;
+  sku: string;
+  recent14DaysUnits: number;
+  prior14DaysUnits: number;
+  growthPercent: number;
+  trend: 'INCREASING' | 'DECREASING' | 'STABLE';
+}
+
+export interface OperationalAiExplanations {
+  baselineComparison: string;
+  peakHoursExplanation: string;
+  productDemandSummary: string;
+  operationalRecommendation: string;
+  decisionReadiness: string;
+}
+
+export interface OperationalSalesForecast {
+  scope: 'OWN_SALES' | 'ALL_SALES';
+  warehouseId: number | null;
+  sellerId: number | null;
+  generationTime: string;
+  algorithm: string;
+  historicalDaysSampled: number;
+  historicalOrdersCount: number;
+  sufficientHistory: boolean;
+  todayObservedNetSales: number;
+  todayObservedOrders: number;
+  todayExpectedRemainingNetSales: number;
+  todayExpectedRemainingOrders: number;
+  todayExpectedTotalNetSales: number;
+  nextDayExpectedNetSales: number;
+  nextDayExpectedOrders: number;
+  currentAverageOrderValue: number;
+  historicalAverageOrderValue: number;
+  hourlyDistribution: HourlyDemandDistribution[];
+  next7DaysForecast: DailyForecastPoint[];
+  productTrends: ProductDemandTrend[];
+  peakHours: string[];
+  aiExplanations: OperationalAiExplanations;
 }
 
 export const dashboardApi = {
@@ -443,6 +509,12 @@ export const dashboardApi = {
   financial: async (params: DateRangeParams = {}) => {
     const response = await apiClient.get('/dashboard/financial', { params });
     return unwrap<DashboardFinancial>(response);
+  },
+
+  /** Operational sales forecasting with deterministic AI commentary. */
+  operationalForecast: async (params?: { warehouseId?: number; cashierId?: number }) => {
+    const response = await apiClient.get('/dashboard/operational-forecast', { params });
+    return unwrap<OperationalSalesForecast>(response);
   },
 
   /** Insights and alerts for the dashboard. */
