@@ -407,10 +407,34 @@ public class ForecastingService {
     public OperationalSalesForecast forecastOperationalSales(Long warehouseId, Long requestedSellerId) {
         User actor = currentUser();
         boolean canSeeEveryone = canSeeEveryonesSales();
-        Long sellerScope = canSeeEveryone ? requestedSellerId : (actor != null ? actor.getId() : -1L);
+
+        /*
+         * Written out rather than as a conditional expression on purpose.
+         * `canSeeEveryone ? requestedSellerId : -1L` mixes a Long with a long
+         * literal, so javac unboxes the Long to pick a branch — and an admin
+         * calling without `sellerId` (the normal case, since it is optional)
+         * got a NullPointerException and a 500. The scope has three distinct
+         * meanings, so it is spelled out: an explicit seller, everyone, or
+         * nobody but the caller.
+         */
+        Long sellerScope;
+        if (!canSeeEveryone) {
+            // Not permitted to see other people's takings: their own, or
+            // nothing at all for an anonymous caller.
+            sellerScope = (actor != null) ? actor.getId() : -1L;
+        } else {
+            sellerScope = requestedSellerId;
+        }
+
         String scope = sellerScope == null ? "ALL_SALES" : "OWN_SALES";
-        String cashierName = (sellerScope != null && actor != null && sellerScope.equals(actor.getId()))
-                ? actor.getFullName() : (sellerScope != null ? "Seller #" + sellerScope : "All Staff");
+        String cashierName;
+        if (sellerScope == null) {
+            cashierName = "All Staff";
+        } else if (actor != null && sellerScope.equals(actor.getId())) {
+            cashierName = actor.getFullName();
+        } else {
+            cashierName = "Seller #" + sellerScope;
+        }
         String branch = actor != null ? actor.getBranch() : null;
 
         LocalDate today = LocalDate.now();
