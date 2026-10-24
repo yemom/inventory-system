@@ -217,7 +217,7 @@ public class StockLedgerService {
 
         String group = "TRF-" + UUID.randomUUID();
         String baseNotes = notes == null || notes.isBlank()
-                ? "Transfer " + source.getName() + " → " + destination.getName()
+                ? "Transfer " + source.getName() + " -> " + destination.getName()
                 : notes;
 
         if (!approve) {
@@ -247,7 +247,7 @@ public class StockLedgerService {
         auditLogService.log(actor == null ? null : actor.getId(),
                 actor == null ? "system" : actor.getUsername(),
                 "STOCK_TRANSFERRED", "PRODUCT", String.valueOf(product.getId()),
-                String.format("%d units of %s: %s → %s (%s)",
+                String.format("%d units of %s: %s -> %s (%s)",
                         quantity, product.getSku(), source.getName(), destination.getName(),
                         reference == null ? group : reference));
 

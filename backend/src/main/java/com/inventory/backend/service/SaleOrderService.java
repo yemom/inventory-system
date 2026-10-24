@@ -421,8 +421,16 @@ public class SaleOrderService {
         order.setPaymentMethod(req.getPaymentMethod() != null ? req.getPaymentMethod() : "CASH");
         order.setTransactionDate(LocalDateTime.now());
 
-        // Determine payment status from request; default to PAID (cash sale)
-        String paymentStatus = req.getPaymentStatus() != null ? req.getPaymentStatus() : "PAID";
+        // A partial settlement needs an amount, which this request does not
+        // carry. It is recorded through the payment endpoint instead, where
+        // the actual amount can be validated against the outstanding balance.
+        String paymentStatus = req.getPaymentStatus() != null
+                ? req.getPaymentStatus().trim().toUpperCase() : "PAID";
+        if (!"PAID".equals(paymentStatus) && !"UNPAID".equals(paymentStatus)) {
+            throw new IllegalArgumentException(
+                    "paymentStatus must be PAID or UNPAID when creating a sale; "
+                            + "record partial payments through the payment endpoint.");
+        }
         order.setPaymentStatus(paymentStatus);
         order.setStatus("UNPAID".equals(paymentStatus) ? "PENDING" : "PAID");
 
@@ -485,9 +493,13 @@ public class SaleOrderService {
         }
 
         order.setTotalAmount(subtotal);
+        if (order.getDiscount().compareTo(subtotal) > 0) {
+            throw new IllegalArgumentException(
+                    "The order discount cannot exceed the subtotal.");
+        }
         order.setFinalAmount(subtotal.subtract(order.getDiscount()).add(order.getTax()));
         order.setCostOfGoodsSold(cogs);
-        order.setAmountPaid(order.getFinalAmount());
+        order.setAmountPaid("PAID".equals(paymentStatus) ? order.getFinalAmount() : BigDecimal.ZERO);
         order.setItems(items);
 
         SaleOrder saved = saleOrderRepository.save(order);

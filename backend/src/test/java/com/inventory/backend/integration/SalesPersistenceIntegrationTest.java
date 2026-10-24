@@ -183,6 +183,25 @@ class SalesPersistenceIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("invalid payment status and excessive discount are rejected before stock moves")
+    void invalidSaleTotalsAreRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/sales")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cashierToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saleBody(1, "150.00", "200.00", "PAID", "CASH", null)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/sales")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cashierToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saleBody(1, "150.00", null, "PARTIAL", "CASH", null)))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(100, quantityOnHand(),
+                "invalid sale requests must not move stock");
+    }
+
+    @Test
     @DisplayName("a receipt is reproducible from the stored sale, not from the browser")
     void receiptComesFromTheServer() throws Exception {
         SaleOrderDTO created = sell(2, "150.00", null, "PAID", "CASH");

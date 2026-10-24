@@ -15,6 +15,7 @@ import {
   RefreshCw,
   CheckCircle,
   User,
+  Building2,
 } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -26,6 +27,7 @@ import Badge from "@/components/ui/Badge";
 import { formatCurrency } from "@/lib/utils";
 
 import { useProducts } from "@/hooks/useProducts";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 import { customersApi, type Customer } from "@/lib/api/customersApi";
 
@@ -42,11 +44,23 @@ interface CartItem {
   discount: number;
 }
 
+interface ReceiptItem {
+  id: number;
+  name: string;
+  sku?: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  total: number;
+}
+
 interface ReceiptOrder {
   reference: string;
   customerName: string;
+  cashierName?: string;
+  warehouseName?: string;
   date: string;
-  items: CartItem[];
+  items: ReceiptItem[];
   subtotal: number;
   discountAmount: number;
   taxAmount: number;
@@ -88,12 +102,14 @@ export default function POSPage() {
 
   const [tenderedAmount, setTenderedAmount] = useState<string>("");
 
+  const { user, hasPermission } = useAuth();
+  const canCreateSale = hasPermission("SALE_CREATE");
+
   /*
    * Where the goods come from.
    *
-   * The choice is not shown on screen — the picker was removed — but a sale
-   * still needs a location, or the backend refuses it whenever the business has
-   * more than one active warehouse. So it is resolved here rather than asked.
+   * If exactly one active warehouse exists, it is automatically resolved.
+   * If multiple active warehouses exist, the cashier is required to explicitly choose one.
    */
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
@@ -116,12 +132,7 @@ export default function POSPage() {
   );
 
   /*
-   * Load the warehouses a sale can be taken from.
-   *
-   * Inactive warehouses are filtered out here rather than sent and rejected:
-   * crediting stock to a location that cannot hold it is not a silent problem.
-   * A failure is deliberately silent, because the backend resolves a single
-   * warehouse on its own and the common case still works.
+   * Load active warehouses.
    */
   useEffect(() => {
     let mounted = true;
@@ -135,12 +146,16 @@ export default function POSPage() {
         );
         setWarehouses(active);
         /*
-         * The choice is no longer shown on screen, so it is resolved here.
-         * With one location there was never a choice. With several, the first
-         * active warehouse is used rather than sending nothing and having the
-         * backend refuse every sale with a 409.
+         * Multi-warehouse rule:
+         * If exactly one active warehouse exists, resolve it automatically.
+         * If multiple active warehouses exist, require an explicit choice;
+         * do not silently select an arbitrary warehouse.
          */
-        setWarehouseId(active.length > 0 ? active[0].id : null);
+        if (active.length === 1) {
+          setWarehouseId(active[0].id);
+        } else {
+          setWarehouseId(null);
+        }
       })
       .catch(() => {
         if (mounted) setWarehouses([]);
@@ -374,9 +389,35 @@ export default function POSPage() {
    * then shows the receipt from the server response.
    */
   const handleCheckout = async () => {
+    if (!canCreateSale) {
+      toast(
+        "error",
+        "Permission Denied",
+        "Your account does not have permission to record sales.",
+      );
+      return;
+    }
+
     if (cart.length === 0) {
       toast("error", "Cart is empty", "Add products to cart before checkout.");
+      return;
+    }
 
+    if (warehouses.length > 1 && !warehouseId) {
+      toast(
+        "warning",
+        "Warehouse required",
+        "This business has multiple active warehouses. Please select a warehouse for this sale.",
+      );
+      return;
+    }
+
+    if (warehouses.length === 0) {
+      toast(
+        "error",
+        "No active warehouse",
+        "No active warehouse is available. Please activate or create a warehouse first.",
+      );
       return;
     }
 
@@ -393,7 +434,6 @@ export default function POSPage() {
         "Insufficient payment",
         "Tendered amount is less than the total.",
       );
-
       return;
     }
 
@@ -441,27 +481,32 @@ export default function POSPage() {
       const reference =
         created?.orderNumber ?? created?.reference ?? "Sale recorded";
 
+      const selectedWarehouseObj = warehouses.find((w) => w.id === warehouseId);
+      const receiptItems: ReceiptItem[] = (created?.items ?? []).map(
+        (item, idx) => ({
+              id: item.productId ?? item.id ?? idx,
+              name: item.productName ?? "Product",
+              sku: item.productSku ?? undefined,
+              quantity: item.quantity ?? 1,
+              unitPrice: Number(item.unitPrice ?? 0),
+              discount: Number(item.discount ?? 0),
+              total: Number(item.total ?? (Number(item.unitPrice ?? 0) * (item.quantity ?? 1))),
+            }),
+      );
+
       const orderData: ReceiptOrder = {
         reference,
-
-        customerName: customerObj?.name ?? "Walk-in Customer",
-
+        customerName: created?.customerName ?? customerObj?.name ?? "Walk-in Customer",
+        cashierName: created?.cashier?.name ?? (user ? (user.fullName || user.username) : undefined),
+        warehouseName: created?.warehouseName ?? selectedWarehouseObj?.name,
         date: created?.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
-
-        items: [...cart],
-
+        items: receiptItems,
         subtotal: Number(created?.totalAmount ?? subtotal),
-
         discountAmount: Number(created?.discount ?? discountAmount),
-
         taxAmount: Number(created?.tax ?? taxAmount),
-
         total: Number(created?.finalAmount ?? created?.total ?? total),
-
         paymentMethod,
-
-        tendered: paymentMethod === "cash" ? tendered : total,
-
+        tendered: paymentMethod === "cash" ? tendered : Number(created?.finalAmount ?? total),
         change: paymentMethod === "cash" ? change : 0,
       };
 
@@ -476,6 +521,8 @@ export default function POSPage() {
       await queryClient.invalidateQueries({ queryKey: ["inventory"] });
       await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
     } catch (error: unknown) {
       const responseError = (
         error as {
@@ -656,7 +703,7 @@ export default function POSPage() {
 
         <div className="flex h-[700px] flex-col rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 lg:col-span-5 xl:col-span-4">
           {/* Cart header */}
-          <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 p-4 dark:border-gray-700">
             {/* Customer */}
             <div className="flex items-center gap-1.5">
               <User size={14} className="text-gray-400" />
@@ -665,7 +712,7 @@ export default function POSPage() {
                 value={selectedCustomerId}
                 onChange={(event) => setSelectedCustomerId(event.target.value)}
                 disabled={loadingCustomers}
-                className="max-w-[150px] rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                className="max-w-[140px] rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-800 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
               >
                 <option value="walk-in">Walk-in Customer</option>
 
@@ -675,6 +722,40 @@ export default function POSPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Warehouse selector */}
+            <div className="flex items-center gap-1.5">
+              <Building2 size={14} className="text-gray-400" />
+              {warehouses.length > 1 ? (
+                <select
+                  aria-label="Select Warehouse"
+                  value={warehouseId ?? ""}
+                  onChange={(event) =>
+                    setWarehouseId(
+                      event.target.value ? Number(event.target.value) : null,
+                    )
+                  }
+                  className={`max-w-[150px] rounded-lg border px-2 py-1 text-xs focus:outline-none dark:bg-gray-700 dark:text-gray-200 ${
+                    !warehouseId
+                      ? "border-amber-400 bg-amber-50 font-medium text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/30 dark:text-amber-200"
+                      : "border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-600"
+                  }`}
+                >
+                  <option value="">Select Warehouse *</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              ) : warehouses.length === 1 ? (
+                <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300" title="Active Warehouse">
+                  {warehouses[0].name}
+                </span>
+              ) : (
+                <span className="text-xs text-red-500">No active warehouse</span>
+              )}
             </div>
           </div>
 
@@ -881,13 +962,22 @@ export default function POSPage() {
             {/* Checkout */}
             <Button
               onClick={handleCheckout}
-              disabled={cart.length === 0 || submitting}
+              disabled={
+                cart.length === 0 ||
+                submitting ||
+                !canCreateSale ||
+                (warehouses.length > 1 && !warehouseId)
+              }
               className="w-full gap-2 py-2.5 text-sm font-bold shadow-md"
             >
               <CheckCircle size={16} />
               {submitting
                 ? "Completing Sale..."
-                : `Complete Sale (${formatCurrency(total)})`}
+                : !canCreateSale
+                  ? "Permission Required (SALE_CREATE)"
+                  : warehouses.length > 1 && !warehouseId
+                    ? "Select Warehouse to Checkout"
+                    : `Complete Sale (${formatCurrency(total)})`}
             </Button>
           </div>
         </div>
@@ -922,37 +1012,56 @@ export default function POSPage() {
               </p>
             </div>
 
-            {/* Customer */}
-            <div className="flex justify-between">
-              <span className="text-gray-500">Customer:</span>
+            {/* Customer, Cashier, Warehouse, Payment */}
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Customer:</span>
 
-              <span className="font-sans font-bold">
-                {receiptOrder.customerName}
-              </span>
+                <span className="font-sans font-bold">
+                  {receiptOrder.customerName}
+                </span>
+              </div>
+
+              {receiptOrder.cashierName && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Cashier:</span>
+                  <span className="font-sans font-bold">
+                    {receiptOrder.cashierName}
+                  </span>
+                </div>
+              )}
+
+              {receiptOrder.warehouseName && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Warehouse:</span>
+                  <span className="font-sans font-bold">
+                    {receiptOrder.warehouseName}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <span className="text-gray-500">Payment:</span>
+
+                <span className="font-bold uppercase">
+                  {receiptOrder.paymentMethod}
+                </span>
+              </div>
             </div>
 
-            {/* Payment */}
-            <div className="flex justify-between">
-              <span className="text-gray-500">Payment:</span>
-
-              <span className="font-bold uppercase">
-                {receiptOrder.paymentMethod}
-              </span>
-            </div>
-
-            {/* Items */}
+            {/* Items from persisted payload */}
             <div className="space-y-1.5 border-y py-2">
-              {receiptOrder.items.map((item) => (
+              {receiptOrder.items.map((item, idx) => (
                 <div
-                  key={item.product.id}
+                  key={idx}
                   className="flex justify-between gap-3"
                 >
                   <span className="max-w-[200px] truncate">
-                    {item.product.name} × {item.quantity}
+                    {item.name} × {item.quantity}
                   </span>
 
                   <span>
-                    {formatCurrency(item.product.sellingPrice * item.quantity)}
+                    {formatCurrency(item.total)}
                   </span>
                 </div>
               ))}

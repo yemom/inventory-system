@@ -10,7 +10,7 @@ services:
 
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-stockflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-stockflow_db}
 
     ports:
@@ -34,7 +34,7 @@ services:
     container_name: stockflow_redis
     restart: unless-stopped
 
-    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass} --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required} --maxmemory 128mb --maxmemory-policy allkeys-lru
 
     ports:
       - "6380:6379"
@@ -43,7 +43,7 @@ services:
       - redis_stockflow_data:/data
 
     healthcheck:
-      test: [ "CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redispass} ping | grep -q PONG" ]
+      test: [ "CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:?REDIS_PASSWORD is required} ping | grep -q PONG" ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -72,12 +72,12 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-stockflow_db}
       DATABASE_USERNAME: ${POSTGRES_USER:-stockflow}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
 
       # Redis for rate limiting + cache
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 
       # Rate limiting
       RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-5}
@@ -102,10 +102,9 @@ services:
       # the deployed frontend origin) or the browser will block the request.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
 
-      # JWT_SECRET is REQUIRED. The backend refuses to boot on the development
-      # default below (StartupConfigValidator) — a signing key in the repository
-      # would let anyone forge an admin token. Generate one: openssl rand -hex 32
-      JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret}
+      # JWT_SECRET is required. A predictable fallback would let anyone forge
+      # admin tokens. Generate one with: openssl rand -hex 32
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
 
       # ── Intelligence service ─────────────────────────────────────────
       # Forecasts, anomaly alerts and reorder advice, all computed from this
