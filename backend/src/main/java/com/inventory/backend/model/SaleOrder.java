@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-@Table(name = "sale_orders")
+@Table(name = "sale_orders", indexes = {@Index(name = "idx_sale_orders_report", columnList = "transaction_date, status")})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class SaleOrder {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -19,16 +19,16 @@ public class SaleOrder {
 
     private String customerName;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal discount;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal tax;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal finalAmount;
 
     private String status; // PAID, PENDING, CANCELLED
@@ -60,7 +60,7 @@ public class SaleOrder {
      * invoice that has not been paid is revenue but it is not cash, and treating
      * it as cash is the single most common way a dashboard overstates a business.
      */
-    @Column(name = "amount_paid", precision = 12, scale = 2)
+    @Column(name = "amount_paid", precision = 15, scale = 2)
     private BigDecimal amountPaid;
 
     /** Business date the sale is reported under. Defaults to {@link #createdAt}. */
@@ -72,7 +72,7 @@ public class SaleOrder {
     private String currency = "ETB";
 
     /** Cost of the goods on this order, snapshotted when the sale was written. */
-    @Column(name = "cost_of_goods_sold", precision = 12, scale = 2)
+    @Column(name = "cost_of_goods_sold", precision = 15, scale = 2)
     private BigDecimal costOfGoodsSold;
 
     @ManyToOne(fetch = FetchType.LAZY)

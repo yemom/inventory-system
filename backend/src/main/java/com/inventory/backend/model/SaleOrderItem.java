@@ -32,13 +32,13 @@ public class SaleOrderItem {
 
     private Integer quantity;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal discount;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal subtotal;
 
     /**
@@ -54,7 +54,7 @@ public class SaleOrderItem {
      * <p>Null on rows created before this column existed; those rows fall back
      * to the product's current cost and are flagged as legacy in the report.
      */
-    @Column(name = "unit_cost", precision = 12, scale = 4)
+    @Column(name = "unit_cost", precision = 15, scale = 4)
     private BigDecimal unitCost;
 
     /**

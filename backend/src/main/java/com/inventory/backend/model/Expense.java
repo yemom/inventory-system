@@ -20,7 +20,10 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "expenses",
-        indexes = @Index(name = "idx_expenses_transaction_date", columnList = "transaction_date"))
+        indexes = {
+                @Index(name = "idx_expenses_transaction_date", columnList = "transaction_date"),
+                @Index(name = "idx_expenses_report", columnList = "transaction_date, status")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -37,7 +40,7 @@ public class Expense {
     /** RENT, UTILITIES, SALARIES, TRANSPORT, MARKETING, TAX, OTHER. */
     private String category;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal amount;
 
     private String description;

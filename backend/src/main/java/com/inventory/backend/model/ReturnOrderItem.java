@@ -45,7 +45,7 @@ public class ReturnOrderItem {
 
     private Integer quantity;
 
-    @Column(name = "unit_price", precision = 12, scale = 2)
+    @Column(name = "unit_price", precision = 15, scale = 2)
     private BigDecimal unitPrice;
 
     /**
@@ -56,13 +56,13 @@ public class ReturnOrderItem {
      * the product's <em>current</em> purchase price here would rewrite the value
      * of goods that left months ago.
      */
-    @Column(name = "unit_cost", precision = 12, scale = 4)
+    @Column(name = "unit_cost", precision = 15, scale = 4)
     private BigDecimal unitCost;
 
-    @Column(name = "amount", precision = 12, scale = 2)
+    @Column(name = "amount", precision = 15, scale = 2)
     private BigDecimal amount;
 
     /** Tax refunded with these goods, if any. */
-    @Column(name = "tax", precision = 12, scale = 2)
+    @Column(name = "tax", precision = 15, scale = 2)
     private BigDecimal tax;
 }

@@ -20,7 +20,7 @@ import java.util.List;
  * quantity actually received.
  */
 @Entity
-@Table(name = "purchase_orders")
+@Table(name = "purchase_orders", indexes = {@Index(name = "idx_purchase_orders_report", columnList = "transaction_date, status")})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class PurchaseOrder {
     @Id
@@ -49,7 +49,7 @@ public class PurchaseOrder {
     @JoinColumn(name = "warehouse_id")
     private Warehouse warehouse;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
     /**
@@ -70,7 +70,7 @@ public class PurchaseOrder {
      * Amount already paid against this purchase order.
      * Null or zero means nothing has been paid yet.
      */
-    @Column(name = "amount_paid", precision = 12, scale = 2)
+    @Column(name = "amount_paid", precision = 15, scale = 2)
     private BigDecimal amountPaid;
 
     /** Net terms agreed with the supplier, e.g. "NET 30". */
@@ -85,11 +85,11 @@ public class PurchaseOrder {
     private LocalDate expectedDeliveryDate;
 
     /** Tax charged on the order, at order level. */
-    @Column(name = "tax", precision = 12, scale = 2)
+    @Column(name = "tax", precision = 15, scale = 2)
     private BigDecimal tax;
 
     /** Discount agreed with the supplier, at order level. */
-    @Column(name = "discount", precision = 12, scale = 2)
+    @Column(name = "discount", precision = 15, scale = 2)
     private BigDecimal discount;
 
     @Column(name = "currency", length = 3)

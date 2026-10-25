@@ -38,18 +38,18 @@ public class PurchaseOrderItem {
     @Column(name = "quantity_returned")
     private Integer quantityReturned;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 4)
     private BigDecimal unitCost;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal subtotal;
 
     /** Tax charged on this line. */
-    @Column(name = "tax", precision = 12, scale = 2)
+    @Column(name = "tax", precision = 15, scale = 2)
     private BigDecimal tax;
 
     /** Discount agreed on this line. */
-    @Column(name = "discount", precision = 12, scale = 2)
+    @Column(name = "discount", precision = 15, scale = 2)
     private BigDecimal discount;
 
     /** Units still to arrive. Never negative. */

@@ -6,7 +6,10 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "stock_movements")
+@Table(name = "stock_movements", indexes = {
+        @Index(name = "idx_stock_moves_prod_wh_stat", columnList = "product_id, warehouse_id, status"),
+        @Index(name = "idx_stock_moves_group", columnList = "movement_group")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class StockMovement {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -75,7 +78,7 @@ public class StockMovement {
      * before this existed, and on movements that carry no cost (an approval
      * request that has not been accepted yet).
      */
-    @Column(name = "unit_cost", precision = 12, scale = 4)
+    @Column(name = "unit_cost", precision = 15, scale = 4)
     private java.math.BigDecimal unitCost;
 
     private String notes;

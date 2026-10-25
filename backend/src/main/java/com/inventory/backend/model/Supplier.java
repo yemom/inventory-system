@@ -27,7 +27,7 @@ public class Supplier {
     private String taxNumber;
     private String paymentTerms;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal outstandingBalance = BigDecimal.ZERO;
 

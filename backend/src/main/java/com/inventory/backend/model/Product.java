@@ -35,13 +35,13 @@ public class Product {
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal purchasePrice;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal sellingPrice;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal minSellingPrice;
 
     private Integer minStockLevel;

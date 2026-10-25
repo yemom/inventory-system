@@ -59,7 +59,7 @@ public class ReturnOrder {
     private Warehouse warehouse;
 
     /** Net total of the returned goods, excluding tax. */
-    @Column(name = "total_amount", precision = 12, scale = 2)
+    @Column(name = "total_amount", precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
     /** PENDING, APPROVED or REJECTED. Only APPROVED touches stock or money. */

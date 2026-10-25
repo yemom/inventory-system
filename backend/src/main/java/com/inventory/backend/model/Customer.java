@@ -29,11 +29,11 @@ public class Customer {
     @Builder.Default
     private CustomerType customerType = CustomerType.RETAIL;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal creditLimit = BigDecimal.ZERO;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal outstandingBalance = BigDecimal.ZERO;
 

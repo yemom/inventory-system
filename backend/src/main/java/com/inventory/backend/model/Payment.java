@@ -30,7 +30,8 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_payments_direction", columnList = "direction"),
                 @Index(name = "idx_payments_transaction_date", columnList = "transaction_date"),
                 @Index(name = "idx_payments_sale_order", columnList = "sale_order_id"),
-                @Index(name = "idx_payments_purchase_order", columnList = "purchase_order_id")
+                @Index(name = "idx_payments_purchase_order", columnList = "purchase_order_id"),
+                @Index(name = "idx_payments_report", columnList = "transaction_date, status, direction")
         })
 @Getter
 @Setter
@@ -90,7 +91,7 @@ public class Payment {
     @JoinColumn(name = "purchase_order_id")
     private PurchaseOrder purchaseOrder;
 
-    @Column(precision = 12, scale = 2)
+    @Column(precision = 15, scale = 2)
     private BigDecimal amount;
 
     /** CASH, CARD, BANK_TRANSFER, MOBILE_MONEY, CHEQUE, CREDIT. */

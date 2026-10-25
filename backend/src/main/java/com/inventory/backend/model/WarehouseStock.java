@@ -64,7 +64,7 @@ public class WarehouseStock {
      * warehouse that trades at a different margin still values its own stock
      * correctly. Recomputed on every receipt; see {@code CostingService}.
      */
-    @Column(name = "average_cost", precision = 12, scale = 4)
+    @Column(name = "average_cost", precision = 15, scale = 4)
     private java.math.BigDecimal averageCost;
 
     @Column(name = "last_movement_at")
