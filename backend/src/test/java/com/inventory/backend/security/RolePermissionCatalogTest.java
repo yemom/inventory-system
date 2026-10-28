@@ -299,15 +299,42 @@ class RolePermissionCatalogTest {
     }
 
     @Nested
+    @DisplayName("ACCOUNTANT")
+    class AccountantRole {
+
+        @Test
+        @DisplayName("has accounting, journal, ledger, tax and payroll permissions")
+        void hasAccountingPermissions() {
+            Set<String> p = forRole("ACCOUNTANT");
+            assertTrue(p.containsAll(Set.of(
+                    "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
+                    "ACCOUNTING_JOURNAL_CREATE", "ACCOUNTING_JOURNAL_POST", "ACCOUNTING_JOURNAL_REVERSE",
+                    "ACCOUNTING_RECONCILE", "TAX_DASHBOARD_VIEW", "TAX_RULE_VIEW",
+                    "PAYROLL_SUMMARY_VIEW", "COMPLIANCE_VIEW", "FINANCIAL_REPORT_VIEW", "PROFIT_LOSS_READ"
+            )));
+        }
+
+        @Test
+        @DisplayName("cannot create products or manage system settings")
+        void cannotManagePlatform() {
+            Set<String> p = forRole("ACCOUNTANT");
+            assertFalse(p.contains("PRODUCT_CREATE"));
+            assertFalse(p.contains("PRODUCT_DEACTIVATE"));
+            assertFalse(p.contains("SYSTEM_SETTINGS_MANAGE"));
+            assertFalse(p.contains("SETTINGS_UPDATE"));
+        }
+    }
+
+    @Nested
     @DisplayName("Role assignment")
     class Assignment {
 
         private final RoleGrantPolicy policy = new RoleGrantPolicy();
 
         @Test
-        @DisplayName("SUPER_ADMIN can create Managers, Supervisors, Cashiers and Inventory Staff")
+        @DisplayName("SUPER_ADMIN can create Managers, Supervisors, Cashiers, Inventory Staff and Accountants")
         void superAdminCanCreateStaff() {
-            for (String role : new String[]{"MANAGER", "SUPERVISOR", "CASHIER", "INVENTORY_STAFF"}) {
+            for (String role : new String[]{"MANAGER", "SUPERVISOR", "CASHIER", "INVENTORY_STAFF", "ACCOUNTANT"}) {
                 assertTrue(RolePermissionCatalog.canAssignRole("SUPER_ADMIN", role),
                         "Super Admin should be able to assign " + role);
             }

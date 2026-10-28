@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, TruckIcon,
   Users, Building2, DollarSign, BarChart3, Shield, Settings,
   ChevronDown, ChevronRight, Menu, X, Activity, Tag, Sparkles,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -75,12 +76,29 @@ const navItems: NavItem[] = [
     // P&L; previously the whole group shared one role list.
     label: 'Finance', icon: <DollarSign size={18} />,
     children: [
+      { label: 'Finance Overview', href: '/finance', anyOf: ['FINANCIAL_REPORT_VIEW', 'TAX_DASHBOARD_VIEW', 'PAYROLL_SUMMARY_VIEW'] },
       { label: 'Payments', href: '/finance/payments', anyOf: ['PAYMENT_READ', 'PAYMENT_CREATE'] },
       { label: 'Expenses', href: '/finance/expenses', anyOf: ['EXPENSE_READ', 'EXPENSE_CREATE'] },
       { label: 'Receivables', href: '/finance/receivables', anyOf: ['RECEIVABLE_READ'] },
       { label: 'Payables', href: '/finance/payables', anyOf: ['PAYABLE_READ'] },
       // Profit is the single most sensitive figure, so it stands on its own.
       { label: 'Profit & Loss', href: '/finance/profit-loss', anyOf: ['PROFIT_LOSS_READ'] },
+    ],
+  },
+  {
+    label: 'Accounting', icon: <BookOpen size={18} />,
+    anyOf: ['ACCOUNTING_VIEW', 'ACCOUNTING_REPORTS_VIEW', 'TAX_DASHBOARD_VIEW'],
+    children: [
+      { label: 'Accountant Dashboard', href: '/accountant', anyOf: ['ACCOUNTING_VIEW', 'TAX_DASHBOARD_VIEW', 'PAYROLL_SUMMARY_VIEW'] },
+      { label: 'Chart of Accounts', href: '/accountant/chart-of-accounts', anyOf: ['ACCOUNTING_VIEW'] },
+      { label: 'Journal Entries', href: '/accountant/journal', anyOf: ['ACCOUNTING_VIEW', 'ACCOUNTING_JOURNAL_CREATE', 'ACCOUNTING_JOURNAL_POST'] },
+      { label: 'General Ledger', href: '/accountant/ledger', anyOf: ['ACCOUNTING_VIEW'] },
+      { label: 'Trial Balance', href: '/accountant/trial-balance', anyOf: ['ACCOUNTING_VIEW', 'ACCOUNTING_REPORTS_VIEW'] },
+      { label: 'Profit & Loss', href: '/accountant/profit-loss', anyOf: ['ACCOUNTING_REPORTS_VIEW', 'PROFIT_LOSS_READ'] },
+      { label: 'Balance Sheet', href: '/accountant/balance-sheet', anyOf: ['ACCOUNTING_REPORTS_VIEW'] },
+      { label: 'Reconciliation', href: '/accountant/reconciliation', anyOf: ['ACCOUNTING_RECONCILE', 'ACCOUNTING_VIEW'] },
+      { label: 'Tax & Compliance', href: '/accountant/tax-compliance', anyOf: ['TAX_DASHBOARD_VIEW', 'ACCOUNTING_VIEW'] },
+      { label: 'Payroll Accounting', href: '/accountant/payroll', anyOf: ['PAYROLL_SUMMARY_VIEW', 'ACCOUNTING_VIEW'] },
     ],
   },
   {
@@ -91,9 +109,22 @@ const navItems: NavItem[] = [
       { label: 'Income & Cash Flow', href: '/reports/financial', anyOf: ['FINANCIAL_REPORT_VIEW'] },
       { label: 'Inventory Report', href: '/reports/inventory', anyOf: ['INVENTORY_REPORT_VIEW', 'LOW_STOCK_REPORT_VIEW', 'REPORT_VIEW'] },
       { label: 'Inventory Value', href: '/reports/inventory-value', anyOf: ['INVENTORY_VALUE_VIEW'] },
+      { label: 'Tax Report', href: '/reports/tax', anyOf: ['TAX_DASHBOARD_VIEW', 'TAX_REPORT_VIEW'] },
+      { label: 'Payroll Report', href: '/reports/payroll', anyOf: ['PAYROLL_SUMMARY_VIEW'] },
       // Profit & Loss, receivables and payables stay under Finance, where they
       // already were. Repeating a route in two groups means two links to one
       // page and an active-highlight that matches both.
+    ],
+  },
+  {
+    label: 'Compliance', icon: <Shield size={18} />,
+    children: [
+      { label: 'Compliance Overview', href: '/compliance', anyOf: ['COMPLIANCE_VIEW', 'TAX_DASHBOARD_VIEW'] },
+      { label: 'Tax Management', href: '/tax', anyOf: ['TAX_DASHBOARD_VIEW'] },
+      { label: 'Tax Rules', href: '/tax/rules', anyOf: ['TAX_RULE_VIEW'] },
+      { label: 'Payroll Management', href: '/payroll', anyOf: ['PAYROLL_SUMMARY_VIEW'] },
+      { label: 'Payroll Profiles', href: '/payroll/profiles', anyOf: ['PAYROLL_DETAIL_VIEW'] },
+      { label: 'Accountant Dashboard', href: '/accountant', anyOf: ['TAX_DASHBOARD_VIEW', 'PAYROLL_SUMMARY_VIEW'] },
     ],
   },
   {
@@ -116,7 +147,7 @@ const navItems: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: <Settings size={18} />, anyOf: ['SYSTEM_SETTINGS_MANAGE', 'SETTINGS_VIEW'] },
 ];
 
-const DEFAULT_EXPANDED = ['Inventory', 'Sales', 'Finance', 'Purchases'];
+const DEFAULT_EXPANDED = ['Inventory', 'Sales', 'Finance', 'Accounting', 'Purchases'];
 
 /**
  * The avatar letter for a user.

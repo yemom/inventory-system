@@ -12,4 +12,6 @@ public class AuthResponse {
     private String name;
     private String role;
     private List<String> permissions;
+    /** The user's assigned warehouse name (free-text label on the User entity, may be null). */
+    private String warehouse;
 }

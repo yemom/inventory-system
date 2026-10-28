@@ -90,18 +90,29 @@ export default function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              paginated.map((row, i) => (
-                <tr key={String((row as Row)[rowKey as string]) || i} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
-                  {columns.map((col, colIdx) => (
-                    <td key={`${col.key}-${colIdx}`} className={cn('px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap', col.className)}>
-                      {col.render
-                        ? col.render((row as Row)[col.key], row)
-                        : String((row as Row)[col.key] ?? '-')}
-                    </td>
-                  ))}
-                  {actions && <td className="px-4 py-3 text-right">{actions(row)}</td>}
-                </tr>
-              ))
+              paginated.map((row, i) => {
+                // Guard against undefined/null keys which cause React duplicate-key warnings
+                const rawKey = (row as Row)[rowKey as string];
+                const stableKey =
+                  rawKey != null && String(rawKey) !== 'undefined' && String(rawKey) !== ''
+                    ? String(rawKey)
+                    : `row-idx-${i}`;
+                return (
+                  <tr
+                    key={stableKey}
+                    className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                  >
+                    {columns.map((col, colIdx) => (
+                      <td key={`${col.key}-${colIdx}`} className={cn('px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap', col.className)}>
+                        {col.render
+                          ? col.render((row as Row)[col.key], row)
+                          : String((row as Row)[col.key] ?? '-')}
+                      </td>
+                    ))}
+                    {actions && <td className="px-4 py-3 text-right">{actions(row)}</td>}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

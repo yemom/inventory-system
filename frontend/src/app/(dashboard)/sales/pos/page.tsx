@@ -132,7 +132,12 @@ export default function POSPage() {
   );
 
   /*
-   * Load active warehouses.
+   * Load active warehouses and auto-select based on the authenticated user's
+   * assigned warehouse name (user.warehouse), or fall back to auto-selecting
+   * when only one active warehouse exists.
+   *
+   * Auto-selection is purely for UX convenience — the backend still enforces
+   * stock validation and warehouse ownership, so this cannot bypass controls.
    */
   useEffect(() => {
     let mounted = true;
@@ -145,15 +150,26 @@ export default function POSPage() {
           (w) => w.active,
         );
         setWarehouses(active);
-        /*
-         * Multi-warehouse rule:
-         * If exactly one active warehouse exists, resolve it automatically.
-         * If multiple active warehouses exist, require an explicit choice;
-         * do not silently select an arbitrary warehouse.
-         */
+
+        // 1. Try to match the user's assigned warehouse by name.
+        const userWarehouseName = user?.warehouse;
+        if (userWarehouseName) {
+          const matched = active.find(
+            (w) =>
+              w.name.trim().toLowerCase() ===
+              userWarehouseName.trim().toLowerCase(),
+          );
+          if (matched) {
+            setWarehouseId(matched.id);
+            return;
+          }
+        }
+
+        // 2. If only one active warehouse exists, auto-select it.
         if (active.length === 1) {
           setWarehouseId(active[0].id);
         } else {
+          // 3. Multiple warehouses and no user assignment — require explicit choice.
           setWarehouseId(null);
         }
       })
@@ -164,7 +180,7 @@ export default function POSPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.warehouse]);
 
   /*
    * Load customers.
@@ -728,6 +744,9 @@ export default function POSPage() {
             <div className="flex items-center gap-1.5">
               <Building2 size={14} className="text-gray-400" />
               {warehouses.length > 1 ? (
+                // Multiple warehouses: show dropdown. If the user has an
+                // assigned warehouse that was auto-matched, it will already be
+                // pre-selected; they can still override the choice.
                 <select
                   aria-label="Select Warehouse"
                   value={warehouseId ?? ""}
@@ -736,10 +755,10 @@ export default function POSPage() {
                       event.target.value ? Number(event.target.value) : null,
                     )
                   }
-                  className={`max-w-[150px] rounded-lg border px-2 py-1 text-xs focus:outline-none dark:bg-gray-700 dark:text-gray-200 ${
+                  className={`max-w-[160px] rounded-lg border px-2 py-1 text-xs focus:outline-none dark:bg-gray-700 dark:text-gray-200 ${
                     !warehouseId
                       ? "border-amber-400 bg-amber-50 font-medium text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/30 dark:text-amber-200"
-                      : "border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-600"
+                      : "border-green-300 bg-green-50 text-green-900 dark:border-green-600 dark:bg-green-950/30 dark:text-green-200"
                   }`}
                 >
                   <option value="">Select Warehouse *</option>

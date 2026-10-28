@@ -72,11 +72,12 @@ const ALL_ROLES = [
   { label: 'Supervisor', value: 'SUPERVISOR' },
   { label: 'Cashier', value: 'CASHIER' },
   { label: 'Inventory Staff', value: 'INVENTORY_STAFF' },
+  { label: 'Accountant', value: 'ACCOUNTANT' },
 ];
 
 /** Roles the given role may hand out, mirroring the backend's assignable set. */
 const ASSIGNABLE_BY_ROLE: Record<string, string[]> = {
-  SUPER_ADMIN: ['MANAGER', 'SUPERVISOR', 'CASHIER', 'INVENTORY_STAFF'],
+  SUPER_ADMIN: ['MANAGER', 'SUPERVISOR', 'CASHIER', 'INVENTORY_STAFF', 'ACCOUNTANT'],
   MANAGER: ['SUPERVISOR', 'CASHIER', 'INVENTORY_STAFF'],
 };
 

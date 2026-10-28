@@ -62,7 +62,7 @@ public final class RolePermissionCatalog {
      * — that is the privilege-escalation boundary.
      */
     private static final Map<String, Set<String>> ASSIGNABLE_ROLES = Map.of(
-            SUPER_ADMIN, orderedSet(MANAGER, SUPERVISOR, CASHIER, INVENTORY_STAFF),
+            SUPER_ADMIN, orderedSet(MANAGER, SUPERVISOR, CASHIER, INVENTORY_STAFF, ACCOUNTANT),
             MANAGER, orderedSet(SUPERVISOR, CASHIER, INVENTORY_STAFF));
 
     /** Every permission that exists, so {@code DataInitializer} creates the rows. */
@@ -115,6 +115,17 @@ public final class RolePermissionCatalog {
             "PROFIT_LOSS_READ",
             "FINANCIAL_REPORT_VIEW", "FINANCIAL_REPORT_EXPORT",
 
+            // ── Ethiopian tax and payroll ──
+            "TAX_DASHBOARD_VIEW", "TAX_RULE_VIEW", "TAX_RULE_MANAGE", "TAX_REPORT_VIEW",
+            "PAYROLL_SUMMARY_VIEW", "PAYROLL_DETAIL_VIEW", "PAYROLL_PROCESS", "PAYROLL_FINALIZE", "PAYSLIP_VIEW",
+            "COMPLIANCE_VIEW", "AI_COMPLIANCE_ANALYZE",
+
+            // ── Accounting and double-entry ledger ──
+            "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
+            "ACCOUNTING_JOURNAL_CREATE", "ACCOUNTING_JOURNAL_POST", "ACCOUNTING_JOURNAL_REVERSE",
+            "ACCOUNTING_RECONCILE",
+            "TAX_VIEW", "TAX_MANAGE", "COMPLIANCE_REVIEW",
+
             // ── Platform ──
             "AUDIT_LOG_VIEW", "SYSTEM_SETTINGS_MANAGE", "SETTINGS_VIEW", "SETTINGS_UPDATE",
             "DASHBOARD_VIEW",
@@ -165,6 +176,10 @@ public final class RolePermissionCatalog {
             "INVENTORY_REPORT_VIEW", "INVENTORY_VALUE_VIEW",
             "PROFIT_LOSS_READ",
             "FINANCIAL_REPORT_VIEW", "FINANCIAL_REPORT_EXPORT",
+            "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
+            "TAX_DASHBOARD_VIEW", "TAX_RULE_VIEW", "TAX_RULE_MANAGE", "TAX_REPORT_VIEW",
+            "PAYROLL_SUMMARY_VIEW", "PAYROLL_DETAIL_VIEW", "PAYROLL_PROCESS", "PAYROLL_FINALIZE", "PAYSLIP_VIEW",
+            "COMPLIANCE_VIEW", "AI_COMPLIANCE_ANALYZE",
 
             "AUDIT_LOG_VIEW",
             // Deliberately NOT granted: SYSTEM_SETTINGS_MANAGE, SETTINGS_UPDATE.
@@ -273,6 +288,14 @@ public final class RolePermissionCatalog {
             "RECEIVABLE_READ", "PAYABLE_READ",
             "PROFIT_LOSS_READ",
             "FINANCIAL_REPORT_VIEW", "FINANCIAL_REPORT_EXPORT",
+            "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
+            "TAX_DASHBOARD_VIEW", "TAX_RULE_VIEW", "TAX_RULE_MANAGE", "TAX_REPORT_VIEW",
+            "PAYROLL_SUMMARY_VIEW", "PAYROLL_DETAIL_VIEW", "PAYROLL_PROCESS", "PAYROLL_FINALIZE", "PAYSLIP_VIEW",
+            "COMPLIANCE_VIEW", "AI_COMPLIANCE_ANALYZE",
+            "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
+            "ACCOUNTING_JOURNAL_CREATE", "ACCOUNTING_JOURNAL_POST", "ACCOUNTING_JOURNAL_REVERSE",
+            "ACCOUNTING_RECONCILE",
+            "TAX_VIEW", "TAX_MANAGE", "COMPLIANCE_REVIEW",
             "INVENTORY_REPORT_VIEW", "INVENTORY_VALUE_VIEW",
             "SALES_REPORT_VIEW", "REPORT_VIEW", "REPORT_EXPORT",
             "SUPPLIER_READ", "CUSTOMER_READ");

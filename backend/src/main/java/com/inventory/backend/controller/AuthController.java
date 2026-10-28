@@ -65,6 +65,7 @@ public class AuthController {
                 .name(user.getFullName())
                 .role(user.getRole() != null ? user.getRole().getName() : "UNASSIGNED")
                 .permissions(permissions)
+                .warehouse(user.getWarehouse())
                 .build());
     }
 
@@ -111,6 +112,7 @@ public class AuthController {
                     .name(user.getFullName())
                     .role(user.getRole() != null ? user.getRole().getName() : "UNASSIGNED")
                     .permissions(permissions)
+                    .warehouse(user.getWarehouse())
                     .build());
         } catch (Exception e) {
             return ResponseEntity.status(400)

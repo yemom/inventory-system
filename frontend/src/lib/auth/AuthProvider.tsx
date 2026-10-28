@@ -26,6 +26,8 @@ export interface AuthUser {
   fullName: string;
   role: Role;
   permissions: string[];
+  /** The user's assigned warehouse name (free-text label, may be null/undefined). */
+  warehouse?: string;
 }
 
 interface AuthContextProps {
@@ -91,6 +93,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fullName: data.name,
       role: data.role as Role,
       permissions: data.permissions ?? [],
+      warehouse: data.warehouse ?? undefined,
     };
     setUser(loggedIn);
     localStorage.setItem("auth_user", JSON.stringify(loggedIn));

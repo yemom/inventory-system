@@ -34,7 +34,7 @@ export const ROLE_HOMES: Record<Role, string> = {
   CASHIER: '/dashboard',
   STOREKEEPER: '/dashboard',
   INVENTORY_STAFF: '/dashboard',
-  ACCOUNTANT: '/dashboard',
+  ACCOUNTANT: '/accountant',
 };
 
 /**
