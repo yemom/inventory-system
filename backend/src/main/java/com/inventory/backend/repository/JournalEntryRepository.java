@@ -14,6 +14,7 @@ import java.util.Optional;
 public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long> {
     Optional<JournalEntry> findByEntryNumber(String entryNumber);
     boolean existsBySourceTypeAndSourceId(String sourceType, String sourceId);
+    boolean existsBySourceTypeAndSourceIdAndStatus(String sourceType, String sourceId, String status);
     List<JournalEntry> findBySourceTypeAndSourceId(String sourceType, String sourceId);
 
     List<JournalEntry> findByEntryDateBetweenOrderByEntryDateDescIdDesc(LocalDate start, LocalDate end);

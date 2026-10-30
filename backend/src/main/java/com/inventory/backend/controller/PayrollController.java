@@ -58,8 +58,13 @@ public class PayrollController {
     @PostMapping("/periods")
     @PreAuthorize("hasAuthority('PAYROLL_PROCESS')")
     public ResponseEntity<ApiResponse<PayrollDTO.Period>> create(@RequestBody Map<String, Integer> body) {
+        Integer year = body == null ? null : body.get("year");
+        Integer month = body == null ? null : body.get("month");
+        if (year == null || month == null) {
+            throw new IllegalArgumentException("year and month are required to create a payroll period.");
+        }
         return ResponseEntity.ok(ApiResponse.ok("Draft payroll created",
-                payrollService.createPeriod(body.get("year"), body.get("month"))));
+                payrollService.createPeriod(year, month)));
     }
 
     @PostMapping("/periods/{id}/finalize")

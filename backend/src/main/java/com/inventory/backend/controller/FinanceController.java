@@ -45,6 +45,7 @@ public class FinanceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         LocalDate end = to != null ? to : LocalDate.now();
         LocalDate start = from != null ? from : end.minusDays(29);
+        if (start.isAfter(end)) throw new IllegalArgumentException("from must be on or before to.");
 
         FinancialSummary current = calculations.summarise(start, end);
         FinancialSummary previous = calculations.previousPeriod(start, end);
@@ -70,11 +71,24 @@ public class FinanceController {
     @GetMapping("/intelligence")
     @PreAuthorize("hasAnyAuthority('FINANCIAL_REPORT_VIEW','TAX_DASHBOARD_VIEW','PAYROLL_SUMMARY_VIEW')")
     public ResponseEntity<ApiResponse<TaxPayrollFinanceDTO>> intelligence(
+            @RequestParam(required = false) String period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        LocalDate end = to != null ? to : LocalDate.now();
-        LocalDate start = from != null ? from : end.minusDays(29);
-        YearMonth targetMonth = YearMonth.from(end);
+        final YearMonth targetMonth;
+        try {
+            targetMonth = period == null || period.isBlank()
+                    ? YearMonth.from(to != null ? to : LocalDate.now())
+                    : YearMonth.parse(period);
+        } catch (RuntimeException invalid) {
+            throw new IllegalArgumentException("period must use YYYY-MM format.");
+        }
+        LocalDate end = to != null ? to : targetMonth.atEndOfMonth();
+        LocalDate start = from != null ? from : targetMonth.atDay(1);
+        if (start.isAfter(end)) throw new IllegalArgumentException("from must be on or before to.");
+        if (period != null && !period.isBlank() && (YearMonth.from(start).isBefore(targetMonth)
+                || YearMonth.from(end).isAfter(targetMonth))) {
+            throw new IllegalArgumentException("from and to must fall within the selected period.");
+        }
 
         // 1. Tax Summary
         TaxSummaryDTO tax = taxService.summary(targetMonth);
@@ -90,7 +104,7 @@ public class FinanceController {
         );
 
         // 2. Payroll Summary
-        PayrollDTO.Dashboard payrollDash = payrollService.dashboard();
+        PayrollDTO.Dashboard payrollDash = payrollService.dashboard(targetMonth);
         BigDecimal empPension = payrollDash.employeePension() != null ? payrollDash.employeePension() : ZERO;
         BigDecimal empTax = payrollDash.employmentTax() != null ? payrollDash.employmentTax() : ZERO;
         BigDecimal totalDeductions = empPension.add(empTax);
@@ -214,6 +228,7 @@ public class FinanceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         LocalDate end = to != null ? to : LocalDate.now();
         LocalDate start = from != null ? from : end.minusDays(29);
+        if (start.isAfter(end)) throw new IllegalArgumentException("from must be on or before to.");
         FinancialSummary summary = calculations.summarise(start, end);
 
         Map<String, Object> cash = new LinkedHashMap<>();

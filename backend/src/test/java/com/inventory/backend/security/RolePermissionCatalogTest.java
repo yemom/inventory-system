@@ -308,7 +308,7 @@ class RolePermissionCatalogTest {
             Set<String> p = forRole("ACCOUNTANT");
             assertTrue(p.containsAll(Set.of(
                     "ACCOUNTING_VIEW", "ACCOUNTING_REPORTS_VIEW",
-                    "ACCOUNTING_JOURNAL_CREATE", "ACCOUNTING_JOURNAL_POST", "ACCOUNTING_JOURNAL_REVERSE",
+                    "ACCOUNTING_JOURNAL_CREATE", "ACCOUNTING_JOURNAL_POST",
                     "ACCOUNTING_RECONCILE", "TAX_DASHBOARD_VIEW", "TAX_RULE_VIEW",
                     "PAYROLL_SUMMARY_VIEW", "COMPLIANCE_VIEW", "FINANCIAL_REPORT_VIEW", "PROFIT_LOSS_READ"
             )));

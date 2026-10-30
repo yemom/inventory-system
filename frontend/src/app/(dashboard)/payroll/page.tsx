@@ -167,9 +167,13 @@ function PeriodRow({ period }: { period: PayrollPeriod }) {
               <PeriodItems items={detail.data?.items ?? []} />
             )}
             {period.ruleVersion && (
-              <p className="px-2 pb-2 text-xs text-gray-400">
-                Rule snapshot: {period.ruleVersion}
-              </p>
+              period.ruleVersion.includes('awaiting-accountant-verification') ? (
+                <p className="px-2 pb-2 text-sm text-amber-700 dark:text-amber-300">
+                  Payroll amounts have not been calculated. Verify the effective tax and pension rules, then create this period again.
+                </p>
+              ) : (
+                <p className="px-2 pb-2 text-xs text-gray-400">Rule snapshot: {period.ruleVersion}</p>
+              )
             )}
           </td>
         </tr>
@@ -184,6 +188,7 @@ export default function PayrollPage() {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
   const canProcess = hasPermission('PAYROLL_PROCESS');
+  const canViewPayroll = hasPermission('PAYROLL_SUMMARY_VIEW');
 
   const dashboard = useQuery({
     queryKey: ['payroll-dashboard'],
@@ -193,6 +198,7 @@ export default function PayrollPage() {
   const periods = useQuery({
     queryKey: ['payroll-periods'],
     queryFn: payrollApi.periods,
+    enabled: canViewPayroll,
     retry: 1,
   });
 
@@ -201,10 +207,17 @@ export default function PayrollPage() {
       const now = new Date();
       return payrollApi.create(now.getFullYear(), now.getMonth() + 1);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ['payroll-periods'] });
       qc.invalidateQueries({ queryKey: ['payroll-dashboard'] });
-      toast('success', 'Payroll created', 'Draft payroll for the current month has been calculated.');
+      const awaitingVerification = created.ruleVersion?.includes('awaiting-accountant-verification');
+      toast(
+        awaitingVerification ? 'error' : 'success',
+        awaitingVerification ? 'Payroll draft created' : 'Payroll created',
+        awaitingVerification
+          ? 'No payroll amounts were calculated because the effective tax or pension rules still need accountant verification.'
+          : 'Draft payroll for the current month has been calculated.',
+      );
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
@@ -213,6 +226,18 @@ export default function PayrollPage() {
   });
 
   const d = dashboard.data;
+  const now = new Date();
+  const currentPeriodExists = periods.data?.some(
+    period => period.year === now.getFullYear() && period.month === now.getMonth() + 1,
+  ) ?? false;
+
+  if (!canViewPayroll) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+        Payroll data is restricted to users with payroll summary access.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -226,9 +251,9 @@ export default function PayrollPage() {
               Employee profiles →
             </Link>
             {canProcess && (
-              <Button onClick={() => create.mutate()} disabled={create.isPending}>
+              <Button onClick={() => create.mutate()} disabled={create.isPending || currentPeriodExists}>
                 <Plus size={14} />
-                {create.isPending ? 'Creating…' : 'Create current-month payroll'}
+                {create.isPending ? 'Creating…' : currentPeriodExists ? 'Current-month payroll exists' : 'Create current-month payroll'}
               </Button>
             )}
           </div>

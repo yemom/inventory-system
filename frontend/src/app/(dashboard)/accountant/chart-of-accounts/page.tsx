@@ -228,7 +228,7 @@ export default function ChartOfAccountsPage() {
       </div>
 
       {/* Create Account Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Create New Account">
+      <Modal open={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Create New Account">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Account Code *</label>

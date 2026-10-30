@@ -2,7 +2,6 @@ package com.inventory.backend.compliance;
 
 import com.inventory.backend.chatbot.ChatbotProvider;
 import com.inventory.backend.chatbot.OpenAiCompatibleProvider;
-import com.inventory.backend.dto.PayrollDTO;
 import com.inventory.backend.dto.TaxSummaryDTO;
 import com.inventory.backend.model.*;
 import com.inventory.backend.repository.*;
@@ -19,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Collections;
 import java.util.List;
@@ -63,6 +63,15 @@ class ComplianceServiceUnitTest {
         return new BigDecimal(val).setScale(2, RoundingMode.HALF_UP);
     }
 
+    private static TaxSummaryDTO taxSummary(String outputVat, String inputVat, String netVat) {
+        return new TaxSummaryDTO(
+                LocalDate.now().withDayOfMonth(1), LocalDate.now(),
+                bd("0.00"), bd("0.00"), bd("0.00"), bd("0.00"),
+                bd(outputVat), bd(inputVat), bd("0.00"), bd(netVat), bd("0.00"), bd("0.00"),
+                bd("0.00"), bd(netVat), bd("0.00"), bd("0.00"), "ETB", "CALCULATED", "",
+                List.of(), List.of());
+    }
+
     @Nested
     @DisplayName("Compliance Findings Generator")
     class FindingsEngine {
@@ -80,29 +89,18 @@ class ComplianceServiceUnitTest {
 
             when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(List.of(unverified));
 
-            TaxSummaryDTO dummyTax = TaxSummaryDTO.builder()
-                    .outputVat(bd("0.00"))
-                    .eligibleInputVat(bd("0.00"))
-                    .estimatedNetVat(bd("0.00"))
-                    .build();
+            TaxSummaryDTO dummyTax = taxSummary("0.00", "0.00", "0.00");
             when(taxService.summary(any(YearMonth.class))).thenReturn(dummyTax);
 
-            PayrollDTO.Dashboard dummyPayroll = PayrollDTO.Dashboard.builder()
-                    .grossPayroll(bd("0.00"))
-                    .netPayroll(bd("0.00"))
-                    .hasData(false)
-                    .build();
-            when(payrollService.dashboard()).thenReturn(dummyPayroll);
             when(payrollPeriodRepository.findAllByOrderByYearDescMonthDesc()).thenReturn(Collections.emptyList());
             when(userRepository.findAll()).thenReturn(Collections.emptyList());
-            when(saleOrderRepository.findAll()).thenReturn(Collections.emptyList());
 
             ComplianceSummaryDTO summary = complianceService.getSummary(YearMonth.now());
 
             assertNotNull(summary);
-            assertTrue(summary.findings().stream().anyMatch(f -> "UNVERIFIED_TAX_RULES".equals(f.id())));
+            assertTrue(summary.findings().stream().anyMatch(f -> "RULE-001".equals(f.id())));
             ComplianceFinding finding = summary.findings().stream()
-                    .filter(f -> "UNVERIFIED_TAX_RULES".equals(f.id()))
+                    .filter(f -> "RULE-001".equals(f.id()))
                     .findFirst()
                     .orElseThrow();
 
@@ -113,30 +111,19 @@ class ComplianceServiceUnitTest {
         @Test
         @DisplayName("Identifies outstanding Net VAT liabilities under Proclamation 1341/2024")
         void detectsNetVatLiability() {
-            TaxSummaryDTO taxWithLiability = TaxSummaryDTO.builder()
-                    .outputVat(bd("50000.00"))
-                    .eligibleInputVat(bd("10000.00"))
-                    .estimatedNetVat(bd("40000.00"))
-                    .build();
+            TaxSummaryDTO taxWithLiability = taxSummary("50000.00", "10000.00", "40000.00");
 
             when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(Collections.emptyList());
             when(taxService.summary(any(YearMonth.class))).thenReturn(taxWithLiability);
 
-            PayrollDTO.Dashboard dummyPayroll = PayrollDTO.Dashboard.builder()
-                    .grossPayroll(bd("0.00"))
-                    .netPayroll(bd("0.00"))
-                    .hasData(false)
-                    .build();
-            when(payrollService.dashboard()).thenReturn(dummyPayroll);
             when(payrollPeriodRepository.findAllByOrderByYearDescMonthDesc()).thenReturn(Collections.emptyList());
             when(userRepository.findAll()).thenReturn(Collections.emptyList());
-            when(saleOrderRepository.findAll()).thenReturn(Collections.emptyList());
 
             ComplianceSummaryDTO summary = complianceService.getSummary(YearMonth.now());
 
             assertNotNull(summary);
             assertEquals(bd("40000.00"), summary.outstandingTaxLiability());
-            assertTrue(summary.findings().stream().anyMatch(f -> "NET_VAT_PAYABLE".equals(f.id())));
+            assertTrue(summary.findings().stream().anyMatch(f -> "TAX-001".equals(f.id())));
         }
 
         @Test
@@ -144,38 +131,26 @@ class ComplianceServiceUnitTest {
         void detectsUnpaidPayroll() {
             when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(Collections.emptyList());
 
-            TaxSummaryDTO dummyTax = TaxSummaryDTO.builder()
-                    .outputVat(bd("0.00"))
-                    .eligibleInputVat(bd("0.00"))
-                    .estimatedNetVat(bd("0.00"))
-                    .build();
+            TaxSummaryDTO dummyTax = taxSummary("0.00", "0.00", "0.00");
             when(taxService.summary(any(YearMonth.class))).thenReturn(dummyTax);
-
-            PayrollDTO.Dashboard dummyPayroll = PayrollDTO.Dashboard.builder()
-                    .grossPayroll(bd("25000.00"))
-                    .netPayroll(bd("19000.00"))
-                    .hasData(true)
-                    .build();
-            when(payrollService.dashboard()).thenReturn(dummyPayroll);
 
             PayrollPeriod finalizedPeriod = PayrollPeriod.builder()
                     .id(1L)
-                    .year(2026)
-                    .month(9)
-                    .status(PayrollPeriod.PeriodStatus.FINALIZED)
+                    .year(YearMonth.now().getYear())
+                    .month(YearMonth.now().getMonthValue())
+                    .status("FINALIZED")
                     .grossPayroll(bd("25000.00"))
                     .netPayroll(bd("19000.00"))
                     .build();
 
             when(payrollPeriodRepository.findAllByOrderByYearDescMonthDesc()).thenReturn(List.of(finalizedPeriod));
             when(userRepository.findAll()).thenReturn(Collections.emptyList());
-            when(saleOrderRepository.findAll()).thenReturn(Collections.emptyList());
 
             ComplianceSummaryDTO summary = complianceService.getSummary(YearMonth.now());
 
             assertNotNull(summary);
             assertEquals(bd("19000.00"), summary.unpaidPayrollLiability());
-            assertTrue(summary.findings().stream().anyMatch(f -> "FINALIZED_UNPAID_PAYROLL".equals(f.id())));
+            assertTrue(summary.findings().stream().anyMatch(f -> "PAYROLL-UNPAID-1".equals(f.id())));
         }
     }
 }

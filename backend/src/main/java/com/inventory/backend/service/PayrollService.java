@@ -1,10 +1,11 @@
 package com.inventory.backend.service;
 
 import com.inventory.backend.dto.PayrollDTO;
+import com.inventory.backend.exception.BusinessRuleViolationException;
 import com.inventory.backend.model.*;
 import com.inventory.backend.repository.*;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -15,13 +16,10 @@ import java.time.*;
 import java.util.*;
 import java.util.regex.*;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PayrollService {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-    private static final BigDecimal EMPLOYEE_PENSION_RATE = new BigDecimal("0.07"); // Proc. No. 1268/2022
-    private static final BigDecimal EMPLOYER_PENSION_RATE = new BigDecimal("0.11"); // Proc. No. 1268/2022
 
     private final PayrollProfileRepository profileRepository;
     private final PayrollPeriodRepository periodRepository;
@@ -59,17 +57,31 @@ public class PayrollService {
     @Transactional
     public PayrollDTO.Period createPeriod(int year, int month) {
         if (month < 1 || month > 12) throw new IllegalArgumentException("month must be between 1 and 12.");
-        if (periodRepository.findAll().stream().anyMatch(p -> p.getYear() == year && p.getMonth() == month)) {
-            throw new IllegalArgumentException("A payroll period already exists for " + year + "-" + month);
+        if (periodRepository.existsByYearAndMonth(year, month)) {
+            throw new BusinessRuleViolationException("PAYROLL_PERIOD_EXISTS",
+                    "A payroll period already exists for " + year + "-" + String.format("%02d", month)
+                            + ". Open the existing period to review it.");
         }
-        PayrollPeriod period = periodRepository.save(PayrollPeriod.builder()
-                .year(year).month(month).status("DRAFT")
-                .ruleVersion(ruleVersion(YearMonth.of(year, month)))
-                .build());
+        YearMonth targetMonth = YearMonth.of(year, month);
+        List<PayrollProfile> activeProfiles = profileRepository.findByActiveTrue().stream()
+                .filter(p -> !p.getEffectiveFrom().isAfter(targetMonth.atEndOfMonth())).toList();
+        boolean rulesReady = payrollRulesReady(targetMonth, activeProfiles);
+        PayrollPeriod period;
+        try {
+            period = periodRepository.saveAndFlush(PayrollPeriod.builder()
+                    .year(year).month(month).status("DRAFT")
+                    .ruleVersion(ruleVersion(targetMonth) + (rulesReady ? "" : "; awaiting-accountant-verification"))
+                    .build());
+        } catch (DataIntegrityViolationException duplicate) {
+            throw new BusinessRuleViolationException("PAYROLL_PERIOD_EXISTS",
+                    "A payroll period already exists for " + year + "-" + String.format("%02d", month)
+                            + ". Open the existing period to review it.");
+        }
 
-        List<PayrollProfile> activeProfiles = profileRepository.findByActiveTrue();
-        for (PayrollProfile profile : activeProfiles) {
-            itemRepository.save(calculate(period, profile, YearMonth.of(year, month)));
+        if (rulesReady) {
+            for (PayrollProfile profile : activeProfiles) {
+                itemRepository.save(calculate(period, profile, targetMonth));
+            }
         }
         refreshTotals(period);
         audit("PAYROLL_PERIOD_CREATED", "PAYROLL_PERIOD", period.getId(), year + "-" + month);
@@ -97,8 +109,32 @@ public class PayrollService {
         }
         YearMonth month = YearMonth.of(period.getYear(), period.getMonth());
         List<TaxRule> activeRules = effectiveRules(month.atEndOfMonth());
-        if (activeRules.stream().anyMatch(r -> !"VERIFIED".equals(r.getVerificationStatus()))) {
-            throw new IllegalStateException("Payroll cannot finalize until all effective tax and pension rules are verified by an authorized accountant.");
+        List<PayrollProfile> periodProfiles = profileRepository.findByActiveTrue().stream()
+                .filter(p -> !p.getEffectiveFrom().isAfter(month.atEndOfMonth())).toList();
+        if (!payrollRulesReady(month, periodProfiles)) {
+            throw new IllegalStateException("Payroll cannot finalize until the effective employment-tax brackets and applicable pension rates are verified.");
+        }
+        Set<String> required = periodProfiles.stream()
+                .anyMatch(PayrollProfile::isPensionEligible)
+                ? Set.of("PENSION_EMPLOYEE", "PENSION_EMPLOYER") : Set.of();
+        if (!activeRules.stream().filter(r -> required.contains(r.getCode()))
+                .filter(r -> "VERIFIED".equals(r.getVerificationStatus()))
+                .map(TaxRule::getCode).collect(java.util.stream.Collectors.toSet()).containsAll(required)
+                || required.stream().anyMatch(code -> ruleRepository.findEffective(code, month.atEndOfMonth())
+                        .stream().anyMatch(r -> !"VERIFIED".equals(r.getVerificationStatus())))) {
+            throw new IllegalStateException("Payroll cannot finalize until effective employment-tax brackets and applicable pension rules are verified.");
+        }
+        List<TaxRule> verifiedBrackets = activeRules.stream()
+                .filter(r -> r.getCode().startsWith("EMPLOYMENT_BRACKET_"))
+                .filter(r -> "VERIFIED".equals(r.getVerificationStatus()))
+                .sorted(Comparator.comparing(this::upperBound, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        boolean hasTaxablePayroll = itemRepository.findByPayrollPeriodId(id).stream()
+                .anyMatch(i -> i.getTaxableIncome() != null && i.getTaxableIncome().signum() > 0);
+        if (hasTaxablePayroll && (verifiedBrackets.isEmpty()
+                || verifiedBrackets.get(verifiedBrackets.size() - 1).getNotes() == null
+                || !verifiedBrackets.get(verifiedBrackets.size() - 1).getNotes().contains("upperBound=INFINITY"))) {
+            throw new IllegalStateException("Payroll cannot finalize without verified effective employment-tax brackets.");
         }
         period.setStatus("FINALIZED");
         period.setFinalizedAt(LocalDateTime.now());
@@ -121,14 +157,7 @@ public class PayrollService {
         }
 
         User actor = currentUser();
-        period.setStatus("PAID");
-        period.setPaidAt(LocalDateTime.now());
-        period.setPaidBy(actor);
-        periodRepository.save(period);
-
-        // Record outgoing financial payment for net payroll
-        try {
-            Payment p = Payment.builder()
+        Payment p = Payment.builder()
                     .reference("PR-" + period.getYear() + "-" + String.format("%02d", period.getMonth()))
                     .orderReference("PAYROLL-" + period.getYear() + "-" + String.format("%02d", period.getMonth()))
                     .direction("OUT")
@@ -142,10 +171,11 @@ public class PayrollService {
                     .createdBy(actor == null ? "system" : actor.getUsername())
                     .createdByUser(actor)
                     .build();
-            paymentRepository.save(p);
-        } catch (Exception e) {
-            log.warn("Could not record payroll payment voucher: {}", e.getMessage());
-        }
+        paymentRepository.save(p);
+        period.setStatus("PAID");
+        period.setPaidAt(LocalDateTime.now());
+        period.setPaidBy(actor);
+        periodRepository.save(period);
 
         audit("PAYROLL_PAID", "PAYROLL_PERIOD", id, period.getYear() + "-" + period.getMonth());
         return period(period, true);
@@ -173,7 +203,6 @@ public class PayrollService {
                     ZERO, ZERO, ZERO, ZERO, ZERO, ZERO,
                     profiles.size(), 0, 0, 0, ZERO, ZERO, "ETB", hasData);
         }
-
         PayrollPeriod latest = periods.get(0);
         long draftCount = periods.stream().filter(p -> "DRAFT".equals(p.getStatus())).count();
         long finalizedCount = periods.stream().filter(p -> "FINALIZED".equals(p.getStatus())).count();
@@ -208,15 +237,39 @@ public class PayrollService {
                 true);
     }
 
+    @Transactional(readOnly = true)
+    public PayrollDTO.Dashboard dashboard(YearMonth month) {
+        List<PayrollPeriod> periods = periodRepository.findAllByOrderByYearDescMonthDesc();
+        List<PayrollProfile> profiles = profileRepository.findByActiveTrue().stream()
+                .filter(p -> !p.getEffectiveFrom().isAfter(month.atEndOfMonth())).toList();
+        PayrollPeriod selected = periods.stream().filter(p -> p.getYear() == month.getYear()
+                && p.getMonth() == month.getMonthValue()).findFirst().orElse(null);
+        BigDecimal paid = periods.stream().filter(p -> "PAID".equals(p.getStatus()))
+                .filter(p -> p.getYear() == month.getYear() && p.getMonth() == month.getMonthValue())
+                .map(PayrollPeriod::getNetPayroll).map(PayrollService::money).reduce(ZERO, BigDecimal::add);
+        BigDecimal outstanding = selected != null && !"PAID".equals(selected.getStatus())
+                ? money(selected.getNetPayroll()) : ZERO;
+        return selected == null
+                ? new PayrollDTO.Dashboard(ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, profiles.size(), 0, 0, 0,
+                        paid, outstanding, "ETB", !profiles.isEmpty())
+                : new PayrollDTO.Dashboard(money(selected.getGrossPayroll()), money(selected.getNetPayroll()),
+                        money(selected.getEmploymentTax()), money(selected.getEmployeePension()),
+                        money(selected.getEmployerPension()), money(selected.getEmployerCost()), profiles.size(),
+                        "DRAFT".equals(selected.getStatus()) ? 1 : 0,
+                        "FINALIZED".equals(selected.getStatus()) ? 1 : 0,
+                        "PAID".equals(selected.getStatus()) ? 1 : 0, paid, outstanding, "ETB", true);
+    }
+
     // ── Calculations & Helpers ───────────────────────────────────────────────
 
     private PayrollItem calculate(PayrollPeriod period, PayrollProfile profile, YearMonth month) {
         BigDecimal gross = money(profile.getBasicSalary());
-        BigDecimal employeePension = profile.isPensionEligible()
-                ? gross.multiply(rate("PENSION_EMPLOYEE", month, EMPLOYEE_PENSION_RATE)).setScale(2, RoundingMode.HALF_UP)
+        boolean eligible = profile.isPensionEligible();
+        BigDecimal employeePension = eligible
+                ? gross.multiply(requiredRate("PENSION_EMPLOYEE", month)).setScale(2, RoundingMode.HALF_UP)
                 : ZERO;
-        BigDecimal employerPension = profile.isPensionEligible()
-                ? gross.multiply(rate("PENSION_EMPLOYER", month, EMPLOYER_PENSION_RATE)).setScale(2, RoundingMode.HALF_UP)
+        BigDecimal employerPension = eligible
+                ? gross.multiply(requiredRate("PENSION_EMPLOYER", month)).setScale(2, RoundingMode.HALF_UP)
                 : ZERO;
         BigDecimal tax = progressiveTax(gross, month);
         BigDecimal net = gross.subtract(employeePension).subtract(tax).setScale(2, RoundingMode.HALF_UP);
@@ -246,6 +299,11 @@ public class PayrollService {
     public BigDecimal progressiveTax(BigDecimal income, YearMonth month) {
         if (income == null || income.signum() <= 0) return ZERO;
 
+        if (ruleRepository.findEffective("PENSION_EMPLOYEE", month.atEndOfMonth()).isEmpty()
+                || ruleRepository.findEffective("PENSION_EMPLOYER", month.atEndOfMonth()).isEmpty()) {
+            throw new IllegalStateException("Effective employee and employer pension rules are required for " + month + ".");
+        }
+
         // Try to load configured effective tax brackets from database
         List<TaxRule> bracketRules = effectiveRules(month.atEndOfMonth()).stream()
                 .filter(r -> r.getCode().startsWith("EMPLOYMENT_BRACKET_"))
@@ -253,6 +311,13 @@ public class PayrollService {
                 .toList();
 
         if (!bracketRules.isEmpty()) {
+            if (bracketRules.stream().anyMatch(r -> !"VERIFIED".equals(r.getVerificationStatus()))) {
+                throw new IllegalStateException("Employment income-tax rules require verification for " + month + ".");
+            }
+            if (bracketRules.get(bracketRules.size() - 1).getNotes() == null
+                    || !bracketRules.get(bracketRules.size() - 1).getNotes().contains("upperBound=INFINITY")) {
+                throw new IllegalStateException("Employment income-tax brackets are incomplete for " + month + ".");
+            }
             BigDecimal lower = BigDecimal.ZERO;
             BigDecimal total = ZERO;
             for (TaxRule rule : bracketRules) {
@@ -267,29 +332,10 @@ public class PayrollService {
             return money(total);
         }
 
-        // Standard statutory Ethiopian progressive brackets fallback (Proc. No. 1395/2025):
-        // 0 - 2,000: 0%
-        // 2,001 - 4,000: 10% (deduction = 200)
-        // 4,001 - 7,000: 15% (deduction = 400)
-        // 7,001 - 10,000: 20% (deduction = 750)
-        // 10,001 - 14,000: 25% (deduction = 1,250)
-        // > 14,000: 35% (deduction = 2,650)
-        double inc = income.doubleValue();
-        double tax;
-        if (inc <= 2000) {
-            tax = 0.0;
-        } else if (inc <= 4000) {
-            tax = inc * 0.10 - 200.0;
-        } else if (inc <= 7000) {
-            tax = inc * 0.15 - 400.0;
-        } else if (inc <= 10000) {
-            tax = inc * 0.20 - 750.0;
-        } else if (inc <= 14000) {
-            tax = inc * 0.25 - 1250.0;
-        } else {
-            tax = inc * 0.35 - 2650.0;
+        if (income.signum() > 0) {
+            throw new IllegalStateException("No effective employment income-tax brackets are configured for " + month + ".");
         }
-        return BigDecimal.valueOf(Math.max(0.0, tax)).setScale(2, RoundingMode.HALF_UP);
+        return ZERO;
     }
 
     private BigDecimal upperBound(TaxRule rule) {
@@ -298,9 +344,32 @@ public class PayrollService {
         return m.find() ? new BigDecimal(m.group(1)) : null;
     }
 
-    private BigDecimal rate(String code, YearMonth month, BigDecimal fallback) {
+    private BigDecimal requiredRate(String code, YearMonth month) {
         List<TaxRule> rules = ruleRepository.findEffective(code, month.atEndOfMonth());
-        return rules.isEmpty() ? fallback : rules.get(0).getRate();
+        if (rules.isEmpty() || !"VERIFIED".equals(rules.get(0).getVerificationStatus())) {
+            throw new IllegalStateException("No verified effective rule " + code + " for " + month + ".");
+        }
+        return rules.get(0).getRate();
+    }
+
+    private boolean payrollRulesReady(YearMonth month, List<PayrollProfile> profiles) {
+        boolean needsPension = profiles.stream().anyMatch(PayrollProfile::isPensionEligible);
+        if (needsPension) {
+            List<TaxRule> employee = ruleRepository.findEffective("PENSION_EMPLOYEE", month.atEndOfMonth());
+            List<TaxRule> employer = ruleRepository.findEffective("PENSION_EMPLOYER", month.atEndOfMonth());
+            if (employee.isEmpty() || employer.isEmpty()
+                    || !"VERIFIED".equals(employee.get(0).getVerificationStatus())
+                    || !"VERIFIED".equals(employer.get(0).getVerificationStatus())) return false;
+        }
+        if (profiles.stream().noneMatch(p -> p.getBasicSalary().signum() > 0)) return true;
+        List<TaxRule> brackets = effectiveRules(month.atEndOfMonth()).stream()
+                .filter(r -> r.getCode().startsWith("EMPLOYMENT_BRACKET_"))
+                .sorted(Comparator.comparing(this::upperBound, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return !brackets.isEmpty()
+                && brackets.stream().allMatch(r -> "VERIFIED".equals(r.getVerificationStatus()))
+                && brackets.get(brackets.size() - 1).getNotes() != null
+                && brackets.get(brackets.size() - 1).getNotes().contains("upperBound=INFINITY");
     }
 
     private List<TaxRule> effectiveRules(LocalDate date) {

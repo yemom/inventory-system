@@ -97,6 +97,7 @@ public class DashboardController {
 
         LocalDate end = to != null ? to : LocalDate.now();
         LocalDate start = from != null ? from : end.minusDays(29);
+        if (start.isAfter(end)) throw new IllegalArgumentException("from must be on or before to.");
 
         FinancialSummary current = calculations.summarise(start, end);
         FinancialSummary previous = calculations.previousPeriod(start, end);
@@ -200,6 +201,7 @@ public class DashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         LocalDate end = to != null ? to : LocalDate.now();
         LocalDate start = from != null ? from : end.minusDays(29);
+        if (start.isAfter(end)) throw new IllegalArgumentException("from must be on or before to.");
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("from", start.toString());

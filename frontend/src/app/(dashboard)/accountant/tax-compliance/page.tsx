@@ -33,15 +33,19 @@ export default function AccountantTaxCompliancePage() {
     try {
       const [taxRes, compOverview] = await Promise.allSettled([
         taxApi.summary(period),
-        complianceApi.overview(),
+        complianceApi.summary(period),
       ]);
 
       if (taxRes.status === 'fulfilled' && taxRes.value) {
         setTaxSummary(taxRes.value);
+      } else if (taxRes.status === 'rejected') {
+        throw taxRes.reason;
       }
       if (compOverview.status === 'fulfilled' && compOverview.value) {
-        setComplianceScore(compOverview.value.healthScore ?? 100);
-        setPendingFilings(compOverview.value.pendingTasksCount ?? 0);
+        setComplianceScore(compOverview.value.complianceScore ?? null);
+        setPendingFilings(compOverview.value.totalFindingsCount ?? 0);
+      } else if (compOverview.status === 'rejected') {
+        setError(`Compliance findings unavailable: ${(compOverview.reason as Error)?.message ?? 'request failed'}`);
       }
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? 'Failed to load tax and compliance data';
@@ -69,9 +73,10 @@ export default function AccountantTaxCompliancePage() {
 
   const periodOptions = Array.from({ length: 12 }, (_, i) => {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
+  }).filter((period, index, all) => all.indexOf(period) === index);
 
   return (
     <div className="space-y-6 p-6">

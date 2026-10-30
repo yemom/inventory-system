@@ -78,6 +78,7 @@ const EXPENSE_PALETTE = [
 export default function AccountantDashboard() {
   const { user, hasPermission } = useAuth();
   const [range, setRange] = useState<DateRange>(() => lastNDays(30));
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const maySeeMoney = hasPermission('FINANCIAL_REPORT_VIEW');
   const maySeeAi = hasPermission('AI_INSIGHT_VIEW');
@@ -90,6 +91,10 @@ export default function AccountantDashboard() {
 
   const money = financialQuery.data;
   const isRefreshing = financialQuery.isFetching || (maySeeAi && aiQuery.isFetching);
+
+  React.useEffect(() => {
+    if (financialQuery.dataUpdatedAt) setLastUpdated(new Date(financialQuery.dataUpdatedAt));
+  }, [financialQuery.dataUpdatedAt]);
 
   const handleRefresh = () => {
     financialQuery.refetch();
@@ -192,6 +197,7 @@ export default function AccountantDashboard() {
                   ({formatDate(range.from)} – {formatDate(range.to)})
                 </span>
               )}
+              {lastUpdated && <span className="ml-2">Updated {lastUpdated.toLocaleString()}</span>}
             </p>
           </div>
         </div>
@@ -263,6 +269,12 @@ export default function AccountantDashboard() {
               </div>
             </div>
           )}
+          {maySeeAi && aiQuery.isError && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              AI insights are unavailable. Financial figures remain sourced from backend records.
+              <Button variant="outline" size="sm" className="ml-3" onClick={() => aiQuery.refetch()}>Retry AI</Button>
+            </div>
+          )}
 
           {/* ── Section B: Revenue & Profit KPI row ─────────────────────────── */}
           <div>
@@ -280,8 +292,12 @@ export default function AccountantDashboard() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {financialQuery.isLoading || !money ? (
+              {financialQuery.isLoading ? (
                 Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+              ) : financialQuery.isError || !money ? (
+                <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                  Financial figures are unavailable for this reporting period. Retry the request to load persisted data.
+                </div>
               ) : (
                 <>
                   <StatCard
@@ -347,11 +363,15 @@ export default function AccountantDashboard() {
                   : 'lg:grid-cols-3'
               } gap-4`}
             >
-              {financialQuery.isLoading || !money ? (
+              {financialQuery.isLoading ? (
                 Array.from({
                   length:
                     money?.cashRefunded !== undefined && money?.cashRefunded !== null ? 4 : 3,
                 }).map((_, i) => <StatCardSkeleton key={i} />)
+              ) : financialQuery.isError || !money ? (
+                <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                  Cash flow is unavailable because the financial source request failed.
+                </div>
               ) : (
                 <>
                   <StatCard
@@ -420,11 +440,13 @@ export default function AccountantDashboard() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {financialQuery.isLoading || !money ? (
+              {financialQuery.isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <StatCardSkeleton />
                   <StatCardSkeleton />
                 </div>
+              ) : financialQuery.isError || !money ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Receivables and payables are unavailable because the financial source request failed.</p>
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -526,8 +548,10 @@ export default function AccountantDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {financialQuery.isLoading || !money ? (
+              {financialQuery.isLoading ? (
                 <Skeleton className="h-80 w-full rounded-xl" />
+              ) : financialQuery.isError || !money ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Profit chart data is unavailable for this period.</p>
               ) : (
                 <>
                   <div className="h-80 w-full">
@@ -646,8 +670,10 @@ export default function AccountantDashboard() {
               )}
             </CardHeader>
             <CardContent>
-              {financialQuery.isLoading || !money ? (
+              {financialQuery.isLoading ? (
                 <Skeleton className="h-48 w-full rounded-xl" />
+              ) : financialQuery.isError || !money ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Expense breakdown data is unavailable for this period.</p>
               ) : hasExpensesList ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                   {/* Left: Donut Chart */}
@@ -810,12 +836,14 @@ export default function AccountantDashboard() {
                 <Badge variant="outline">Balance Sheet</Badge>
               </CardHeader>
               <CardContent className="space-y-4">
-                {financialQuery.isLoading || !money ? (
+                {financialQuery.isLoading ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <StatCardSkeleton />
                     <StatCardSkeleton />
                     <StatCardSkeleton />
                   </div>
+                ) : financialQuery.isError || !money ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Inventory valuation data is unavailable for this period.</p>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

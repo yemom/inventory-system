@@ -47,6 +47,13 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_period ON journal_entries(account
 CREATE INDEX IF NOT EXISTS idx_journal_entries_status ON journal_entries(status);
 CREATE INDEX IF NOT EXISTS idx_journal_entries_source ON journal_entries(source_type, source_id);
 
+-- One operational source document can have at most one journal. Manual entries
+-- may legitimately omit a source identifier. Legacy duplicates must be
+-- reconciled before applying this constraint on an existing database.
+CREATE UNIQUE INDEX IF NOT EXISTS uk_journal_entries_source
+    ON journal_entries(source_type, source_id)
+    WHERE source_id IS NOT NULL AND source_type <> 'MANUAL';
+
 -- 3. Journal Lines
 CREATE TABLE IF NOT EXISTS journal_lines (
     id                  BIGSERIAL PRIMARY KEY,

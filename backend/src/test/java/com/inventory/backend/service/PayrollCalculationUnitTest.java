@@ -1,15 +1,11 @@
 package com.inventory.backend.service;
 
-import com.inventory.backend.dto.PayrollDashboardDTO;
-import com.inventory.backend.dto.PayrollPeriodDTO;
-import com.inventory.backend.model.*;
-import com.inventory.backend.repository.PayrollItemRepository;
-import com.inventory.backend.repository.PayrollPeriodRepository;
-import com.inventory.backend.repository.PayrollProfileRepository;
-import com.inventory.backend.repository.TaxRuleRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.inventory.backend.dto.PayrollDTO;
+import com.inventory.backend.model.PayrollPeriod;
+import com.inventory.backend.model.PayrollProfile;
+import com.inventory.backend.model.TaxRule;
+import com.inventory.backend.model.User;
+import com.inventory.backend.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -17,194 +13,122 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.Collections;
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PayrollCalculationUnitTest {
+    @Mock private PayrollProfileRepository profileRepository;
+    @Mock private PayrollPeriodRepository periodRepository;
+    @Mock private PayrollItemRepository itemRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private TaxRuleRepository taxRuleRepository;
+    @Mock private PaymentRepository paymentRepository;
+    @Mock private AuditLogService auditLogService;
 
-    @Mock
-    private PayrollProfileRepository profileRepository;
+    @InjectMocks private PayrollService payrollService;
 
-    @Mock
-    private PayrollPeriodRepository periodRepository;
-
-    @Mock
-    private PayrollItemRepository itemRepository;
-
-    @Mock
-    private TaxRuleRepository taxRuleRepository;
-
-    @InjectMocks
-    private PayrollService payrollService;
-
-    private static BigDecimal bd(String val) {
-        return new BigDecimal(val).setScale(2, RoundingMode.HALF_UP);
+    private static TaxRule bracket(String code, String rate, String bound, String status) {
+        return TaxRule.builder()
+                .code(code)
+                .name(code)
+                .type("EMPLOYMENT_INCOME_TAX")
+                .rate(new BigDecimal(rate))
+                .effectiveFrom(LocalDate.of(2020, 1, 1))
+                .verificationStatus(status)
+                .notes("upperBound=" + bound)
+                .active(true)
+                .build();
     }
 
-    @Nested
-    @DisplayName("Proclamation No. 1395/2025 Progressive Employment Tax Brackets")
-    class IncomeTaxBrackets {
-
-        @Test
-        @DisplayName("Bracket 1: Up to 2,000 ETB is exempt (0% tax)")
-        void bracket1_Exempt() {
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("2000.00"));
-            assertEquals(bd("0.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 2: 2,001 to 4,000 ETB taxed at 10% less 200 ETB deduction")
-        void bracket2_TenPercent() {
-            // 3,000 * 0.10 - 200 = 100.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("3000.00"));
-            assertEquals(bd("100.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 3: 4,001 to 7,000 ETB taxed at 15% less 400 ETB deduction")
-        void bracket3_FifteenPercent() {
-            // 5,000 * 0.15 - 400 = 750 - 400 = 350.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("5000.00"));
-            assertEquals(bd("350.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 4: 7,001 to 10,000 ETB taxed at 20% less 750 ETB deduction")
-        void bracket4_TwentyPercent() {
-            // 8,000 * 0.20 - 750 = 1,600 - 750 = 850.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("8000.00"));
-            assertEquals(bd("850.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 5: 10,001 to 14,000 ETB taxed at 25% less 1,250 ETB deduction")
-        void bracket5_TwentyFivePercent() {
-            // 12,000 * 0.25 - 1,250 = 3,000 - 1,250 = 1,750.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("12000.00"));
-            assertEquals(bd("1750.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 6: 14,001 to 19,000 ETB taxed at 30% less 1,950 ETB deduction")
-        void bracket6_ThirtyPercent() {
-            // 16,000 * 0.30 - 1,950 = 4,800 - 1,950 = 2,850.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("16000.00"));
-            assertEquals(bd("2850.00"), tax);
-        }
-
-        @Test
-        @DisplayName("Bracket 7: Above 19,000 ETB taxed at 35% less 2,900 ETB deduction")
-        void bracket7_ThirtyFivePercent() {
-            // 25,000 * 0.35 - 2,900 = 8,750 - 2,900 = 5,850.00 ETB
-            BigDecimal tax = payrollService.calculateEmploymentTax(bd("25000.00"));
-            assertEquals(bd("5850.00"), tax);
-        }
+    private void stubPensionRules(YearMonth month) {
+        TaxRule employee = TaxRule.builder().code("PENSION_EMPLOYEE").rate(new BigDecimal("0.07"))
+                .effectiveFrom(LocalDate.of(2020, 1, 1)).verificationStatus("VERIFIED").build();
+        TaxRule employer = TaxRule.builder().code("PENSION_EMPLOYER").rate(new BigDecimal("0.11"))
+                .effectiveFrom(LocalDate.of(2020, 1, 1)).verificationStatus("VERIFIED").build();
+        when(taxRuleRepository.findEffective(eq("PENSION_EMPLOYEE"), eq(month.atEndOfMonth())))
+                .thenReturn(List.of(employee));
+        when(taxRuleRepository.findEffective(eq("PENSION_EMPLOYER"), eq(month.atEndOfMonth())))
+                .thenReturn(List.of(employer));
     }
 
-    @Nested
-    @DisplayName("Payroll Invariants & Pension Calculations (Proc 1268/2022)")
-    class InvariantsAndPension {
+    @Test
+    void progressiveTaxUsesVerifiedEffectiveBrackets() {
+        YearMonth month = YearMonth.of(2026, 10);
+        stubPensionRules(month);
+        when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(List.of(
+                bracket("EMPLOYMENT_BRACKET_1", "0.00", "2000", "VERIFIED"),
+                bracket("EMPLOYMENT_BRACKET_2", "0.10", "INFINITY", "VERIFIED")));
 
-        @Test
-        @DisplayName("Gross - Deductions == Net Pay & Employer Cost == Gross + Employer Pension")
-        void testPayrollInvariants() {
-            BigDecimal basicSalary = bd("10000.00");
-            BigDecimal allowances = bd("2000.00");
-            BigDecimal grossSalary = basicSalary.add(allowances); // 12,000.00
+        BigDecimal tax = payrollService.progressiveTax(new BigDecimal("3000.00"), month);
 
-            // Employee pension = 7% of 12,000 = 840.00
-            BigDecimal empPension = grossSalary.multiply(new BigDecimal("0.07")).setScale(2, RoundingMode.HALF_UP);
-            assertEquals(bd("840.00"), empPension);
+        assertEquals(new BigDecimal("100.00"), tax);
+    }
 
-            // Employer pension = 11% of 12,000 = 1,320.00
-            BigDecimal emprPension = grossSalary.multiply(new BigDecimal("0.11")).setScale(2, RoundingMode.HALF_UP);
-            assertEquals(bd("1320.00"), emprPension);
+    @Test
+    void progressiveTaxRejectsMissingEffectivePensionRules() {
+        when(taxRuleRepository.findEffective(anyString(), any(LocalDate.class))).thenReturn(List.of());
 
-            // Income tax on 12,000 (bracket 5: 12,000 * 0.25 - 1,250) = 1,750.00
-            BigDecimal incomeTax = payrollService.calculateEmploymentTax(grossSalary);
-            assertEquals(bd("1750.00"), incomeTax);
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> payrollService.progressiveTax(new BigDecimal("3000.00"), YearMonth.of(2026, 10)));
 
-            BigDecimal otherDeductions = bd("100.00");
-            BigDecimal totalDeductions = incomeTax.add(empPension).add(otherDeductions); // 1,750 + 840 + 100 = 2,690.00
-            BigDecimal netPay = grossSalary.subtract(totalDeductions); // 12,000 - 2,690 = 9,310.00
+        assertTrue(error.getMessage().contains("pension rules are required"));
+    }
 
-            // Invariant 1: Gross - Deductions == Net Pay
-            assertEquals(grossSalary.subtract(totalDeductions), netPay);
-            assertEquals(bd("9310.00"), netPay);
+    @Test
+    void periodCreationSavesAnUncalculatedDraftUntilRulesAreVerified() {
+        int year = 2026;
+        int month = 10;
+        PayrollProfile profile = PayrollProfile.builder()
+                .user(User.builder().id(5L).build())
+                .basicSalary(new BigDecimal("3000.00"))
+                .effectiveFrom(LocalDate.of(2026, 1, 1))
+                .pensionEligible(false)
+                .active(true)
+                .build();
+        when(periodRepository.existsByYearAndMonth(year, month)).thenReturn(false);
+        when(profileRepository.findByActiveTrue()).thenReturn(List.of(profile));
+        when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(List.of(
+                bracket("EMPLOYMENT_BRACKET_1", "0.10", "INFINITY", "ACCOUNTANT_REVIEW_REQUIRED")));
+        when(periodRepository.saveAndFlush(any(PayrollPeriod.class))).thenAnswer(invocation -> {
+            PayrollPeriod period = invocation.getArgument(0);
+            period.setId(10L);
+            return period;
+        });
+        when(itemRepository.findByPayrollPeriodId(10L)).thenReturn(List.of());
 
-            // Invariant 2: Employer Payroll Cost == Gross + Employer Pension
-            BigDecimal employerPayrollCost = grossSalary.add(emprPension);
-            assertEquals(bd("13320.00"), employerPayrollCost);
-        }
+        PayrollDTO.Period period = payrollService.createPeriod(year, month);
 
-        @Test
-        @DisplayName("Finalization is blocked when active tax rules require accountant review")
-        void finalizationRequiresVerifiedRules() {
-            TaxRule unverifiedRule = TaxRule.builder()
-                    .id(1L)
-                    .code("VAT_STANDARD")
-                    .verificationStatus("ACCOUNTANT_REVIEW_REQUIRED")
-                    .active(true)
-                    .build();
+        assertEquals("DRAFT", period.status());
+        assertTrue(period.items().isEmpty());
+        assertTrue(period.ruleVersion().contains("awaiting-accountant-verification"));
+        verify(itemRepository, never()).save(any());
+    }
 
-            when(taxRuleRepository.findByActiveTrue()).thenReturn(List.of(unverifiedRule));
+    @Test
+    void finalizationIsBlockedUntilPayrollRulesAreVerified() {
+        YearMonth month = YearMonth.of(2026, 10);
+        PayrollPeriod period = PayrollPeriod.builder().id(10L).year(2026).month(10).status("DRAFT").build();
+        PayrollProfile profile = PayrollProfile.builder()
+                .basicSalary(new BigDecimal("3000.00"))
+                .effectiveFrom(LocalDate.of(2026, 1, 1))
+                .pensionEligible(false)
+                .active(true)
+                .build();
+        when(periodRepository.findById(10L)).thenReturn(Optional.of(period));
+        when(profileRepository.findByActiveTrue()).thenReturn(List.of(profile));
+        when(taxRuleRepository.findByActiveTrueOrderByTypeAscEffectiveFromDesc()).thenReturn(List.of());
 
-            PayrollPeriod period = PayrollPeriod.builder()
-                    .id(10L)
-                    .year(2026)
-                    .month(10)
-                    .status(PayrollPeriod.PeriodStatus.DRAFT)
-                    .build();
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> payrollService.finalizePeriod(10L));
 
-            when(periodRepository.findById(10L)).thenReturn(Optional.of(period));
-
-            IllegalStateException ex = assertThrows(IllegalStateException.class, () -> payrollService.finalizePeriod(10L));
-            assertTrue(ex.getMessage().contains("Cannot finalize payroll"));
-            assertTrue(ex.getMessage().contains("VAT_STANDARD"));
-        }
-
-        @Test
-        @DisplayName("Dashboard returns honest empty state (hasData=false) when zero periods exist")
-        void emptyStateHandledHonestly() {
-            when(periodRepository.findAll()).thenReturn(Collections.emptyList());
-            when(profileRepository.findByActiveTrue()).thenReturn(Collections.emptyList());
-
-            PayrollDashboardDTO dashboard = payrollService.dashboard();
-
-            assertNotNull(dashboard);
-            assertFalse(dashboard.hasData(), "Dashboard must declare hasData=false when no records exist");
-            assertEquals(BigDecimal.ZERO, dashboard.grossPayroll());
-            assertEquals(BigDecimal.ZERO, dashboard.netPayroll());
-            assertEquals(BigDecimal.ZERO, dashboard.employerCost());
-        }
-
-        @Test
-        @DisplayName("Disbursement marks finalized period as PAID with timestamp")
-        void disburseAndMarkPaid() {
-            PayrollPeriod period = PayrollPeriod.builder()
-                    .id(20L)
-                    .year(2026)
-                    .month(9)
-                    .status(PayrollPeriod.PeriodStatus.FINALIZED)
-                    .grossPayroll(bd("50000.00"))
-                    .netPayroll(bd("38500.00"))
-                    .build();
-
-            when(periodRepository.findById(20L)).thenReturn(Optional.of(period));
-            when(periodRepository.save(any(PayrollPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            PayrollPeriodDTO result = payrollService.payPeriod(20L);
-
-            assertNotNull(result);
-            assertEquals(PayrollPeriod.PeriodStatus.PAID, result.status());
-            assertNotNull(result.paidAt());
-        }
+        assertTrue(error.getMessage().contains("verified"));
+        verify(periodRepository, never()).save(any(PayrollPeriod.class));
     }
 }

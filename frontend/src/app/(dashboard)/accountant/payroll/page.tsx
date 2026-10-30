@@ -32,7 +32,9 @@ export default function AccountantPayrollPage() {
       ]);
 
       if (dashRes.status === 'fulfilled') setDashboard(dashRes.value);
+      else setError(`Payroll summary unavailable: ${(dashRes.reason as Error)?.message ?? 'request failed'}`);
       if (periodsRes.status === 'fulfilled') setPeriods(periodsRes.value);
+      else setError(`Payroll periods unavailable: ${(periodsRes.reason as Error)?.message ?? 'request failed'}`);
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? 'Failed to load payroll data';
       setError(msg);
@@ -216,7 +218,7 @@ export default function AccountantPayrollPage() {
                 {periods.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="whitespace-nowrap px-6 py-3.5 font-medium text-gray-900 dark:text-gray-200">
-                      {p.name || `${p.year}-${String(p.month).padStart(2, '0')}`}
+                      {`${p.year}-${String(p.month).padStart(2, '0')}`}
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5">
                       <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -229,16 +231,16 @@ export default function AccountantPayrollPage() {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-right font-mono text-gray-900 dark:text-gray-100">
-                      {ETB(p.totalGross)}
+                      {ETB(p.grossPayroll)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-right font-mono text-red-600 dark:text-red-400">
-                      {ETB(p.totalTax)}
+                      {ETB(p.employmentTax)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-right font-mono text-amber-600 dark:text-amber-400">
-                      {ETB(p.totalPension)}
+                      {ETB(p.employeePension + p.employerPension)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                      {ETB(p.totalNet)}
+                      {ETB(p.netPayroll)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-center">
                       <Link

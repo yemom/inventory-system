@@ -30,8 +30,12 @@ public class TaxController {
     @PreAuthorize("hasAuthority('TAX_DASHBOARD_VIEW')")
     public ResponseEntity<ApiResponse<TaxSummaryDTO>> summary(
             @RequestParam(required = false) String period) {
-        YearMonth month = (period == null || period.isBlank())
-                ? YearMonth.now() : YearMonth.parse(period);
+        final YearMonth month;
+        try {
+            month = period == null || period.isBlank() ? YearMonth.now() : YearMonth.parse(period);
+        } catch (RuntimeException invalid) {
+            throw new IllegalArgumentException("period must use YYYY-MM format.");
+        }
         return ResponseEntity.ok(ApiResponse.ok(
                 "Tax estimate calculated from recorded transactions",
                 taxService.summary(month)));

@@ -5,6 +5,11 @@ const path = require('path');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // Windows sandboxed builds can reject parallel .next writes. Keep local
+  // Windows builds serial while leaving Linux deployment builds parallel.
+  experimental: {
+    cpus: process.platform === 'win32' ? 1 : undefined,
+  },
 
   // Pin the workspace root to the frontend package. Without this, Turbopack
   // walks up the tree, finds a stray root-level package-lock.json, picks the

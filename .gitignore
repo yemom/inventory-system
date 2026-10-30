@@ -56,3 +56,9 @@ docker-compose.override.yml
 # These are machine-local agent memory/digest files, not project source.
 # They churn on every run and must not be committed.
 .refact/
+
+# Local PostgreSQL cluster and credentials may contain business/personal data.
+.local-pg/
+
+# Jest transform cache
+frontend/.jest-cache/

@@ -181,9 +181,10 @@ export default function AccountantDashboardPage() {
 
   const periodOptions = Array.from({ length: 12 }, (_, i) => {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
+  }).filter((period, index, all) => all.indexOf(period) === index);
 
   return (
     <div className="space-y-8 p-6">
@@ -238,7 +239,7 @@ export default function AccountantDashboardPage() {
                 General Ledger Status: {trialBalance.balanced ? 'Trial Balance in Strict Equilibrium' : 'Ledger Out of Balance!'}
               </p>
               <p className="text-xs opacity-90">
-                Total Debits: {ETB(trialBalance.totalDebits)} | Total Credits: {ETB(trialBalance.totalCredits)}
+                Total Debits: {ETB(trialBalance.totalDebit)} | Total Credits: {ETB(trialBalance.totalCredit)}
               </p>
             </div>
           </div>

@@ -30,6 +30,8 @@ import CashierDashboard from '@/components/dashboard/CashierDashboard';
 import SupervisorDashboard from '@/components/dashboard/SupervisorDashboard';
 import InventoryStaffDashboard from '@/components/dashboard/InventoryStaffDashboard';
 import AccountantDashboard from '@/components/dashboard/AccountantDashboard';
+import PayrollPage from '../payroll/page';
+import TaxCompliancePage from '../accountant/tax-compliance/page';
 import { useAiDashboard, useDashboardFinancial } from '@/hooks/useAiDashboard';
 import { useProducts } from '@/hooks/useProducts';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -92,7 +94,7 @@ export default function DashboardPage() {
   const userRole = user?.role;
   const isElevatedRole =
     userRole === 'SUPER_ADMIN' || userRole === 'MANAGER' || userRole === 'ACCOUNTANT';
-  const [activeTab, setActiveTab] = useState<'default' | 'cashier' | 'supervisor' | 'inventory' | 'accountant'>('default');
+  const [activeTab, setActiveTab] = useState<'default' | 'cashier' | 'supervisor' | 'inventory' | 'accountant' | 'payroll' | 'tax'>('default');
 
   if (userRole === 'CASHIER') {
     return <CashierDashboard />;
@@ -171,6 +173,28 @@ export default function DashboardPage() {
             >
               Accountant View
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('payroll')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'payroll'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Payroll View
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('tax')}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                activeTab === 'tax'
+                  ? 'bg-white shadow-sm text-blue-600 dark:bg-gray-700 dark:text-blue-400 font-semibold'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+            >
+              Tax View
+            </button>
           </div>
           <span className="text-xs text-gray-500">
             Active Role: <strong className="text-gray-800 dark:text-gray-200">{user?.role}</strong>
@@ -182,6 +206,8 @@ export default function DashboardPage() {
       {activeTab === 'supervisor' && <SupervisorDashboard />}
       {activeTab === 'inventory' && <InventoryStaffDashboard />}
       {activeTab === 'accountant' && <AccountantDashboard />}
+      {activeTab === 'payroll' && <PayrollPage />}
+      {activeTab === 'tax' && <TaxCompliancePage />}
 
       {activeTab === 'default' && (
         <>

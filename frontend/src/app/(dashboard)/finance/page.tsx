@@ -209,7 +209,7 @@ export default function FinanceOverviewPage() {
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Total Debits = {etb(tbQuery.data?.totalDebits)}
+                  Total Debits = {etb(tbQuery.data?.totalDebit)}
                 </p>
               </div>
 
@@ -228,7 +228,7 @@ export default function FinanceOverviewPage() {
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
                 <span className="text-xs font-medium text-gray-500">Standard Chart of Accounts</span>
                 <p className="mt-1 text-sm font-bold text-gray-900 dark:text-gray-100">
-                  {tbQuery.data?.rows?.length ?? 13} Active Accounts
+                  {tbQuery.data?.items?.length ?? 0} Active Accounts
                 </p>
                 <Link href="/accountant/chart-of-accounts" className="mt-1 block text-xs text-indigo-600 hover:underline dark:text-indigo-400">
                   View Chart of Accounts &rarr;
@@ -455,7 +455,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={charts?.monthlyVat || []}>
+                      <BarChart data={(charts?.monthlyVat || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -478,7 +478,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={charts?.taxLiabilitiesVsPayments || []}>
+                      <BarChart data={(charts?.taxLiabilitiesVsPayments || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -501,7 +501,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={charts?.payrollGrossVsNet || []}>
+                      <BarChart data={(charts?.payrollGrossVsNet || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -525,7 +525,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={charts?.employeeTaxPensionTrends || []}>
+                      <LineChart data={(charts?.employeeTaxPensionTrends || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -549,7 +549,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={charts?.employerCostTrends || []}>
+                      <AreaChart data={(charts?.employerCostTrends || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -572,7 +572,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={charts?.salesCogsProfitTrends || []}>
+                      <BarChart data={(charts?.salesCogsProfitTrends || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />
@@ -621,7 +621,7 @@ export default function FinanceOverviewPage() {
                   </CardHeader>
                   <CardContent className="h-64 pt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={charts?.inventoryVsSales || []}>
+                      <LineChart data={(charts?.inventoryVsSales || []).map((point, index) => ({ ...point, chartKey: `${point.month}-${index}` }))}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                         <XAxis dataKey="month" fontSize={11} />
                         <YAxis tickFormatter={etbCompact} fontSize={11} />

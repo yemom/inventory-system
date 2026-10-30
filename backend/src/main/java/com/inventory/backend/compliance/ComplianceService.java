@@ -41,7 +41,6 @@ public class ComplianceService {
         List<ComplianceFinding> findings = new ArrayList<>();
 
         TaxSummaryDTO taxSummary = taxService.summary(month);
-        PayrollDTO.Dashboard payrollDashboard = payrollService.dashboard();
         List<PayrollPeriod> allPeriods = payrollPeriodRepository.findAllByOrderByYearDescMonthDesc();
 
         // 1. Check Unverified Tax Rules
@@ -101,7 +100,10 @@ public class ComplianceService {
         ));
 
         // 4. Draft / Unfinalized Payroll Periods
-        List<PayrollPeriod> draftPeriods = allPeriods.stream()
+        List<PayrollPeriod> periodPeriods = allPeriods.stream()
+                .filter(p -> p.getYear() == month.getYear() && p.getMonth() == month.getMonthValue())
+                .toList();
+        List<PayrollPeriod> draftPeriods = periodPeriods.stream()
                 .filter(p -> "DRAFT".equals(p.getStatus()))
                 .toList();
         for (PayrollPeriod dp : draftPeriods) {
@@ -121,7 +123,7 @@ public class ComplianceService {
         }
 
         // 5. Unpaid Finalized Payroll
-        List<PayrollPeriod> unpaidPeriods = allPeriods.stream()
+        List<PayrollPeriod> unpaidPeriods = periodPeriods.stream()
                 .filter(p -> "FINALIZED".equals(p.getStatus()))
                 .toList();
         BigDecimal totalUnpaidPayroll = ZERO;
@@ -168,7 +170,9 @@ public class ComplianceService {
         }
 
         // 7. Missing Tax Details on Sales or Purchases
-        List<SaleOrder> taxableWithoutTax = saleOrderRepository.findAll().stream()
+        List<SaleOrder> taxableWithoutTax = saleOrderRepository.findSalesForPeriod(
+                        month.atDay(1).atStartOfDay(), month.atEndOfMonth().atTime(23, 59, 59),
+                        null, null, null, null, false).stream()
                 .filter(s -> !"CANCELLED".equals(s.getStatus()))
                 .filter(s -> s.getTotalAmount() != null && s.getTotalAmount().compareTo(new BigDecimal("1000")) > 0)
                 .filter(s -> s.getTax() == null || s.getTax().signum() == 0)
@@ -176,18 +180,36 @@ public class ComplianceService {
                 .toList();
         if (!taxableWithoutTax.isEmpty()) {
             findings.add(new ComplianceFinding(
-                    "TAX-EXEMPT-001",
-                    "High-Value Sales with Zero Recorded Tax",
-                    "LOW",
+                    "TAX-CLASSIFICATION-001",
+                    "High-Value Sales Need Tax Classification Review",
+                    "MEDIUM",
                     "TAX",
                     taxableWithoutTax.stream().map(SaleOrder::getTotalAmount).reduce(ZERO, BigDecimal::add),
                     month.toString(),
-                    String.format("%d sale(s) totaling %s ETB have zero recorded tax. Confirm if these are legally exempt or zero-rated exports.",
+                    String.format("%d sale(s) including %s have zero or missing tax snapshots; the tax treatment cannot be inferred from the amount.",
                             taxableWithoutTax.size(), taxableWithoutTax.get(0).getOrderNumber()),
                     "sale_orders (" + taxableWithoutTax.get(0).getOrderNumber() + ")",
-                    "Verify customer tax exemption certificate or apply standard 15% VAT on future invoices.",
+                    "Review the original invoice classification and source tax snapshot; correct future sales through the approved workflow.",
                     false
             ));
+        }
+
+        // Payroll totals are period data. A payment voucher is evidence of
+        // disbursement; a PAID label without the matching voucher is a finding.
+        for (PayrollPeriod period : periodPeriods.stream().filter(p -> "PAID".equals(p.getStatus())).toList()) {
+            boolean paymentExists = paymentRepository.findAll().stream()
+                    .anyMatch(p -> "COMPLETED".equalsIgnoreCase(p.getStatus())
+                            && "PAYROLL".equalsIgnoreCase(p.getPartyType())
+                            && ("PAYROLL-" + period.getYear() + "-" + String.format("%02d", period.getMonth()))
+                                    .equalsIgnoreCase(p.getOrderReference()));
+            if (!paymentExists) {
+                findings.add(new ComplianceFinding("PAYROLL-PAYMENT-MISSING-" + period.getId(),
+                        "Payroll marked paid without a payment voucher", "HIGH", "PAYROLL",
+                        period.getNetPayroll(), month.toString(),
+                        "The payroll period is marked PAID but has no completed payroll payment record.",
+                        "payroll_periods #" + period.getId(),
+                        "Reconcile the bank disbursement and record the source payment through the controlled workflow.", true));
+            }
         }
 
         // Calculate score: starts at 100, drops per finding severity

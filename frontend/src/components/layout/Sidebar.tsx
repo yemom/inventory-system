@@ -94,7 +94,7 @@ const navItems: NavItem[] = [
       { label: 'Journal Entries', href: '/accountant/journal', anyOf: ['ACCOUNTING_VIEW', 'ACCOUNTING_JOURNAL_CREATE', 'ACCOUNTING_JOURNAL_POST'] },
       { label: 'General Ledger', href: '/accountant/ledger', anyOf: ['ACCOUNTING_VIEW'] },
       { label: 'Trial Balance', href: '/accountant/trial-balance', anyOf: ['ACCOUNTING_VIEW', 'ACCOUNTING_REPORTS_VIEW'] },
-      { label: 'Profit & Loss', href: '/accountant/profit-loss', anyOf: ['ACCOUNTING_REPORTS_VIEW', 'PROFIT_LOSS_READ'] },
+      { label: 'Accountant P&L', href: '/accountant/profit-loss', anyOf: ['ACCOUNTING_REPORTS_VIEW', 'PROFIT_LOSS_READ'] },
       { label: 'Balance Sheet', href: '/accountant/balance-sheet', anyOf: ['ACCOUNTING_REPORTS_VIEW'] },
       { label: 'Reconciliation', href: '/accountant/reconciliation', anyOf: ['ACCOUNTING_RECONCILE', 'ACCOUNTING_VIEW'] },
       { label: 'Tax & Compliance', href: '/accountant/tax-compliance', anyOf: ['TAX_DASHBOARD_VIEW', 'ACCOUNTING_VIEW'] },

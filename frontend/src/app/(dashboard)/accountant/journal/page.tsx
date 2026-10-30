@@ -307,8 +307,8 @@ export default function JournalEntriesPage() {
                   {e.postedByName && (
                     <span className="ml-3 text-gray-400">Posted by {e.postedByName} on {new Date(e.postedAt!).toLocaleDateString()}</span>
                   )}
-                  {e.reversedReason && (
-                    <span className="ml-3 text-rose-500">Reversal reason: {e.reversedReason}</span>
+                  {e.reversalReason && (
+                    <span className="ml-3 text-rose-500">Reversal reason: {e.reversalReason}</span>
                   )}
                 </div>
 
@@ -358,7 +358,7 @@ export default function JournalEntriesPage() {
       </div>
 
       {/* New Journal Entry Modal */}
-      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="New Double-Entry Journal">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="New Double-Entry Journal">
         <form onSubmit={handleCreateEntry} className="space-y-4 max-w-2xl">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -451,7 +451,7 @@ export default function JournalEntriesPage() {
       </Modal>
 
       {/* Reverse Modal */}
-      <Modal isOpen={reverseModalId !== null} onClose={() => setReverseModalId(null)} title="Reverse Posted Entry">
+      <Modal open={reverseModalId !== null} onClose={() => setReverseModalId(null)} title="Reverse Posted Entry">
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">
             Reversing this entry will create an auditable reversing journal with inverted debit and credit lines and link it to the original entry.

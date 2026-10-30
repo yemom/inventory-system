@@ -22,8 +22,6 @@ import java.util.*;
 @RequiredArgsConstructor
 public class TaxService {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-    private static final BigDecimal VAT_STANDARD_RATE = new BigDecimal("0.15");
-    private static final BigDecimal BUSINESS_INCOME_TAX_RATE = new BigDecimal("0.30"); // Ethiopian Proc. 979/2016
 
     private final TaxRuleRepository ruleRepository;
     private final SaleOrderRepository saleRepository;
@@ -88,6 +86,7 @@ public class TaxService {
         BigDecimal taxableSales = ZERO;
         BigDecimal zeroRatedSales = ZERO;
         BigDecimal exemptSales = ZERO;
+        BigDecimal unclassifiedSales = ZERO;
         BigDecimal outputVat = ZERO;
 
         for (SaleOrder sale : sales) {
@@ -95,11 +94,17 @@ public class TaxService {
             BigDecimal tax = money(sale.getTax());
             totalSales = totalSales.add(amount);
 
-            if (tax.signum() > 0) {
+            if (sale.getTax() == null) {
+                // Preserve the amount as unclassified: absence of a tax snapshot
+                // does not prove an exempt or zero-rated supply.
+                unclassifiedSales = unclassifiedSales.add(amount);
+            } else if (tax.signum() > 0) {
                 taxableSales = taxableSales.add(amount);
                 outputVat = outputVat.add(tax);
-            } else {
-                exemptSales = exemptSales.add(amount);
+            } else if (sale.getTax() != null) {
+                // Legacy zero snapshots do not encode exempt versus zero-rated.
+                // Keep them out of both statutory classifications.
+                unclassifiedSales = unclassifiedSales.add(amount);
             }
         }
 
@@ -108,9 +113,9 @@ public class TaxService {
                 ReturnOrder.TYPE_SALES_RETURN, ReturnOrder.STATUS_APPROVED, startDt, endDt);
         BigDecimal salesReturnVat = ZERO;
         for (ReturnOrder ret : salesReturns) {
-            BigDecimal retTax = ret.getTotalAmount() != null
-                    ? money(ret.getTotalAmount()).multiply(VAT_STANDARD_RATE).setScale(2, RoundingMode.HALF_UP)
-                    : ZERO;
+            BigDecimal retTax = ret.getItems() == null ? ZERO : ret.getItems().stream()
+                    .map(TaxService::saleReturnTax)
+                    .reduce(ZERO, BigDecimal::add);
             salesReturnVat = salesReturnVat.add(retTax);
         }
         outputVat = outputVat.subtract(salesReturnVat).max(ZERO);
@@ -118,6 +123,8 @@ public class TaxService {
         // 2. Purchases & Input VAT
         List<PurchaseOrder> purchases = purchaseRepository.findAll().stream()
                 .filter(p -> !PurchaseOrder.STATUS_CANCELLED.equals(p.getStatus()))
+                .filter(p -> PurchaseOrder.STATUS_RECEIVED.equals(p.getStatus())
+                        || PurchaseOrder.STATUS_PARTIALLY_RECEIVED.equals(p.getStatus()))
                 .filter(p -> {
                     LocalDate d = p.getTransactionDate() != null
                             ? p.getTransactionDate().toLocalDate()
@@ -127,8 +134,12 @@ public class TaxService {
                 .toList();
 
         BigDecimal purchaseInputVat = ZERO;
+        BigDecimal nonRecoverableInputVat = ZERO;
         for (PurchaseOrder po : purchases) {
-            purchaseInputVat = purchaseInputVat.add(money(po.getTax()));
+            // A purchase order tax amount is not proof of recoverability. Until
+            // purchase classifications and supporting evidence are represented,
+            // keep this amount visible as non-recoverable/unverified.
+            nonRecoverableInputVat = nonRecoverableInputVat.add(money(po.getTax()));
         }
 
         // Receipts in period
@@ -142,7 +153,6 @@ public class TaxService {
                 .toList();
 
         BigDecimal receiptInputVat = ZERO;
-        BigDecimal nonRecoverableInputVat = ZERO;
         for (TaxReceipt r : receiptsInPeriod) {
             BigDecimal t = money(r.getTaxAmount());
             if ("STANDARD".equalsIgnoreCase(r.getTreatment())) {
@@ -159,9 +169,9 @@ public class TaxService {
                 ReturnOrder.TYPE_PURCHASE_RETURN, ReturnOrder.STATUS_APPROVED, startDt, endDt);
         BigDecimal purchaseReturnVat = ZERO;
         for (ReturnOrder ret : purchaseReturns) {
-            BigDecimal retTax = ret.getTotalAmount() != null
-                    ? money(ret.getTotalAmount()).multiply(VAT_STANDARD_RATE).setScale(2, RoundingMode.HALF_UP)
-                    : ZERO;
+            BigDecimal retTax = ret.getItems() == null ? ZERO : ret.getItems().stream()
+                    .map(TaxService::purchaseReturnTax)
+                    .reduce(ZERO, BigDecimal::add);
             purchaseReturnVat = purchaseReturnVat.add(retTax);
         }
         eligibleInputVat = eligibleInputVat.subtract(purchaseReturnVat).max(ZERO);
@@ -171,7 +181,7 @@ public class TaxService {
 
         // 4. Tax Payments Recorded (completed payments with TAX in reference or party)
         BigDecimal taxPaymentsMade = ZERO;
-        try {
+        {
             List<Payment> payments = paymentRepository.findAll().stream()
                     .filter(p -> "COMPLETED".equals(p.getStatus()))
                     .filter(p -> "OUT".equalsIgnoreCase(p.getEffectiveDirection()))
@@ -192,8 +202,6 @@ public class TaxService {
             for (Payment p : payments) {
                 taxPaymentsMade = taxPaymentsMade.add(money(p.getAmount()));
             }
-        } catch (Exception e) {
-            log.warn("Could not query tax payments: {}", e.getMessage());
         }
 
         // 5. Outstanding Liabilities
@@ -205,11 +213,9 @@ public class TaxService {
         BigDecimal withholdingTax = ZERO;
 
         // 7. Estimated Business Income Tax (30% standard corporate rate on net business profit)
+        // Business income tax depends on taxpayer category and taxable profit,
+        // neither of which can be established from these transaction totals.
         BigDecimal estimatedIncomeTax = ZERO;
-        BigDecimal grossProfit = totalSales.subtract(eligibleInputVat);
-        if (grossProfit.signum() > 0) {
-            estimatedIncomeTax = grossProfit.multiply(BUSINESS_INCOME_TAX_RATE).setScale(2, RoundingMode.HALF_UP);
-        }
 
         // 8. Upcoming deadlines (Ethiopian tax calendar)
         LocalDate nextMonth = start.plusMonths(1);
@@ -235,11 +241,14 @@ public class TaxService {
         for (int offset = 5; offset >= 0; offset--) {
             YearMonth point = month.minusMonths(offset);
             LocalDate f = point.atDay(1), t = point.atEndOfMonth();
-            BigDecimal out = tax(saleRepository.findSalesForPeriod(
-                    f.atStartOfDay(), t.atTime(LocalTime.MAX), null, null, null, null, false));
+            List<SaleOrder> monthSales = saleRepository.findSalesForPeriod(
+                    f.atStartOfDay(), t.atTime(LocalTime.MAX), null, null, null, null, false);
+            BigDecimal out = tax(monthSales);
 
             BigDecimal in = purchaseRepository.findAll().stream()
                     .filter(p -> !PurchaseOrder.STATUS_CANCELLED.equals(p.getStatus()))
+                    .filter(p -> PurchaseOrder.STATUS_RECEIVED.equals(p.getStatus())
+                            || PurchaseOrder.STATUS_PARTIALLY_RECEIVED.equals(p.getStatus()))
                     .filter(p -> {
                         LocalDate d = p.getTransactionDate() != null
                                 ? p.getTransactionDate().toLocalDate()
@@ -252,12 +261,16 @@ public class TaxService {
             trend.add(new TaxSummaryDTO.MonthlyTaxTotal(point.toString(), out, in, out.subtract(in)));
         }
 
+        String classificationNote = (unclassifiedSales.signum() > 0
+                ? "Sales totaling " + unclassifiedSales.toPlainString() + " have no tax snapshot and remain unclassified. " : "")
+                + "Input VAT is limited to documented standard receipts; purchase order VAT is unverified."
+                + (nonRecoverableInputVat.signum() > 0 ? " Non-recoverable or unverified input tax is excluded." : "");
         return new TaxSummaryDTO(
                 start, end, totalSales, taxableSales, zeroRatedSales, exemptSales,
                 outputVat, eligibleInputVat, nonRecoverableInputVat, estimatedNetVat,
                 withholdingTax, estimatedIncomeTax, taxPaymentsMade, outstandingLiabilities,
                 outputVat, eligibleInputVat, "ETB", "CALCULATED",
-                "Input VAT is calculated from recorded purchase orders and verified receipts; verify product classifications before filing.",
+                classificationNote,
                 deadlines, trend);
     }
 
@@ -280,12 +293,14 @@ public class TaxService {
             for (SaleOrder s : sales) {
                 BigDecimal tax = money(s.getTax());
                 BigDecimal total = money(s.getTotalAmount());
-                String treatment = tax.signum() > 0 ? "STANDARD (15%)" : "EXEMPT";
+                String treatment = s.getTax() == null ? "UNCLASSIFIED_MISSING_SNAPSHOT"
+                        : tax.signum() > 0 ? "TAXED_SNAPSHOT_CLASSIFICATION_UNVERIFIED"
+                        : "UNCLASSIFIED_ZERO_SNAPSHOT";
                 list.add(new TaxTransactionDTO(
                         "SALE", s.getId(), s.getOrderNumber(),
                         s.getTransactionDate() != null ? s.getTransactionDate() : s.getCreatedAt(),
                         s.getCustomerName(), total, total, tax,
-                        tax.signum() > 0 ? VAT_STANDARD_RATE : ZERO,
+                        null,
                         treatment, s.getStatus(), s.getPaymentStatus()));
             }
         }
@@ -308,7 +323,7 @@ public class TaxService {
                         "PURCHASE", p.getId(), p.getOrderNumber(),
                         p.getTransactionDate() != null ? p.getTransactionDate() : p.getCreatedAt(),
                         p.getSupplierName(), total, total, tax,
-                        VAT_STANDARD_RATE, "RECOVERABLE_INPUT_VAT", p.getStatus(), p.getPaymentStatus()));
+                        null, "UNVERIFIED_PURCHASE_TAX", p.getStatus(), p.getPaymentStatus()));
             }
         }
 
@@ -328,7 +343,7 @@ public class TaxService {
                         r.getReceiptDate() != null ? r.getReceiptDate().atStartOfDay() : r.getCreatedAt(),
                         r.getVendorName() != null ? r.getVendorName() : "External Vendor",
                         money(r.getTotalAmount()), money(r.getTaxableAmount()), money(r.getTaxAmount()),
-                        VAT_STANDARD_RATE, r.getTreatment(), "RECORDED", r.getNotes()));
+                        null, r.getTreatment(), "RECORDED", r.getNotes()));
             }
         }
 
@@ -345,7 +360,7 @@ public class TaxService {
             throw new IllegalArgumentException("Receipt amount must be zero or greater.");
         String normalized = treatment == null ? "STANDARD" : treatment.trim().toUpperCase();
         BigDecimal rate = "STANDARD".equals(normalized)
-                ? rate("VAT_STANDARD", LocalDate.now(), VAT_STANDARD_RATE)
+                ? requiredRate("VAT_STANDARD", LocalDate.now())
                 : BigDecimal.ZERO;
         BigDecimal total   = money(amount);
         BigDecimal taxable = taxInclusive && rate.signum() > 0
@@ -354,7 +369,7 @@ public class TaxService {
                 : taxable.multiply(rate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal payable = taxInclusive ? total : taxable.add(tax);
         String notice = "STANDARD".equals(normalized)
-                ? "Estimate only. Confirm the supply is taxable and the receipt supports recoverable input VAT."
+                ? "Estimate only using the configured effective VAT rule. Confirm the supply is taxable and the receipt supports recoverable input VAT."
                 : "Zero-rated or exempt treatment produces no VAT estimate; confirm the legal classification before filing.";
         return new TaxCalculationDTO(receiptName, normalized, taxInclusive,
                 total, taxable, money(tax), money(payable), "ETB", "VAT_STANDARD", notice);
@@ -448,9 +463,36 @@ public class TaxService {
         return value == null ? ZERO : value.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal rate(String code, LocalDate date, BigDecimal fallback) {
+    private static BigDecimal saleReturnTax(ReturnOrderItem item) {
+        if (item.getTax() != null) return money(item.getTax());
+        SaleOrderItem original = item.getSaleOrderItem();
+        if (original == null || item.getQuantity() == null || original.getQuantity() == null
+                || original.getQuantity() == 0) return ZERO;
+        SaleOrder sale = original.getSaleOrder();
+        if (sale == null || sale.getTax() == null) return ZERO;
+        BigDecimal ratio = BigDecimal.valueOf(item.getQuantity())
+                .divide(BigDecimal.valueOf(original.getQuantity()), 8, RoundingMode.HALF_UP);
+        return money(sale.getTax().multiply(ratio));
+    }
+
+    private static BigDecimal purchaseReturnTax(ReturnOrderItem item) {
+        if (item.getTax() != null) return money(item.getTax());
+        PurchaseOrderItem original = item.getPurchaseOrderItem();
+        if (original == null || item.getQuantity() == null || original.getQuantity() == null
+                || original.getQuantity() == 0) return ZERO;
+        PurchaseOrder purchase = original.getPurchaseOrder();
+        if (purchase == null || purchase.getTax() == null) return ZERO;
+        BigDecimal ratio = BigDecimal.valueOf(item.getQuantity())
+                .divide(BigDecimal.valueOf(original.getQuantity()), 8, RoundingMode.HALF_UP);
+        return money(purchase.getTax().multiply(ratio));
+    }
+
+    private BigDecimal requiredRate(String code, LocalDate date) {
         List<TaxRule> rules = ruleRepository.findEffective(code, date);
-        return rules.isEmpty() ? fallback : rules.get(0).getRate();
+        if (rules.isEmpty() || !"VERIFIED".equals(rules.get(0).getVerificationStatus())) {
+            throw new IllegalStateException("No verified effective tax rule " + code + " for " + date + ".");
+        }
+        return rules.get(0).getRate();
     }
 
     private User currentUser() {

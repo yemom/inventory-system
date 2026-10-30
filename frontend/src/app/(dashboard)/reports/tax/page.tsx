@@ -273,7 +273,7 @@ export default function TaxReportPage() {
                   {monthlyData.map(row => {
                     const noData = row.calculationStatus === 'NO_DATA' || (row.outputVat === 0 && (row.totalSales ?? 0) === 0);
                     return (
-                      <tr key={row.month} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <tr key={`${selectedYear}-${String(row.month).padStart(2, '0')}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className="px-4 py-2.5 font-medium">{row.label}</td>
                         <td className="px-4 py-2.5 text-right">{noData ? '—' : ETB(row.totalSales ?? 0)}</td>
                         <td className="px-4 py-2.5 text-right">{noData ? '—' : ETB(row.taxableSales ?? 0)}</td>

@@ -35,6 +35,7 @@ public class AccountingService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final ExpenseRepository expenseRepository;
     private final PayrollPeriodRepository payrollPeriodRepository;
+    private final PayrollItemRepository payrollItemRepository;
     private final FinancialCalculationService financialCalculationService;
     private final TaxService taxService;
     private final PayrollService payrollService;
@@ -142,6 +143,11 @@ public class AccountingService {
     public JournalEntryResponse createJournalEntry(CreateJournalEntryRequest req, User user) {
         seedStandardAccountsIfEmpty();
 
+        if (req.sourceType() != null && req.sourceId() != null
+                && journalEntryRepository.existsBySourceTypeAndSourceId(req.sourceType(), req.sourceId())) {
+            throw new IllegalArgumentException("A journal already exists for this source transaction.");
+        }
+
         String period = YearMonth.from(req.entryDate()).toString();
         String entryNumber = generateEntryNumber(req.entryDate());
 
@@ -199,6 +205,13 @@ public class AccountingService {
                     "Unbalanced journal entry cannot be posted: Total Debits (ETB %s) != Total Credits (ETB %s)",
                     entry.getTotalDebit(), entry.getTotalCredit()));
         }
+        BigDecimal lineDebits = entry.getLines().stream().map(JournalLine::getDebit)
+                .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal lineCredits = entry.getLines().stream().map(JournalLine::getCredit)
+                .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (lineDebits.compareTo(entry.getTotalDebit()) != 0 || lineCredits.compareTo(entry.getTotalCredit()) != 0) {
+            throw new IllegalStateException("Journal header totals do not match its lines; entry cannot be posted.");
+        }
         if (entry.getTotalDebit().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Journal entry amount must be greater than zero");
         }
@@ -217,6 +230,9 @@ public class AccountingService {
 
         if (!"POSTED".equals(original.getStatus())) {
             throw new IllegalStateException("Only POSTED journal entries can be reversed");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("A reversal reason is required.");
         }
 
         LocalDate today = LocalDate.now();
@@ -352,6 +368,14 @@ public class AccountingService {
 
         int synced = 0;
 
+        // Refuse an automatic sync when an earlier operational entry is still a
+        // draft. Creating a replacement would duplicate its source reference.
+        if (journalEntryRepository.findAll().stream()
+                .anyMatch(j -> "DRAFT".equalsIgnoreCase(j.getStatus()) && j.getSourceType() != null
+                        && !"MANUAL".equalsIgnoreCase(j.getSourceType()))) {
+            throw new IllegalStateException("Operational sync requires review of existing source-linked draft journals first.");
+        }
+
         // 1. Sync Sales Orders
         List<SaleOrder> sales = saleOrderRepository.findAll();
         for (SaleOrder so : sales) {
@@ -359,13 +383,20 @@ public class AccountingService {
             if (journalEntryRepository.existsBySourceTypeAndSourceId("SALE", sourceId)) {
                 continue;
             }
-            if ("CANCELLED".equalsIgnoreCase(so.getStatus())) {
+            if ("CANCELLED".equalsIgnoreCase(so.getStatus()) || "REFUNDED".equalsIgnoreCase(so.getStatus())) {
                 continue;
             }
 
             LocalDate entryDate = so.getTransactionDate() != null ? so.getTransactionDate().toLocalDate() : LocalDate.now();
             BigDecimal totalAmount = so.getFinalAmount() != null ? so.getFinalAmount() : (so.getTotalAmount() != null ? so.getTotalAmount() : ZERO);
             if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            if (cashAccount == null || arAccount == null || salesAccount == null
+                    || (so.getTax() != null && so.getTax().signum() > 0 && vatAccount == null)
+                    || (so.getCostOfGoodsSold() != null && so.getCostOfGoodsSold().signum() > 0
+                        && (cogsAccount == null || invAccount == null))) {
+                throw new IllegalStateException("Required chart-of-accounts mappings are incomplete for sale " + so.getOrderNumber());
+            }
 
             BigDecimal taxAmount = so.getTax() != null ? so.getTax() : ZERO;
             BigDecimal netSales = totalAmount.subtract(taxAmount);
@@ -414,6 +445,9 @@ public class AccountingService {
             if (totalD.compareTo(totalC) == 0 && totalD.compareTo(BigDecimal.ZERO) > 0) {
                 journalEntryRepository.save(entry);
                 synced++;
+            } else if (!entry.getLines().isEmpty()) {
+                throw new IllegalStateException("Sale journal for " + so.getOrderNumber()
+                        + " is incomplete or unbalanced; source left unchanged for review.");
             }
         }
 
@@ -424,7 +458,8 @@ public class AccountingService {
             if (journalEntryRepository.existsBySourceTypeAndSourceId("EXPENSE", sourceId)) {
                 continue;
             }
-            if (exp.getAmount() == null || exp.getAmount().compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (!Expense.STATUS_APPROVED.equals(exp.getStatus()) || exp.getAmount() == null
+                    || exp.getAmount().compareTo(BigDecimal.ZERO) <= 0) continue;
 
             LocalDate entryDate = exp.getTransactionDate() != null ? exp.getTransactionDate().toLocalDate() : LocalDate.now();
 
@@ -466,8 +501,12 @@ public class AccountingService {
             BigDecimal empTax = p.getEmploymentTax() != null ? p.getEmploymentTax() : ZERO;
             BigDecimal empPension = p.getEmployeePension() != null ? p.getEmployeePension() : ZERO;
             BigDecimal employerPension = p.getEmployerPension() != null ? p.getEmployerPension() : ZERO;
+            BigDecimal otherDeductions = payrollItemRepository.findByPayrollPeriodId(p.getId()).stream()
+                    .map(PayrollItem::getOtherDeductions).filter(Objects::nonNull)
+                    .reduce(ZERO, BigDecimal::add);
             BigDecimal totalPension = empPension.add(employerPension);
-            BigDecimal netPay = p.getNetPayroll() != null ? p.getNetPayroll() : gross.subtract(empTax).subtract(empPension);
+            BigDecimal netPay = p.getNetPayroll() != null ? p.getNetPayroll()
+                    : gross.subtract(empTax).subtract(empPension).subtract(otherDeductions);
             BigDecimal totalEmployerExpense = gross.add(employerPension);
 
             LocalDate entryDate = LocalDate.of(p.getYear(), p.getMonth(), 1);
@@ -496,6 +535,10 @@ public class AccountingService {
             }
             if (pensionPayableAccount != null && totalPension.compareTo(BigDecimal.ZERO) > 0) {
                 entry.addLine(JournalLine.builder().account(pensionPayableAccount).debit(ZERO).credit(totalPension).description("POESSA pension contributions payable").lineNumber(lNum++).build());
+            }
+            if (otherDeductions.signum() > 0 && taxPayableAccount != null) {
+                entry.addLine(JournalLine.builder().account(taxPayableAccount).debit(ZERO).credit(otherDeductions)
+                        .description("Other payroll deductions payable (classification required)").lineNumber(lNum++).build());
             }
             if (cashAccount != null && netPay.compareTo(BigDecimal.ZERO) > 0) {
                 entry.addLine(JournalLine.builder().account(cashAccount).debit(ZERO).credit(netPay).description("Net salary disbursement").lineNumber(lNum++).build());
