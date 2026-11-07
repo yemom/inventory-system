@@ -109,6 +109,9 @@ public class PurchaseOrder {
     @CreationTimestamp
     private LocalDateTime createdAt;
 
+    @Version
+    private Integer version;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by_id")
     private User approvedBy;

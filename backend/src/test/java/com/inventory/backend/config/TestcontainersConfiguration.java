@@ -41,7 +41,7 @@ public final class TestcontainersConfiguration {
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("inventory_test_db")
                     .withUsername("stockflow")
-                    .withPassword("stockflowpassword");
+                    .withPassword("Kx9mP2qR4vL6nO3pS5tU7wX0zC1vF4");
 
     static {
         POSTGRES.start();

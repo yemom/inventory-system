@@ -155,13 +155,13 @@ class DataSourceUrlNormalizerTest {
         MockEnvironment environment = environment(
                 "spring.datasource.url", "jdbc:postgresql://db:5432/stockflow_db",
                 "spring.datasource.username", "stockflow",
-                "spring.datasource.password", "stockflowpassword");
+                "spring.datasource.password", "Kx9mP2qR4vL6nO3pS5tU7wX0zC1vF4");
 
         DataSourceUrlNormalizer.apply(environment);
 
         assertEquals("jdbc:postgresql://db:5432/stockflow_db", environment.getProperty("spring.datasource.url"));
         assertEquals("stockflow", environment.getProperty("spring.datasource.username"));
-        assertEquals("stockflowpassword", environment.getProperty("spring.datasource.password"));
+        assertEquals("Kx9mP2qR4vL6nO3pS5tU7wX0zC1vF4", environment.getProperty("spring.datasource.password"));
         assertNull(environment.getPropertySources().get(DataSourceUrlNormalizer.PROPERTY_SOURCE_NAME));
     }
 

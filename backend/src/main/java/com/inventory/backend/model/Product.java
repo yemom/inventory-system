@@ -56,6 +56,9 @@ public class Product {
     @Builder.Default
     private Integer quantity = 0;
 
+    @Version
+    private Integer version;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 

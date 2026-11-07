@@ -131,6 +131,10 @@ public class SaleOrder {
     private LocalDateTime refundApprovedAt;
 
     private String refundReviewNote;
+
+    @Version
+    private Integer version;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }
