@@ -1,5 +1,4 @@
 # StockFlow
-
 ### AI-Integrated Inventory Management and Business Transaction System
 
 <p align="center">
@@ -30,7 +29,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 ## 2. Key Features
 
 ### Inventory and Warehouse Management
-
 - Centralized product and category management.
 - SKU and barcode-based product identification.
 - Multiple warehouse support.
@@ -43,7 +41,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Approval workflows for sensitive stock adjustments and counts.
 
 ### Sales and Point of Sale
-
 - Product search and category filtering.
 - Shopping cart and quantity management.
 - Customer selection.
@@ -57,7 +54,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Approval workflows for sale voids and refunds.
 
 ### Purchasing and Supplier Management
-
 - Supplier information management.
 - Purchase order creation and management.
 - Goods receiving and inventory updates.
@@ -67,7 +63,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Tracking of goods received versus goods still outstanding.
 
 ### Customer Management
-
 - Customer profiles and contact information.
 - Customer types and account information.
 - Credit limits and outstanding balances.
@@ -76,7 +71,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Customer support through the business chatbot.
 
 ### Financial Management
-
 - Centralized financial calculations.
 - Sales revenue and sales return tracking.
 - Cost of Goods Sold (COGS).
@@ -89,7 +83,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Financial summaries and detailed reports.
 
 ### Reporting and Business Intelligence
-
 - Fourteen documented business reports.
 - Date-range filtering.
 - Server-generated CSV and PDF exports.
@@ -103,7 +96,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Model evaluation and historical query logging.
 
 ### Business Assistant and Chatbot
-
 - Natural-language questions about business information.
 - Answers generated from trusted backend calculations.
 - Staff and customer conversation support.
@@ -114,7 +106,6 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 - Deterministic fallback when an external provider is unavailable.
 
 ### Security and Access Control
-
 - JWT-based authentication.
 - BCrypt password hashing.
 - Role-based access control (RBAC).
@@ -131,31 +122,31 @@ The goal is to give business owners and employees a clearer, more reliable pictu
 
 StockFlow uses a modern full-stack architecture with a Java backend, a Next.js frontend, and PostgreSQL for persistent business data.
 
-| Layer                          | Technology                     | Purpose                                       |
-| ------------------------------ | ------------------------------ | --------------------------------------------- |
-| Backend language               | Java 17                        | Business logic and API development            |
-| Backend framework              | Spring Boot 3.2.3              | REST API and application services             |
-| Security                       | Spring Security                | Authentication and authorization              |
-| Authentication                 | JWT                            | Stateless authentication                      |
-| Password security              | BCrypt                         | Secure password hashing                       |
-| ORM                            | Spring Data JPA / Hibernate    | Database access and persistence               |
-| Database                       | PostgreSQL                     | Transactional business data                   |
-| Caching                        | Redis                          | Caching and distributed rate-limiting support |
-| Frontend framework             | Next.js                        | Web application                               |
-| UI library                     | React                          | Component-based interface                     |
-| Frontend language              | TypeScript                     | Type-safe development                         |
-| Styling                        | Tailwind CSS                   | Responsive user interface                     |
-| API communication              | Axios                          | HTTP requests                                 |
-| Server state                   | TanStack React Query           | API data fetching and caching                 |
-| Client state                   | Zustand                        | Application state management                  |
-| Form handling                  | React Hook Form                | Form management                               |
-| Validation                     | Zod                            | Data validation                               |
-| Charts                         | Recharts                       | Business data visualization                   |
-| Backend testing                | JUnit, Mockito, Testcontainers | Unit and integration testing                  |
-| Frontend testing               | Jest, React Testing Library    | Component and application testing             |
-| Containerization               | Docker, Docker Compose         | Development and deployment                    |
-| Backend hosting configuration  | Render                         | Backend deployment                            |
-| Frontend hosting configuration | Vercel                         | Frontend deployment                           |
+| Layer | Technology | Purpose |
+|---|---|---|
+| Backend language | Java 17 | Business logic and API development |
+| Backend framework | Spring Boot 3.2.3 | REST API and application services |
+| Security | Spring Security | Authentication and authorization |
+| Authentication | JWT | Stateless authentication |
+| Password security | BCrypt | Secure password hashing |
+| ORM | Spring Data JPA / Hibernate | Database access and persistence |
+| Database | PostgreSQL | Transactional business data |
+| Caching | Redis | Caching and distributed rate-limiting support |
+| Frontend framework | Next.js | Web application |
+| UI library | React | Component-based interface |
+| Frontend language | TypeScript | Type-safe development |
+| Styling | Tailwind CSS | Responsive user interface |
+| API communication | Axios | HTTP requests |
+| Server state | TanStack React Query | API data fetching and caching |
+| Client state | Zustand | Application state management |
+| Form handling | React Hook Form | Form management |
+| Validation | Zod | Data validation |
+| Charts | Recharts | Business data visualization |
+| Backend testing | JUnit, Mockito, Testcontainers | Unit and integration testing |
+| Frontend testing | Jest, React Testing Library | Component and application testing |
+| Containerization | Docker, Docker Compose | Development and deployment |
+| Backend hosting configuration | Render | Backend deployment |
+| Frontend hosting configuration | Vercel | Frontend deployment |
 
 ---
 
@@ -253,12 +244,12 @@ Each user receives access according to their assigned role and the permissions a
 
 ### Supported roles
 
-| Role            | Main responsibilities                                                            |
-| --------------- | -------------------------------------------------------------------------------- |
-| Super Admin     | Complete system administration and access to all permissions.                    |
-| Manager         | Manages operational staff, products, inventory, and business operations.         |
-| Supervisor      | Supervises operational activities and approves authorized requests.              |
-| Cashier         | Handles customer sales, POS operations, and personal sales records.              |
+| Role | Main responsibilities |
+|---|---|
+| Super Admin | Complete system administration and access to all permissions. |
+| Manager | Manages operational staff, products, inventory, and business operations. |
+| Supervisor | Supervises operational activities and approves authorized requests. |
+| Cashier | Handles customer sales, POS operations, and personal sales records. |
 | Inventory Staff | Handles inventory operations, stock receiving, and authorized stock adjustments. |
 
 ### Role-specific restrictions
@@ -511,19 +502,19 @@ This is important because changing a product's purchase price later should not s
 
 ### Financial metrics
 
-| Metric              | Calculation approach                                           |
-| ------------------- | -------------------------------------------------------------- |
-| Net Sales           | Gross sales minus approved sales returns.                      |
-| COGS                | Cost of quantities sold using the recorded sale-line cost.     |
-| Gross Profit        | Net sales minus COGS.                                          |
-| Gross Margin        | Gross profit divided by net sales.                             |
-| Operating Expenses  | Approved expenses in the reporting period.                     |
-| Net Profit          | Gross profit minus operating expenses.                         |
-| Net Margin          | Net profit divided by net sales.                               |
-| Net Cash Flow       | Completed incoming payments minus completed outgoing payments. |
-| Accounts Receivable | Outstanding balances from sales.                               |
-| Accounts Payable    | Outstanding balances for received purchase orders.             |
-| Inventory Value     | Warehouse quantities multiplied by their average cost.         |
+| Metric | Calculation approach |
+|---|---|
+| Net Sales | Gross sales minus approved sales returns. |
+| COGS | Cost of quantities sold using the recorded sale-line cost. |
+| Gross Profit | Net sales minus COGS. |
+| Gross Margin | Gross profit divided by net sales. |
+| Operating Expenses | Approved expenses in the reporting period. |
+| Net Profit | Gross profit minus operating expenses. |
+| Net Margin | Net profit divided by net sales. |
+| Net Cash Flow | Completed incoming payments minus completed outgoing payments. |
+| Accounts Receivable | Outstanding balances from sales. |
+| Accounts Payable | Outstanding balances for received purchase orders. |
+| Inventory Value | Warehouse quantities multiplied by their average cost. |
 
 ### Financial integrity principles
 
@@ -710,27 +701,27 @@ StockFlow uses PostgreSQL as its primary relational database.
 
 Its business model includes the following major entities:
 
-| Entity            | Responsibility                                                         |
-| ----------------- | ---------------------------------------------------------------------- |
-| User              | Stores system users and employee information.                          |
-| Role              | Defines user roles.                                                    |
-| Permission        | Defines authorized system actions.                                     |
-| Product           | Stores product information.                                            |
-| Category          | Organizes products.                                                    |
-| Warehouse         | Represents a stock storage location.                                   |
-| WarehouseStock    | Stores authoritative stock quantities and average costs per warehouse. |
-| StockMovement     | Records inventory changes.                                             |
-| Supplier          | Stores supplier information.                                           |
-| Customer          | Stores customer information.                                           |
-| PurchaseOrder     | Records purchasing transactions.                                       |
-| PurchaseOrderItem | Records purchased products and quantities.                             |
-| SaleOrder         | Records sales transactions.                                            |
-| SaleOrderItem     | Records products and quantities sold.                                  |
-| Payment           | Records incoming and outgoing financial transactions.                  |
-| Expense           | Records business expenses.                                             |
-| ReturnOrder       | Records return requests and approvals.                                 |
-| AiModelVersion    | Stores intelligence model evaluation information.                      |
-| AiQueryLog        | Records assistant query metadata and outcomes.                         |
+| Entity | Responsibility |
+|---|---|
+| User | Stores system users and employee information. |
+| Role | Defines user roles. |
+| Permission | Defines authorized system actions. |
+| Product | Stores product information. |
+| Category | Organizes products. |
+| Warehouse | Represents a stock storage location. |
+| WarehouseStock | Stores authoritative stock quantities and average costs per warehouse. |
+| StockMovement | Records inventory changes. |
+| Supplier | Stores supplier information. |
+| Customer | Stores customer information. |
+| PurchaseOrder | Records purchasing transactions. |
+| PurchaseOrderItem | Records purchased products and quantities. |
+| SaleOrder | Records sales transactions. |
+| SaleOrderItem | Records products and quantities sold. |
+| Payment | Records incoming and outgoing financial transactions. |
+| Expense | Records business expenses. |
+| ReturnOrder | Records return requests and approvals. |
+| AiModelVersion | Stores intelligence model evaluation information. |
+| AiQueryLog | Records assistant query metadata and outcomes. |
 
 ### Important data integrity decisions
 
@@ -824,21 +815,21 @@ http://localhost:8081/api/v1
 
 ### Main API groups
 
-| Module         | Example endpoint       | Purpose                                        |
-| -------------- | ---------------------- | ---------------------------------------------- |
-| Authentication | `POST /auth/login`     | User authentication.                           |
-| Registration   | `POST /auth/register`  | User registration with supported default role. |
-| Products       | `/products`            | Product management.                            |
-| Categories     | `/categories`          | Product category management.                   |
-| Suppliers      | `/suppliers`           | Supplier management.                           |
-| Customers      | `/customers`           | Customer management.                           |
-| Sales          | `/sales`               | Sales transactions and records.                |
-| Payments       | `/payments`            | Document-associated payments and refunds.      |
-| Dashboard      | `/dashboard/stats`     | Operational dashboard statistics.              |
-| Finance        | `/dashboard/financial` | Permission-protected financial summary.        |
-| Insights       | `/dashboard/insights`  | Business intelligence information.             |
-| Reports        | `/reports`             | Business reporting and exports.                |
-| Chatbot        | `/chatbot`             | Staff and customer assistant endpoints.        |
+| Module | Example endpoint | Purpose |
+|---|---|---|
+| Authentication | `POST /auth/login` | User authentication. |
+| Registration | `POST /auth/register` | User registration with supported default role. |
+| Products | `/products` | Product management. |
+| Categories | `/categories` | Product category management. |
+| Suppliers | `/suppliers` | Supplier management. |
+| Customers | `/customers` | Customer management. |
+| Sales | `/sales` | Sales transactions and records. |
+| Payments | `/payments` | Document-associated payments and refunds. |
+| Dashboard | `/dashboard/stats` | Operational dashboard statistics. |
+| Finance | `/dashboard/financial` | Permission-protected financial summary. |
+| Insights | `/dashboard/insights` | Business intelligence information. |
+| Reports | `/reports` | Business reporting and exports. |
+| Chatbot | `/chatbot` | Staff and customer assistant endpoints. |
 
 ### Example login request
 
@@ -870,16 +861,16 @@ The API enforces authorization on the backend. The endpoint examples above are r
 
 Install the following tools:
 
-| Tool           | Requirement                       |
-| -------------- | --------------------------------- |
-| Git            | Latest stable version             |
-| Java           | 17                                |
-| Maven          | 3.9+                              |
-| Node.js        | 20.9+                             |
-| npm            | Compatible with installed Node.js |
-| PostgreSQL     | Compatible PostgreSQL release     |
-| Docker Desktop | Recommended                       |
-| Docker Compose | Recommended                       |
+| Tool | Requirement |
+|---|---|
+| Git | Latest stable version |
+| Java | 17 |
+| Maven | 3.9+ |
+| Node.js | 20.9+ |
+| npm | Compatible with installed Node.js |
+| PostgreSQL | Compatible PostgreSQL release |
+| Docker Desktop | Recommended |
+| Docker Compose | Recommended |
 
 Verify the installations:
 
@@ -943,12 +934,12 @@ docker compose up -d --build
 
 The documented local service addresses are:
 
-| Service    | Address                      |
-| ---------- | ---------------------------- |
-| Frontend   | http://localhost:3005        |
-| Backend    | http://localhost:8081        |
-| REST API   | http://localhost:8081/api/v1 |
-| PostgreSQL | localhost:5434               |
+| Service | Address |
+|---|---|
+| Frontend | http://localhost:3005 |
+| Backend | http://localhost:8081 |
+| REST API | http://localhost:8081/api/v1 |
+| PostgreSQL | localhost:5434 |
 
 Check running containers:
 
@@ -1101,12 +1092,12 @@ npm run build
 
 The repository README documents the following results from its reported test run:
 
-| Test / Check              | Documented result                            |
-| ------------------------- | -------------------------------------------- |
-| Backend tests             | 452 tests, 0 failures, 0 errors              |
-| Frontend tests            | 225 tests across 22 suites, all passing      |
-| TypeScript                | Clean type check                             |
-| ESLint                    | 0 errors, 55 warnings                        |
+| Test / Check | Documented result |
+|---|---|
+| Backend tests | 452 tests, 0 failures, 0 errors |
+| Frontend tests | 225 tests across 22 suites, all passing |
+| TypeScript | Clean type check |
+| ESLint | 0 errors, 55 warnings |
 | Frontend production build | Compiled successfully and routes prerendered |
 
 These are repository-documented results, not a new test run performed while preparing this README. Re-run the commands above against the current checkout to verify the latest state.
@@ -1119,13 +1110,13 @@ These are repository-documented results, not a new test run performed while prep
 
 StockFlow includes configuration for a separate frontend and backend deployment.
 
-| Component             | Deployment configuration |
-| --------------------- | ------------------------ |
-| Backend               | Render                   |
-| Frontend              | Vercel                   |
-| Database              | Managed PostgreSQL       |
-| Cache / rate limiting | Redis                    |
-| Containerization      | Docker                   |
+| Component | Deployment configuration |
+|---|---|
+| Backend | Render |
+| Frontend | Vercel |
+| Database | Managed PostgreSQL |
+| Cache / rate limiting | Redis |
+| Containerization | Docker |
 
 ### Backend configuration
 
@@ -1199,17 +1190,17 @@ See [docs/deployment.md](docs/deployment.md) for the detailed deployment guide.
 
 StockFlow has a substantial set of implemented business workflows, but several areas require additional development or operational decisions.
 
-| Area                    | Current limitation                                                                           | Possible improvement                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Batch and lot tracking  | No complete lot-level tracking.                                                              | Add batch identification and expiry-aware stock allocation.                  |
-| Supplier lead time      | Replenishment uses a configurable default.                                                   | Learn lead times from historical purchasing records.                         |
-| Seasonality             | Forecasting focuses on weekly seasonality.                                                   | Add annual and longer-term seasonal analysis when sufficient history exists. |
-| Multi-currency          | Currency is stored for transaction provenance, but conversion arithmetic is not implemented. | Add exchange-rate management and multi-currency accounting rules.            |
-| Forecast execution      | Forecasts are calculated per request.                                                        | Introduce scheduled forecasting and cached model results as scale requires.  |
-| Database migrations     | Hibernate schema update is currently used.                                                   | Adopt Flyway or Liquibase for controlled production schema changes.          |
-| Concurrent updates      | Some non-stock entities do not have optimistic version fields.                               | Add version-based concurrency control where required.                        |
-| Dashboard customization | Dashboard is a defined operational view.                                                     | Consider customizable widgets and role-specific workspaces.                  |
-| Warehouse selection     | Multi-warehouse transaction behavior needs a confirmed business decision.                    | Make the selected warehouse explicit where operationally required.           |
+| Area | Current limitation | Possible improvement |
+|---|---|---|
+| Batch and lot tracking | No complete lot-level tracking. | Add batch identification and expiry-aware stock allocation. |
+| Supplier lead time | Replenishment uses a configurable default. | Learn lead times from historical purchasing records. |
+| Seasonality | Forecasting focuses on weekly seasonality. | Add annual and longer-term seasonal analysis when sufficient history exists. |
+| Multi-currency | Currency is stored for transaction provenance, but conversion arithmetic is not implemented. | Add exchange-rate management and multi-currency accounting rules. |
+| Forecast execution | Forecasts are calculated per request. | Introduce scheduled forecasting and cached model results as scale requires. |
+| Database migrations | Hibernate schema update is currently used. | Adopt Flyway or Liquibase for controlled production schema changes. |
+| Concurrent updates | Some non-stock entities do not have optimistic version fields. | Add version-based concurrency control where required. |
+| Dashboard customization | Dashboard is a defined operational view. | Consider customizable widgets and role-specific workspaces. |
+| Warehouse selection | Multi-warehouse transaction behavior needs a confirmed business decision. | Make the selected warehouse explicit where operationally required. |
 
 These improvements should be prioritized according to actual business requirements, data quality, and deployment scale.
 
@@ -1346,14 +1337,14 @@ Please include the business problem, implementation details, and testing perform
 
 For deeper technical information, refer to the documentation directory.
 
-| Document                                                         | Description                                                                     |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [docs/architecture.md](docs/architecture.md)                     | Application architecture, data model, and design decisions.                     |
-| [docs/financial-calculations.md](docs/financial-calculations.md) | Financial formulas, costing method, and accounting rules.                       |
-| [docs/intelligence.md](docs/intelligence.md)                     | Forecasting, anomaly detection, inventory optimization, and business assistant. |
-| [docs/chatbot.md](docs/chatbot.md)                               | Chatbot architecture, configuration, security, and fallback behavior.           |
-| [docs/roles-and-permissions.md](docs/roles-and-permissions.md)   | Role and permission matrix with approval workflows.                             |
-| [docs/deployment.md](docs/deployment.md)                         | Environment configuration and deployment instructions.                          |
+| Document | Description |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Application architecture, data model, and design decisions. |
+| [docs/financial-calculations.md](docs/financial-calculations.md) | Financial formulas, costing method, and accounting rules. |
+| [docs/intelligence.md](docs/intelligence.md) | Forecasting, anomaly detection, inventory optimization, and business assistant. |
+| [docs/chatbot.md](docs/chatbot.md) | Chatbot architecture, configuration, security, and fallback behavior. |
+| [docs/roles-and-permissions.md](docs/roles-and-permissions.md) | Role and permission matrix with approval workflows. |
+| [docs/deployment.md](docs/deployment.md) | Environment configuration and deployment instructions. |
 
 ---
 
