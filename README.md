@@ -1,332 +1,202 @@
 # StockFlow
+### AI-Integrated Inventory Management and Business Transaction System
 
-## Inventory Management and Business Transaction System
+<p align="center">
+  <strong>A smarter way to manage inventory, sales, purchasing, and business performance.</strong>
+</p>
 
-StockFlow is a production-oriented inventory management and business transaction system designed for medium-sized stores and businesses.
-
-The system provides centralized management of products, categories, suppliers, customers, users, inventory information, authentication, authorization, and point-of-sale workflows.
-
-It is built with a modern full-stack architecture using Spring Boot for the backend, Next.js for the frontend, PostgreSQL for data persistence, JWT-based authentication, and Docker for containerized deployment.
-
----
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Core Features](#core-features)
-- [Technology Stack](#technology-stack)
-- [System Architecture](#system-architecture)
-- [Authentication and Authorization](#authentication-and-authorization)
-- [User and Role Management](#user-and-role-management)
-- [Product Management](#product-management)
-- [Category Management](#category-management)
-- [Supplier Management](#supplier-management)
-- [Customer Management](#customer-management)
-- [Inventory Management](#inventory-management)
-- [Point of Sale](#point-of-sale)
-- [Dashboard and Reporting](#dashboard-and-reporting)
-- [Business Intelligence](#business-intelligence)
-- [REST API](#rest-api)
-- [Project Structure](#project-structure)
-- [Backend Structure](#backend-structure)
-- [Frontend Structure](#frontend-structure)
-- [Database Model](#database-model)
-- [API Authentication Flow](#api-authentication-flow)
-- [Local Development Setup](#local-development-setup)
-- [Running the Backend](#running-the-backend)
-- [Running the Frontend](#running-the-frontend)
-- [Running with Docker](#running-with-docker)
-- [Environment Configuration](#environment-configuration)
-- [Reports and Exports](#reports-and-exports)
-- [Testing](#testing)
-- [Project Status](#project-status)
-- [Files Changed](#files-changed)
-- [Build and Production](#build-and-production)
-- [Security](#security)
-- [Development Guidelines](#development-guidelines)
-- [Known Implementation Notes](#known-implementation-notes)
-- [Future Improvements](#future-improvements)
-- [Project Status](#project-status)
-- [Author](#author)
-- [License](#license)
+<p align="center">
+  <a href="https://github.com/yemom/inventory-system">GitHub Repository</a> ·
+  <a href="https://esrom12-portfolio.vercel.app/">Developer Portfolio</a>
+</p>
 
 ---
 
-# Project Overview
+## 1. Project Overview
 
-StockFlow is designed to provide businesses with a centralized platform for managing their daily inventory and business operations.
+**StockFlow** is a full-stack inventory management and business transaction platform designed to help medium-sized stores and businesses manage their daily operations through one centralized system.
 
-The system is divided into two main applications:
+In many businesses, inventory records, sales transactions, purchasing activities, financial information, and reporting are handled using separate tools or manual processes. This can lead to inaccurate stock records, inconsistent financial information, limited visibility into business performance, and difficulty making informed decisions.
 
-1. Backend API
-2. Frontend Web Application
+StockFlow addresses these challenges by bringing essential business operations together in a single application.
 
-The backend provides RESTful APIs, authentication, authorization, business logic, database access, and security.
+The platform enables authorized users to manage products, warehouses, suppliers, customers, purchases, sales, payments, expenses, stock movements, and financial reports. It also includes a read-only business intelligence layer that analyzes historical business records to generate forecasts, detect unusual activity, recommend inventory actions, and explain business performance.
 
-The frontend provides the user interface for interacting with the inventory system.
+Rather than treating inventory as a simple quantity stored against a product, StockFlow uses a transaction-based approach. Stock changes are recorded through a centralized movement ledger, financial calculations are performed by backend services, and sensitive operations are protected through role-based and permission-based authorization.
 
-PostgreSQL is used as the primary relational database.
+The goal is to give business owners and employees a clearer, more reliable picture of what is happening across their operations.
 
-Docker Compose is provided for running the main services together.
+## 2. Key Features
 
----
+### Inventory and Warehouse Management
+- Centralized product and category management.
+- SKU and barcode-based product identification.
+- Multiple warehouse support.
+- Warehouse-specific stock quantities and inventory valuation.
+- Stock receiving, issuing, adjustments, and transfers.
+- Stock movement history and audit records.
+- Low-stock and out-of-stock identification.
+- Opening stock management.
+- Damaged, expired, lost, and shrinkage movement tracking.
+- Approval workflows for sensitive stock adjustments and counts.
 
-# Core Features
+### Sales and Point of Sale
+- Product search and category filtering.
+- Shopping cart and quantity management.
+- Customer selection.
+- Discounts and tax calculations.
+- Cash, bank, and mobile payment methods.
+- Persistent sales transaction records.
+- Payment status and outstanding balance tracking.
+- Receipt generation and printing.
+- Sales history and reporting.
+- Cashier-specific sales visibility.
+- Approval workflows for sale voids and refunds.
 
-## Authentication
+### Purchasing and Supplier Management
+- Supplier information management.
+- Purchase order creation and management.
+- Goods receiving and inventory updates.
+- Purchase item and quantity tracking.
+- Supplier balances and payment records.
+- Purchase returns and approval workflows.
+- Tracking of goods received versus goods still outstanding.
 
-- User registration
-- User login
-- JWT authentication
-- Secure password hashing using BCrypt
-- Stateless authentication
-- Authentication token stored on the frontend
-- Automatic authorization header injection
-- Automatic handling of expired/invalid authentication sessions
+### Customer Management
+- Customer profiles and contact information.
+- Customer types and account information.
+- Credit limits and outstanding balances.
+- Customer-associated sales.
+- Customer return records.
+- Customer support through the business chatbot.
 
-## Authorization
+### Financial Management
+- Centralized financial calculations.
+- Sales revenue and sales return tracking.
+- Cost of Goods Sold (COGS).
+- Gross profit and net profit.
+- Operating expenses.
+- Cash inflows and outflows.
+- Accounts receivable and accounts payable.
+- Inventory valuation.
+- Stock loss and shrinkage valuation.
+- Financial summaries and detailed reports.
 
-- Role-based access control
-- Permission-based authorization
-- Protected backend endpoints
-- Spring Security integration
-- Method-level security
-- JWT-based request authentication
+### Reporting and Business Intelligence
+- Fourteen documented business reports.
+- Date-range filtering.
+- Server-generated CSV and PDF exports.
+- Sales and purchasing performance analysis.
+- Inventory valuation and low-stock reports.
+- Profit and loss reporting.
+- Sales and product demand forecasting.
+- Statistical anomaly detection.
+- Inventory optimization recommendations.
+- Financial explanations based on recorded transactions.
+- Model evaluation and historical query logging.
 
-## User Management
+### Business Assistant and Chatbot
+- Natural-language questions about business information.
+- Answers generated from trusted backend calculations.
+- Staff and customer conversation support.
+- Permission-aware business queries.
+- Customer-specific order information.
+- Conversation history and retention controls.
+- Optional OpenAI-compatible response phrasing.
+- Deterministic fallback when an external provider is unavailable.
 
-The system supports user information including:
-
-- Username
-- First name
-- Last name
-- Email
-- Phone
-- Gender
-- Date of birth
-- Address
-- Employee ID
-- Job title
-- Department
-- Branch
-- Warehouse
-- Date joined
-- Account status
-- Profile photo
-- Login information
-
-## Product Management
-
-The product management module supports:
-
-- Product creation
-- Product updates
-- Product retrieval
-- Product search
-- SKU management
-- Barcode management
-- Product categories
-- Units
-- Purchase prices
-- Selling prices
-- Minimum selling prices
-- Stock quantities
-- Minimum stock levels
-- Maximum stock levels
-- Reorder levels
-- Batch tracking
-- Expiry tracking
-- Product activation/deactivation
-
-## Category Management
-
-Categories support:
-
-- Category creation
-- Category updates
-- Category deletion
-- Category listing
-- Root categories
-- Parent-child category relationships
-- Subcategories
-
-## Supplier Management
-
-Supplier records include:
-
-- Supplier number
-- Company name
-- Contact person
-- Phone
-- Email
-- Address
-- Tax number
-- Payment terms
-- Outstanding balance
-- Supplier status
-- Notes
-
-## Customer Management
-
-Customer records include:
-
-- Customer number
-- Customer name
-- Phone
-- Email
-- Address
-- Customer type
-- Credit limit
-- Outstanding balance
-- Customer status
-- Notes
-
-## Inventory
-
-The inventory module provides information about:
-
-- Current stock quantity
-- Low-stock products
-- Out-of-stock products
-- Inventory value
-- Reorder levels
-- Product stock limits
-- Product activity status
-
-The backend also provides protected database operations for inventory-sensitive product updates.
-
-## Point of Sale
-
-The frontend provides a POS interface with support for:
-
-- Product search
-- Category filtering
-- Shopping cart
-- Customer selection
-- Quantity management
-- Discounts
-- VAT calculation
-- Cash payments
-- Bank payments
-- Mobile payments
-- Tendered amount
-- Change calculation
-- Receipt generation
-- Receipt printing
-
-The current POS implementation prepares the checkout and receipt information on the frontend. Persistent sales transaction storage through a dedicated backend sales endpoint is not yet implemented.
+### Security and Access Control
+- JWT-based authentication.
+- BCrypt password hashing.
+- Role-based access control (RBAC).
+- Fine-grained permission-based authorization.
+- Backend-enforced access restrictions.
+- Protected financial and operational endpoints.
+- Audit logging for important business operations.
+- Rate limiting and request validation.
+- Secure environment-based configuration.
 
 ---
 
-# Technology Stack
+## 3. Technology Stack
 
-## Backend
+StockFlow uses a modern full-stack architecture with a Java backend, a Next.js frontend, and PostgreSQL for persistent business data.
 
-| Technology | Purpose |
-|---|---|
-| Java 17 | Backend programming language |
-| Spring Boot 3.2.3 | Backend framework |
-| Spring Web | REST API |
-| Spring Data JPA | Database access |
-| Hibernate | ORM |
-| Spring Security | Authentication and authorization |
-| JWT | Stateless authentication |
-| BCrypt | Password hashing |
-| PostgreSQL | Relational database |
-| Lombok | Boilerplate reduction |
-| Maven | Dependency management and build |
-| JUnit | Unit testing |
-| Mockito | Mock-based testing |
-| Testcontainers | Integration testing |
-
-## Frontend
-
-| Technology | Purpose |
-|---|---|
-| Next.js | React web framework |
-| React | User interface |
-| TypeScript | Type-safe development |
-| Axios | HTTP client |
-| TanStack React Query | Server state management |
-| Zustand | Client state management |
-| React Hook Form | Form management |
-| Zod | Validation |
-| Tailwind CSS | Styling |
-| Radix UI | UI primitives |
-| Lucide React | Icons |
-| Recharts | Data visualization |
-| Jest | Testing |
-| React Testing Library | Component testing |
-
-## Infrastructure
-
-| Technology | Purpose |
-|---|---|
-| Docker | Containerization |
-| Docker Compose | Multi-container development |
-| PostgreSQL | Database service |
-| Node.js | Frontend runtime/build |
-| Maven | Backend build |
+| Layer | Technology | Purpose |
+|---|---|---|
+| Backend language | Java 17 | Business logic and API development |
+| Backend framework | Spring Boot 3.2.3 | REST API and application services |
+| Security | Spring Security | Authentication and authorization |
+| Authentication | JWT | Stateless authentication |
+| Password security | BCrypt | Secure password hashing |
+| ORM | Spring Data JPA / Hibernate | Database access and persistence |
+| Database | PostgreSQL | Transactional business data |
+| Caching | Redis | Caching and distributed rate-limiting support |
+| Frontend framework | Next.js | Web application |
+| UI library | React | Component-based interface |
+| Frontend language | TypeScript | Type-safe development |
+| Styling | Tailwind CSS | Responsive user interface |
+| API communication | Axios | HTTP requests |
+| Server state | TanStack React Query | API data fetching and caching |
+| Client state | Zustand | Application state management |
+| Form handling | React Hook Form | Form management |
+| Validation | Zod | Data validation |
+| Charts | Recharts | Business data visualization |
+| Backend testing | JUnit, Mockito, Testcontainers | Unit and integration testing |
+| Frontend testing | Jest, React Testing Library | Component and application testing |
+| Containerization | Docker, Docker Compose | Development and deployment |
+| Backend hosting configuration | Render | Backend deployment |
+| Frontend hosting configuration | Vercel | Frontend deployment |
 
 ---
 
-# System Architecture
+## 4. System Architecture
 
-The system follows a layered full-stack architecture.
+StockFlow follows a layered client-server architecture. The frontend communicates with the backend through REST APIs, while the backend manages authentication, authorization, business rules, transaction processing, and database operations.
 
 ```text
-                         STOCKFLOW
-                             |
-             +---------------+---------------+
-             |                               |
-             v                               v
-       Next.js Frontend                 Spring Boot API
-             |                               |
-             |                               |
-             v                               v
-      Axios API Client                Spring Security
-             |                               |
-             |                               v
-             |                         JWT Validation
-             |                               |
-             |                               v
-             |                         Controllers
-             |                               |
-             |                               v
-             |                           Services
-             |                               |
-             |                               v
-             |                         Repositories
-             |                               |
-             +-------------------------------+
-                             |
-                             v
-                       PostgreSQL
+                  STOCKFLOW APPLICATION
+                           |
+             +-------------+-------------+
+             |                           |
+             v                           v
+      NEXT.JS FRONTEND              SPRING BOOT API
+             |                           |
+       React Components             REST Controllers
+             |                           |
+       React Query / Zustand        Spring Security
+             |                           |
+       Axios API Client             JWT Authentication
+             |                           |
+             +---------- HTTPS ----------+
+                                         |
+                                         v
+                                  Business Services
+                                         |
+                      +------------------+------------------+
+                      |                  |                  |
+                      v                  v                  v
+                Inventory /         Finance /          Intelligence /
+                Warehouse           Transactions       Chatbot
+                      |                  |                  |
+                      +------------------+------------------+
+                                         |
+                                         v
+                                  Repository Layer
+                                         |
+                                         v
+                                    PostgreSQL
+                                         |
+                                         v
+                                  Persistent Records
+
+                             Redis
+                    Caching / Rate Limiting
 ```
 
----
+### Backend Architecture
 
-# Backend Architecture
-
-The backend follows a layered architecture:
-
-```text
-Controller
-    |
-    v
-Service
-    |
-    v
-Repository
-    |
-    v
-Entity
-    |
-    v
-PostgreSQL
-```
-
-Security is applied before requests reach protected controllers.
+The backend uses a layered architecture to separate responsibilities and make the application easier to maintain and extend.
 
 ```text
 HTTP Request
@@ -338,434 +208,635 @@ JWT Authentication Filter
 Spring Security
      |
      v
-Authorization
+Permission Validation
      |
      v
 Controller
      |
      v
-Service
+Service Layer
      |
      v
-Repository
+Repository Layer
      |
      v
-Database
+PostgreSQL
 ```
 
-This structure separates:
+Each layer has a specific responsibility:
 
-- HTTP handling
-- Business logic
-- Database access
-- Security
-- Persistence models
+- **Controller:** Receives HTTP requests and returns API responses.
+- **Service:** Implements business rules, transaction processing, and validations.
+- **Repository:** Handles database operations.
+- **Entity:** Represents persistent business information.
+- **DTO:** Defines structured data exchanged through the API.
+- **Security:** Handles authentication, permissions, and access restrictions.
+
+This separation prevents business logic from being scattered across controllers and frontend components.
 
 ---
 
-# Authentication and Authorization
+## 5. User Roles and Permissions
 
-StockFlow uses JWT-based stateless authentication.
+StockFlow uses role-based access control combined with fine-grained permissions.
 
-After a successful login, the backend returns a JWT token.
+Each user receives access according to their assigned role and the permissions associated with that role. The backend enforces these permissions, so hiding a menu item in the frontend is never treated as the actual security boundary.
 
-The frontend stores the token and automatically sends it with subsequent API requests.
+### Supported roles
 
-The request header follows the format:
+| Role | Main responsibilities |
+|---|---|
+| Super Admin | Complete system administration and access to all permissions. |
+| Manager | Manages operational staff, products, inventory, and business operations. |
+| Supervisor | Supervises operational activities and approves authorized requests. |
+| Cashier | Handles customer sales, POS operations, and personal sales records. |
+| Inventory Staff | Handles inventory operations, stock receiving, and authorized stock adjustments. |
 
-```http
-Authorization: Bearer <JWT_TOKEN>
-```
+### Role-specific restrictions
 
-The backend JWT authentication filter:
+- A Manager can create Supervisors, Cashiers, and Inventory Staff, but cannot create another Manager or a Super Admin.
+- A Supervisor can approve authorized stock adjustments, counts, sale voids, and refunds.
+- A Supervisor does not automatically receive access to profit and loss or inventory valuation.
+- A Cashier can access their own sales but cannot automatically view other employees' sales or business-wide financial reports.
+- Inventory Staff cannot create sales or access restricted sales and financial reports.
+- Super Admin permissions are resolved as full access.
+- Legacy Accountant accounts are retained for compatibility but Accountant is not part of the currently assignable five-role model.
+- STOREKEEPER is a deprecated alias for INVENTORY_STAFF.
 
-1. Reads the `Authorization` header.
-2. Checks whether it contains a Bearer token.
-3. Extracts the JWT.
-4. Validates the token.
-5. Extracts authentication information.
-6. Loads the corresponding user details.
-7. Creates a Spring Security authentication object.
-8. Stores the authentication in the SecurityContext.
-9. Allows the request to continue.
+### Approval workflows
 
-Invalid or missing authentication is rejected for protected endpoints.
+Some business operations require a second authorized user to review and approve them.
 
----
-
-# User and Role Management
-
-The system contains a user and permission model.
-
-Users have an assigned role.
-
-Roles can have multiple permissions.
-
-Conceptually:
+For example:
 
 ```text
-User
- |
- +---- Role
-        |
-        +---- Permission
-        |
-        +---- Permission
-        |
-        +---- Permission
+Inventory Staff
+      |
+      v
+Submit Stock Adjustment
+      |
+      v
+Pending Approval
+      |
+      v
+Supervisor / Manager
+      |
+      +------------------+
+      |                  |
+      v                  v
+   Approve             Reject
+      |                  |
+      v                  v
+Update Stock       Stock Unchanged
 ```
 
-The backend currently includes role and permission support for controlling access to protected functionality.
+A similar approval process applies to authorized sale voids and refunds.
 
-The authentication response includes information such as:
+These workflows help reduce unauthorized changes and improve accountability.
 
-- User ID
-- Username
-- Email
-- Name
-- Role
-- Permissions
-- JWT token
+For the exact permission matrix, see [docs/roles-and-permissions.md](docs/roles-and-permissions.md).
 
 ---
 
-# Product Management
+## 6. Core Business Modules
 
-Products are one of the core entities in StockFlow.
+### 6.1 Product and Category Management
 
-A product contains information such as:
+Products are the foundation of the inventory system.
 
-```text
-Product
-Γö£ΓöÇΓöÇ ID
-Γö£ΓöÇΓöÇ SKU
-Γö£ΓöÇΓöÇ Barcode
-Γö£ΓöÇΓöÇ Name
-Γö£ΓöÇΓöÇ Unit
-Γö£ΓöÇΓöÇ Description
-Γö£ΓöÇΓöÇ Category
-Γö£ΓöÇΓöÇ Purchase Price
-Γö£ΓöÇΓöÇ Selling Price
-Γö£ΓöÇΓöÇ Minimum Selling Price
-Γö£ΓöÇΓöÇ Minimum Stock
-Γö£ΓöÇΓöÇ Maximum Stock
-Γö£ΓöÇΓöÇ Reorder Level
-Γö£ΓöÇΓöÇ Quantity
-Γö£ΓöÇΓöÇ Batch Tracking
-Γö£ΓöÇΓöÇ Expiry Tracking
-Γö£ΓöÇΓöÇ Active Status
-Γö£ΓöÇΓöÇ Created At
-ΓööΓöÇΓöÇ Updated At
-```
+Product information includes:
 
-SKU values are unique.
+- Product name and description.
+- SKU and barcode.
+- Category and unit.
+- Purchase price and selling price.
+- Minimum selling price.
+- Reorder and stock-level settings.
+- Active or inactive status.
+- Stock information.
 
-Products can be searched using:
-
-- Name
-- SKU
-- Barcode
-
-Products can also be filtered by category.
-
-Products are deactivated instead of physically deleted through the product delete operation.
-
----
-
-# Category Management
-
-Categories organize products into meaningful groups.
-
-The category model supports hierarchical relationships.
+Categories support parent-child relationships, allowing businesses to organize products into meaningful groups.
 
 Example:
 
 ```text
 Electronics
-|
-+-- Computers
-|   |
-|   +-- Laptops
-|   +-- Desktop Computers
-|
-+-- Accessories
     |
-    +-- Keyboards
-    +-- Mouse
+    +-- Computers
+    |      |
+    |      +-- Laptops
+    |      +-- Desktop Computers
+    |
+    +-- Accessories
+           |
+           +-- Keyboards
+           +-- Mouse
 ```
 
-The API supports retrieving:
+Products can be searched by name, SKU, or barcode. Product deactivation is used instead of physical deletion through the product delete operation.
 
-- All categories
-- Root categories
-- Individual categories
+### 6.2 Multi-Warehouse Inventory
 
----
+StockFlow supports inventory management across multiple warehouses.
 
-# Supplier Management
+The authoritative stock balance is stored per warehouse in `WarehouseStock`, rather than relying exclusively on one quantity field on the product.
 
-Suppliers represent businesses or organizations that provide products.
-
-Supplier information includes business and financial information.
-
-Example:
+The stock movement process is centralized through `StockLedgerService`.
 
 ```text
-Supplier
-Γö£ΓöÇΓöÇ Supplier Number
-Γö£ΓöÇΓöÇ Company Name
-Γö£ΓöÇΓöÇ Contact Person
-Γö£ΓöÇΓöÇ Phone
-Γö£ΓöÇΓöÇ Email
-Γö£ΓöÇΓöÇ Address
-Γö£ΓöÇΓöÇ Tax Number
-Γö£ΓöÇΓöÇ Payment Terms
-Γö£ΓöÇΓöÇ Outstanding Balance
-Γö£ΓöÇΓöÇ Status
-ΓööΓöÇΓöÇ Notes
+Stock Operation
+      |
+      v
+StockLedgerService
+      |
+      v
+WarehouseStock Update
+      |
+      v
+Stock Movement Record
+      |
+      v
+Updated Inventory Balance
 ```
 
-The system supports creating, retrieving, searching, and updating suppliers.
+Supported stock operations include:
 
----
+- Receiving stock.
+- Issuing stock.
+- Warehouse transfers.
+- Stock adjustments.
+- Stock counts.
+- Sales-related stock deductions.
+- Returns.
+- Damage, expiry, loss, and shrinkage.
 
-# Customer Management
+A warehouse transfer records both the outgoing and incoming movement under a shared movement group.
 
-Customers represent people or organizations purchasing products.
+This makes it possible to trace where inventory came from and where it went.
 
-Customer information includes:
+### 6.3 Sales and Point of Sale
 
-```text
-Customer
-Γö£ΓöÇΓöÇ Customer Number
-Γö£ΓöÇΓöÇ Name
-Γö£ΓöÇΓöÇ Phone
-Γö£ΓöÇΓöÇ Email
-Γö£ΓöÇΓöÇ Address
-Γö£ΓöÇΓöÇ Customer Type
-Γö£ΓöÇΓöÇ Credit Limit
-Γö£ΓöÇΓöÇ Outstanding Balance
-Γö£ΓöÇΓöÇ Status
-ΓööΓöÇΓöÇ Notes
-```
+The POS module supports the checkout process, including product selection, cart management, customer selection, discounts, payment methods, and receipt generation.
 
-The backend supports customer creation, retrieval, searching, and updates.
+A completed sale is represented by persistent backend transaction records rather than being treated only as temporary frontend data.
 
----
-
-# Inventory Management
-
-Inventory information is centered around product stock levels.
-
-The system can identify:
-
-```text
-Current Stock
-     |
-     +-- Normal Stock
-     |
-     +-- Low Stock
-     |
-     +-- Out of Stock
-```
-
-The backend provides dashboard-level inventory calculations including:
-
-- Active product count
-- Low-stock product count
-- Out-of-stock product count
-- Total inventory value
-
-Low-stock calculations use the product's reorder level.
-
----
-
-# Point of Sale
-
-The POS interface is available through the frontend sales module.
-
-The checkout workflow includes:
+The general workflow is:
 
 ```text
 Search Product
       |
       v
-Select Product
-      |
-      v
 Add to Cart
-      |
-      v
-Update Quantity
       |
       v
 Select Customer
       |
       v
-Apply Discount
+Choose Warehouse
       |
       v
-Calculate VAT
+Apply Discount and Tax
       |
       v
 Select Payment Method
       |
       v
-Enter Tendered Amount
+Complete Sale
       |
       v
-Calculate Change
+Persist Transaction
+      |
+      v
+Update Inventory
       |
       v
 Generate Receipt
 ```
 
-Supported payment methods include:
+Sales are associated with the user who recorded them, and access to sales records is scoped according to permissions.
 
-- Cash
-- Bank
-- Mobile
+**Warehouse selection note:** The multi-warehouse transaction flow must use a clearly identified source warehouse. The current implementation documentation identifies first-active-warehouse resolution as an outstanding operational decision; verify the desired behavior before relying on it for multi-warehouse production operations.
 
-The POS interface also supports receipt printing.
+### 6.4 Purchasing and Supplier Management
 
-### Current POS Limitation
+The purchasing module supports purchase order management and receiving goods from suppliers.
 
-The current frontend checkout implementation prepares the order and receipt data locally.
+A purchase order records the items ordered, quantities, supplier, warehouse, and related purchasing information.
 
-It does not currently persist the completed sale through a dedicated backend sales transaction endpoint.
+The receiving process updates inventory and the relevant supplier and financial records.
 
-Therefore, the POS should currently be considered a frontend checkout workflow rather than a fully persisted sales transaction system.
+```text
+Supplier
+    |
+    v
+Purchase Order
+    |
+    v
+Purchase Items
+    |
+    v
+Receive Goods
+    |
+    +-----------> Update Warehouse Stock
+    |
+    +-----------> Update Average Cost
+    |
+    +-----------> Record Transaction
+```
+
+Goods that have not yet been received are not treated as available inventory.
+
+### 6.5 Returns and Refunds
+
+Returns are stored as business documents with approval states.
+
+Raising a return records the request but does not immediately reverse the original transaction.
+
+Approval posts the required stock movement and financial reversal together.
+
+This helps prevent duplicate returns and ensures that returned quantities are validated against the original transaction.
+
+### 6.6 Payments and Expenses
+
+Payments are linked to the relevant business documents.
+
+Sales payments and purchase payments update their associated balances. Refunds are recorded as separate outgoing financial events.
+
+Payments cannot simply be created as arbitrary amounts without a corresponding business document.
+
+Expenses also include approval and transaction information. Only approved expenses are included in the financial calculation rules.
 
 ---
 
-# Dashboard and Reporting
+## 7. Financial Calculation Engine
 
-The dashboard is served in three parts, each gated on the permission the figures in
-it actually require - not on a single "can view the dashboard" that every role
-holds.
+One of StockFlow's important engineering decisions is that financial figures are calculated centrally in the backend.
 
-| Endpoint | Permission | Returns |
-|---|---|---|
-| `GET /api/v1/dashboard/stats` | `DASHBOARD_VIEW` | Operational counts. No money. |
-| `GET /api/v1/dashboard/financial` | `FINANCIAL_REPORT_VIEW` | Net sales, gross and net profit, margins, cash, receivables, payables, inventory value. |
-| `GET /api/v1/dashboard/insights` | `AI_INSIGHT_VIEW` | Explanations, alerts and recommended actions. |
-| `GET /api/v1/dashboard/sales-summary` | `DASHBOARD_VIEW` | Orders, completed sales, gross, discounts, returns, net, collected, outstanding and average order value for a period. **Scoped on the server**: a caller holding `SALES_REPORT_VIEW` sees every seller (`scope: ALL_SALES`), anyone else sees only the orders they recorded (`scope: OWN_SALES`). There is no parameter that widens this. |
-| `GET /api/v1/sales` | `SALE_READ` | Orders, paginated. Accepts `search` (order number or customer name), `status`, `paymentStatus` and standard Spring `Pageable` parameters. All filters are applied **in the database**, and the same seller scoping applies as above. |
+The frontend does not independently calculate business-wide profit, cash flow, or account balances from incomplete paginated lists.
 
-### Multi-warehouse: which location a transaction belongs to
+The calculation logic is centralized in:
 
-With **one** active warehouse the backend resolves it and no screen asks.
-With **two or more** the caller must say, because stock leaves a specific place
-and the movement is recorded against it. Guessing would put inventory somewhere
-nobody chose.
+```text
+backend/src/main/java/com/inventory/backend/finance/
+    FinancialCalculations.java
+    FinancialCalculationService.java
+    FinancialSummary.java
+```
 
-| Situation | Result |
+### Costing method: Moving Weighted Average
+
+StockFlow uses moving weighted average costing.
+
+The average cost is recalculated when new goods are received.
+
+```text
+New Average Cost =
+(Value of Existing Stock + Cost of Received Stock)
+---------------------------------------------------
+(Existing Quantity + Received Quantity)
+```
+
+The cost is also frozen onto each sale line when the sale occurs.
+
+This is important because changing a product's purchase price later should not silently rewrite the historical cost of an earlier sale.
+
+### Financial metrics
+
+| Metric | Calculation approach |
 |---|---|
-| One active warehouse, no `warehouseId` sent | Resolved automatically. Sale succeeds. |
-| Two or more active, no `warehouseId` sent | **`409 WAREHOUSE_REQUIRED`** — "Choose the warehouse this transaction belongs to." The POS shows a picker and disables **Complete Sale** until one is chosen. |
-| A `warehouseId` that does not exist | `400` — the warehouse is not found. |
-| Named warehouse has insufficient stock | `400` — "Insufficient stock for 'X' in Y. Available: N, Requested: M." |
+| Net Sales | Gross sales minus approved sales returns. |
+| COGS | Cost of quantities sold using the recorded sale-line cost. |
+| Gross Profit | Net sales minus COGS. |
+| Gross Margin | Gross profit divided by net sales. |
+| Operating Expenses | Approved expenses in the reporting period. |
+| Net Profit | Gross profit minus operating expenses. |
+| Net Margin | Net profit divided by net sales. |
+| Net Cash Flow | Completed incoming payments minus completed outgoing payments. |
+| Accounts Receivable | Outstanding balances from sales. |
+| Accounts Payable | Outstanding balances for received purchase orders. |
+| Inventory Value | Warehouse quantities multiplied by their average cost. |
 
-A `409` here is deliberate and is not an outage. It means *this request needs
-different input*. It used to arrive as a `500`, which told the cashier the
-application had crashed at the moment they were trying to take money.
+### Financial integrity principles
 
-**Creating a product with opening stock in a multi-warehouse business** needs a
-warehouse too. The product form shows "Opening Stock Warehouse" when more than
-one is active. Without it the opening balance is recorded with no location, and
-the new product starts life holding stock that no till can draw on.
+StockFlow deliberately distinguishes between:
 
-`warehouse_stock` holds the authoritative per-location balance;
-`products.quantity` is republished from it on every movement. On first start, if
-`warehouse_stock` is empty but a movement ledger exists, the balances are
-**rebuilt from that ledger** (`WarehouseStockBackfillRunner`). This is a
-derivation, not a guess — the rebuilt totals are reconciled against
-`products.quantity` and logged as a mismatch if they disagree. It runs only when
-the table is empty, so it never overwrites live balances.
+- Revenue and collected cash.
+- Purchase orders and goods actually received.
+- Approved expenses and pending expenses.
+- Sales and warehouse transfers.
+- Sales tax and business revenue.
+- Pending returns and approved returns.
 
-**Every financial figure comes from the backend calculation service.** It used to
-be assembled in the browser from lists of sales and purchase orders, filtered the
-same way on each screen - which meant "gross profit" was really "revenue minus
-everything ever purchased", and two screens could print different numbers for the
-same month. The formulas, the costing method and the accounting policies are
-documented in **[docs/financial-calculations.md](docs/financial-calculations.md)**.
+These distinctions help prevent incorrect financial reporting.
 
-Stock is valued at a **moving weighted average cost**, recalculated on every goods
-receipt, and the cost is **frozen onto each sale line at the moment of sale** so a
-later price change cannot rewrite historical profit.
+The complete calculation rules are documented in [docs/financial-calculations.md](docs/financial-calculations.md).
 
 ---
 
-# Business Intelligence
+## 8. Business Intelligence and AI
 
-A read-only analysis layer in `com.inventory.backend.ai` that reads the same
-tables, through the same repositories, under the same permissions, as the reports.
+StockFlow includes a read-only business intelligence layer implemented inside the Java backend.
 
-**There is no external AI provider.** No API key, no outbound request, no data
-leaves the machine. The models are Holt exponential smoothing with weekly
-seasonality, a robust z-score, and a service-level safety-stock formula -
-implemented in Java, auditable, and evaluated by backtesting on held-out history.
+It analyzes historical business records to help users understand business performance and make better operational decisions.
 
-**It cannot change anything.** There is no write method in the package, so it
-cannot approve a payment, issue a refund, move stock or post an accounting entry.
-There are deliberately no AI write permissions, because there is nothing to gate.
+**Important:** The forecasting and anomaly-detection engine is implemented using Java-based statistical methods. It does not depend on an external AI provider to perform its core calculations.
 
-| Capability | What it produces |
+### 8.1 Sales Forecasting
+
+The forecasting module analyzes historical sales and demand patterns to estimate future performance.
+
+The model-selection process evaluates several approaches:
+
+- Naive forecasting.
+- Moving average.
+- Holt level and trend.
+- Holt forecasting with weekly seasonality.
+
+Models are evaluated using chronological backtesting rather than random data splitting.
+
+Forecast results can include:
+
+- Predicted sales or demand.
+- Prediction intervals.
+- Mean Absolute Error (MAE).
+- Root Mean Squared Error (RMSE).
+- Mean Absolute Percentage Error (MAPE), where applicable.
+- Model evaluation information.
+
+The system also recognizes when there is insufficient historical information to produce a meaningful forecast.
+
+### 8.2 Anomaly Detection
+
+The anomaly detection module identifies unusual business activity that may require investigation.
+
+Examples include:
+
+- Unusual changes in revenue.
+- Unexpected expense movements.
+- Large stock adjustments.
+- Repeated stock loss patterns.
+- Unusual inventory activity.
+
+The system uses robust statistical techniques, including median absolute deviation and modified z-scores.
+
+Alerts are investigation prompts, not automatic conclusions of fraud or misconduct.
+
+### 8.3 Inventory Optimization
+
+The inventory optimization module analyzes product demand and available stock to calculate useful replenishment information.
+
+It can provide:
+
+- Average daily demand.
+- Safety stock.
+- Reorder points.
+- Suggested replenishment quantities.
+- Estimated days of stock remaining.
+- Stock-out projections.
+
+Supplier lead time currently uses a configurable default assumption rather than measured historical supplier performance. Recommendations communicate this limitation instead of presenting the assumption as a confirmed fact.
+
+### 8.4 Financial Insights
+
+The financial insight service explains business performance using figures from the centralized financial calculation service.
+
+For example, it can explain changes in sales, profitability, expenses, and cash flow.
+
+The insight layer does not create a second independent financial calculation engine. It uses the same financial summary that powers the reports.
+
+### 8.5 Business Assistant
+
+The business assistant allows authorized users to ask questions about recorded business information.
+
+Examples:
+
+- What were our net sales this month?
+- Which products need replenishment?
+- How did our expenses change?
+- What is our current inventory value?
+- How does this month compare with the previous month?
+
+The assistant identifies the question, checks the relevant permissions, and retrieves the answer through trusted backend services.
+
+Responses include relevant periods, assumptions, structured data, and report links where available.
+
+### 8.6 Read-Only AI Design
+
+The intelligence package is designed to read and analyze business information.
+
+It does not have methods for approving payments, issuing refunds, changing stock, or posting accounting entries.
+
+This separation is intentional: the intelligence layer provides recommendations and explanations, while authorized human users remain responsible for business decisions.
+
+More information: [docs/intelligence.md](docs/intelligence.md).
+
+---
+
+## 9. Business Chatbot
+
+StockFlow includes a chatbot for staff and customer interactions.
+
+The chatbot uses structured backend services to answer supported questions instead of allowing generated text to independently invent business figures or execute business operations.
+
+### Staff chatbot
+
+Staff members authenticate through the normal JWT-based authentication system.
+
+The chatbot checks both the permission to use the assistant and the permissions required by the specific information requested.
+
+For example, having permission to use the assistant does not automatically grant access to profit and loss information.
+
+### Customer chatbot
+
+Customers use a separate session-based authentication flow.
+
+Customer conversations and order-related queries are scoped to the authenticated customer session.
+
+An order number alone does not grant access to another customer's information.
+
+### Optional language-model integration
+
+An optional OpenAI-compatible provider can improve how validated chatbot answers are phrased.
+
+The distinction is important:
+
+1. The backend obtains the actual figures through trusted business services.
+2. The optional language model may rephrase the response.
+3. A number guard checks generated numbers against the trusted results.
+4. If the provider fails or produces unsupported figures, the system falls back to a deterministic response.
+
+The default chatbot configuration is deterministic and does not require an external API key.
+
+Provider credentials remain server-side and must never be exposed through frontend code or API responses.
+
+Setting `CHATBOT_LLM_PHRASED=false` guarantees that the application makes no outbound language-model requests.
+
+See [docs/chatbot.md](docs/chatbot.md) for configuration, security, and implementation details.
+
+---
+
+## 10. Reporting and Data Export
+
+StockFlow provides fourteen documented reports covering business operations, inventory, sales, purchasing, and financial performance.
+
+Reports support date filtering and server-side calculation.
+
+The report export service supports:
+
+- CSV exports.
+- PDF exports.
+- Consistent report data between the UI and downloaded files.
+- Export row limits.
+- CSV formula-injection neutralization.
+
+Financial and operational report access is controlled by permissions.
+
+The reports are generated from persisted business records, rather than independently reconstructed from incomplete frontend data.
+
+---
+
+## 11. Database Design
+
+StockFlow uses PostgreSQL as its primary relational database.
+
+Its business model includes the following major entities:
+
+| Entity | Responsibility |
 |---|---|
-| Forecasting | Sales and per-product demand, with prediction intervals and the model's measured error on held-out data |
-| Anomaly detection | Investigation alerts on revenue, expenses and stock, each carrying the evidence that produced it |
-| Inventory optimisation | Reorder points, safety stock and suggested quantities, with the arithmetic shown |
-| Financial insights | Explanations that quote the calculation layer's figures and link to the report showing them |
-| Business assistant | Questions answered from validated figures, with period, assumptions and source links |
-| Business chatbot | Conversational questions from staff and customers, answered by the same services — with an optional model that only re-phrases validated results |
+| User | Stores system users and employee information. |
+| Role | Defines user roles. |
+| Permission | Defines authorized system actions. |
+| Product | Stores product information. |
+| Category | Organizes products. |
+| Warehouse | Represents a stock storage location. |
+| WarehouseStock | Stores authoritative stock quantities and average costs per warehouse. |
+| StockMovement | Records inventory changes. |
+| Supplier | Stores supplier information. |
+| Customer | Stores customer information. |
+| PurchaseOrder | Records purchasing transactions. |
+| PurchaseOrderItem | Records purchased products and quantities. |
+| SaleOrder | Records sales transactions. |
+| SaleOrderItem | Records products and quantities sold. |
+| Payment | Records incoming and outgoing financial transactions. |
+| Expense | Records business expenses. |
+| ReturnOrder | Records return requests and approvals. |
+| AiModelVersion | Stores intelligence model evaluation information. |
+| AiQueryLog | Records assistant query metadata and outcomes. |
 
-Every model version is recorded with its training period, sample size and measured
-error; retraining supersedes rather than overwrites, so a figure already reported
-stays traceable. Every assistant question is logged with its intent, resolved
-parameters and outcome.
+### Important data integrity decisions
 
-A day is raised as an alert only when it is **both** statistically unusual and
-materially different in money - a small business has a small spread, and without
-the second test its ordinary variation fills the alerts panel and trains people to
-dismiss it.
-
-Fully described in **[docs/intelligence.md](docs/intelligence.md)**; the
-chatbot — its optional OpenAI-compatible phrasing layer, key setup and
-guarantees — in **[docs/chatbot.md](docs/chatbot.md)**.
+- Warehouse stock is the authoritative per-location balance.
+- Stock movements are written through a centralized ledger service.
+- Sale-line costs are preserved for historical financial accuracy.
+- Payments are associated with business documents.
+- Return approvals connect inventory and financial changes.
+- Sensitive actions are recorded through audit mechanisms.
 
 ---
 
-# REST API
+## 12. Project Structure
 
-The backend API uses the following base path:
+The repository separates the backend, frontend, and supporting infrastructure.
+
+```text
+inventory-system/
+│
+├── backend/
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/com/inventory/backend/
+│   │   │   │   ├── config/
+│   │   │   │   ├── controller/
+│   │   │   │   ├── dto/
+│   │   │   │   ├── entity/
+│   │   │   │   ├── repository/
+│   │   │   │   ├── service/
+│   │   │   │   ├── security/
+│   │   │   │   ├── finance/
+│   │   │   │   └── ai/
+│   │   │   └── resources/
+│   │   └── test/
+│   ├── pom.xml
+│   └── Dockerfile
+│
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── app/
+│   │   ├── components/
+│   │   ├── contexts/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── providers/
+│   │   ├── store/
+│   │   └── __tests__/
+│   ├── package.json
+│   ├── package-lock.json
+│   └── Dockerfile
+│
+├── docs/
+│   ├── architecture.md
+│   ├── financial-calculations.md
+│   ├── intelligence.md
+│   ├── chatbot.md
+│   ├── roles-and-permissions.md
+│   ├── deployment.md
+│   └── ...
+│
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── cd.yml
+│
+├── docker-compose.yml
+├── render.yaml
+├── .env-example
+├── .gitignore
+└── README.md
+```
+
+The exact contents may evolve as the application develops.
+
+---
+
+## 13. REST API
+
+The backend exposes RESTful endpoints under the following base path:
 
 ```text
 /api/v1
 ```
 
-When running locally with the default backend port:
+Local development API:
 
 ```text
 http://localhost:8081/api/v1
 ```
 
-When using Docker Compose, the frontend communicates with the backend through:
+### Main API groups
 
-```text
-http://localhost:8081/api/v1
-```
+| Module | Example endpoint | Purpose |
+|---|---|---|
+| Authentication | `POST /auth/login` | User authentication. |
+| Registration | `POST /auth/register` | User registration with supported default role. |
+| Products | `/products` | Product management. |
+| Categories | `/categories` | Product category management. |
+| Suppliers | `/suppliers` | Supplier management. |
+| Customers | `/customers` | Customer management. |
+| Sales | `/sales` | Sales transactions and records. |
+| Payments | `/payments` | Document-associated payments and refunds. |
+| Dashboard | `/dashboard/stats` | Operational dashboard statistics. |
+| Finance | `/dashboard/financial` | Permission-protected financial summary. |
+| Insights | `/dashboard/insights` | Business intelligence information. |
+| Reports | `/reports` | Business reporting and exports. |
+| Chatbot | `/chatbot` | Staff and customer assistant endpoints. |
 
----
-
-# Authentication Endpoints
-
-## Login
+### Example login request
 
 ```http
 POST /api/v1/auth/login
+Content-Type: application/json
 ```
-
-Example request:
 
 ```json
 {
@@ -774,460 +845,34 @@ Example request:
 }
 ```
 
-The response contains authentication information including a JWT token.
+Authenticated requests use the following header:
+
+```http
+Authorization: Bearer YOUR_JWT_TOKEN
+```
+
+The API enforces authorization on the backend. The endpoint examples above are representative; consult the controllers and API documentation for the complete request and response contracts.
 
 ---
 
-## Register
+## 14. Local Development Setup
 
-```http
-POST /api/v1/auth/register
-```
+### Prerequisites
 
-Registration creates a user with the supported default registration role.
+Install the following tools:
 
----
-
-# Product Endpoints
-
-## Get Products
-
-```http
-GET /api/v1/products
-```
-
-Supports searching and pagination.
-
-## Get Product
-
-```http
-GET /api/v1/products/{id}
-```
-
-## Create Product
-
-```http
-POST /api/v1/products
-```
-
-Requires appropriate product creation permissions.
-
-## Update Product
-
-```http
-PUT /api/v1/products/{id}
-```
-
-Requires appropriate product update permissions.
-
-## Delete / Deactivate Product
-
-```http
-DELETE /api/v1/products/{id}
-```
-
-The product is deactivated rather than physically removed.
-
----
-
-# Category Endpoints
-
-```http
-GET    /api/v1/categories
-GET    /api/v1/categories/roots
-GET    /api/v1/categories/{id}
-POST   /api/v1/categories
-PUT    /api/v1/categories/{id}
-DELETE /api/v1/categories/{id}
-```
-
----
-
-# Customer Endpoints
-
-```http
-GET  /api/v1/customers
-GET  /api/v1/customers/{id}
-POST /api/v1/customers
-PUT  /api/v1/customers/{id}
-```
-
-Customer listing supports searching and pagination.
-
----
-
-# Supplier Endpoints
-
-```http
-GET  /api/v1/suppliers
-GET  /api/v1/suppliers/{id}
-POST /api/v1/suppliers
-PUT  /api/v1/suppliers/{id}
-```
-
-Supplier listing supports searching and pagination.
-
----
-
-# API Permissions
-
-Product operations are protected using permissions such as:
-
-```text
-PRODUCT_READ
-PRODUCT_CREATE
-PRODUCT_UPDATE
-PRODUCT_DEACTIVATE
-INVENTORY_READ
-```
-
-Additional permissions can be added through the role-permission system.
-
----
-
-# Project Structure
-
-The repository is organized into separate backend and frontend applications.
-
-**Documentation**
-
-| Document | Covers |
+| Tool | Requirement |
 |---|---|
-| docs/architecture.md | How the pieces fit, the data model, the security model, the deliberate limitations |
-| docs/financial-calculations.md | Every formula, the costing method, the accounting policies, and what is deliberately *not* counted |
-| docs/intelligence.md | How the forecasting, anomaly detection, inventory advice and assistant work, and how they are evaluated |
-| docs/chatbot.md | The business chatbot: deterministic tools vs the optional LLM phrasing layer, key creation, local and deployed configuration, security guarantees |
-| docs/roles-and-permissions.md | The role to permission matrix |
-| docs/deployment.md | Deployment, configuration and environment variables |
+| Git | Latest stable version |
+| Java | 17 |
+| Maven | 3.9+ |
+| Node.js | 20.9+ |
+| npm | Compatible with installed Node.js |
+| PostgreSQL | Compatible PostgreSQL release |
+| Docker Desktop | Recommended |
+| Docker Compose | Recommended |
 
-```text
-inventory-system/
-Γöé
-Γö£ΓöÇΓöÇ backend/
-Γöé   Γö£ΓöÇΓöÇ src/
-Γöé   Γöé   Γö£ΓöÇΓöÇ main/
-Γöé   Γöé   Γöé   Γö£ΓöÇΓöÇ java/
-Γöé   Γöé   Γöé   ΓööΓöÇΓöÇ resources/
-Γöé   Γöé   Γöé
-Γöé   Γöé   ΓööΓöÇΓöÇ test/
-Γöé   Γöé
-Γöé   Γö£ΓöÇΓöÇ pom.xml
-Γöé   Γö£ΓöÇΓöÇ Dockerfile
-Γöé   ΓööΓöÇΓöÇ ...
-Γöé
-Γö£ΓöÇΓöÇ frontend/
-Γöé   Γö£ΓöÇΓöÇ public/
-Γöé   Γö£ΓöÇΓöÇ src/
-Γöé   Γöé   Γö£ΓöÇΓöÇ app/
-Γöé   Γöé   Γö£ΓöÇΓöÇ components/
-Γöé   Γöé   Γö£ΓöÇΓöÇ contexts/
-Γöé   Γöé   Γö£ΓöÇΓöÇ lib/
-Γöé   Γöé   Γö£ΓöÇΓöÇ providers/
-Γöé   Γöé   Γö£ΓöÇΓöÇ store/
-Γöé   Γöé   ΓööΓöÇΓöÇ tests/
-Γöé   Γöé
-Γöé   Γö£ΓöÇΓöÇ package.json
-Γöé   Γö£ΓöÇΓöÇ package-lock.json
-Γöé   Γö£ΓöÇΓöÇ Dockerfile
-Γöé   Γö£ΓöÇΓöÇ next.config.*
-Γöé   Γö£ΓöÇΓöÇ tsconfig.json
-Γöé   ΓööΓöÇΓöÇ ...
-Γöé
-Γö£ΓöÇΓöÇ .local-pg/
-Γö£ΓöÇΓöÇ docker-compose.yml
-Γö£ΓöÇΓöÇ .gitignore
-ΓööΓöÇΓöÇ README.md
-```
-
----
-
-# Backend Structure
-
-The backend is organized under the main Java package:
-
-```text
-com.inventory.backend
-```
-
-The backend follows a modular Spring Boot architecture.
-
-```text
-backend/
-ΓööΓöÇΓöÇ src/
-    Γö£ΓöÇΓöÇ main/
-    Γöé   Γö£ΓöÇΓöÇ java/
-    Γöé   Γöé   ΓööΓöÇΓöÇ com/
-    Γöé   Γöé       ΓööΓöÇΓöÇ inventory/
-    Γöé   Γöé           ΓööΓöÇΓöÇ backend/
-    Γöé   Γöé               Γöé
-    Γöé   Γöé               Γö£ΓöÇΓöÇ BackendApplication.java
-    Γöé   Γöé               Γö£ΓöÇΓöÇ config/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ controller/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ dto/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ entity/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ repository/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ service/
-    Γöé   Γöé               Γö£ΓöÇΓöÇ security/
-    Γöé   Γöé               ΓööΓöÇΓöÇ ...
-    Γöé   Γöé
-    Γöé   ΓööΓöÇΓöÇ resources/
-    Γöé       ΓööΓöÇΓöÇ application.properties
-    Γöé
-    ΓööΓöÇΓöÇ test/
-```
-
-The exact package contents may evolve as new business modules are added.
-
----
-
-# Frontend Structure
-
-The frontend uses Next.js App Router architecture.
-
-```text
-frontend/
-ΓööΓöÇΓöÇ src/
-    Γö£ΓöÇΓöÇ app/
-    Γöé   Γö£ΓöÇΓöÇ (dashboard)/
-    Γöé   Γöé   Γö£ΓöÇΓöÇ sales/
-    Γöé   Γöé   Γöé   ΓööΓöÇΓöÇ pos/
-    Γöé   Γöé   ΓööΓöÇΓöÇ ...
-    Γöé   Γö£ΓöÇΓöÇ login/
-    Γöé   Γö£ΓöÇΓöÇ layout.tsx
-    Γöé   ΓööΓöÇΓöÇ ...
-    Γöé
-    Γö£ΓöÇΓöÇ components/
-    Γö£ΓöÇΓöÇ contexts/
-    Γö£ΓöÇΓöÇ providers/
-    Γö£ΓöÇΓöÇ lib/
-    Γöé   ΓööΓöÇΓöÇ api/
-    Γöé       ΓööΓöÇΓöÇ apiClient.ts
-    Γö£ΓöÇΓöÇ store/
-    ΓööΓöÇΓöÇ tests/
-```
-
-The frontend uses:
-
-- Next.js App Router
-- React components
-- Context providers
-- API client abstraction
-- Client-side state management
-- React Query
-- Zustand
-- Form validation
-- Automated tests
-
----
-
-# Frontend API Client
-
-The frontend uses Axios as its HTTP client.
-
-The main API client is located at:
-
-```text
-frontend/src/lib/api/apiClient.ts
-```
-
-The API base URL is configured using:
-
-```text
-NEXT_PUBLIC_API_BASE_URL
-```
-
-A second variable, `API_INTERNAL_BASE_URL`, is **server-side only**. Inside
-Docker Compose the backend is reachable at `backend:8080`, a hostname the
-browser cannot resolve, so Next.js server components use this one while the
-browser uses the public URL. It falls back to `NEXT_PUBLIC_API_BASE_URL` when
-unset. Neither variable should ever carry a secret: both are inlined into the
-client bundle, which is why they carry URLs and nothing else.
-
-> **Set `NEXT_PUBLIC_API_BASE_URL` for anyone who is not on the API's own
-> machine.** The value is compiled into the browser bundle, so `localhost`
-> means *the browser's machine*, not the server. A colleague opening the app
-> from their own desk, or a phone on the shop network, gets
-> `net::ERR_CONNECTION_REFUSED` on every request and no explanation, because
-> nothing about the page looks wrong.
->
-> Set it to the address that machine can actually reach — the host's LAN IP
-> (`http://192.168.x.x:8081/api/v1`) for local network use, or the public API
-> URL for a deployed frontend — and restart the frontend so the new value is
-> rebuilt into the bundle. Editing the value without rebuilding changes
-> nothing.
->
-> When it is left unset entirely, the client derives the API address from the
-> page's own origin, which works from any machine on the same host.
-
-The client automatically attaches the JWT token to authenticated requests.
-
-Example:
-
-```http
-Authorization: Bearer <JWT_TOKEN>
-```
-
-When a `401 Unauthorized` response is received, the frontend clears the stored authentication information and redirects the user to the login page.
-
----
-
-# Database Model
-
-The main business entities include:
-
-```text
-User
-Role
-Permission
-Product
-Category
-Supplier
-Customer
-```
-
-The core inventory relationship can be represented as:
-
-```text
-Category
-   |
-   +------ Product
-             |
-             +------ Stock Information
-```
-
-Business relationships can be extended toward:
-
-```text
-Supplier
-   |
-   +------ Products
-             |
-             v
-          Inventory
-             |
-             v
-          Customer
-```
-
----
-
-# Core Database Entities
-
-## User
-
-Stores application users and their organizational information.
-
-## Role
-
-Defines the role assigned to a user.
-
-## Permission
-
-Defines specific actions that can be performed within the system.
-
-## Product
-
-Stores product and inventory information.
-
-## Category
-
-Organizes products into hierarchical groups.
-
-## Supplier
-
-Stores supplier and supplier-account information.
-
-## Customer
-
-Stores customer and customer-account information.
-
----
-
-# API Authentication Flow
-
-```text
-User
- |
- | Login
- v
-Next.js
- |
- | POST /api/v1/auth/login
- v
-Spring Boot
- |
- | Validate credentials
- v
-User Service
- |
- | Check password
- v
-BCrypt
- |
- | Valid
- v
-JWT Generated
- |
- v
-Frontend
- |
- | Store JWT
- v
-Authenticated Application
- |
- | Authorization: Bearer JWT
- v
-Protected API
-```
-
----
-
-# Example Product Flow
-
-```text
-User
- |
- | Create Product
- v
-Frontend
- |
- | POST /api/v1/products
- v
-JWT Authentication
- |
- v
-Authorization
- |
- v
-ProductController
- |
- v
-ProductService
- |
- v
-ProductRepository
- |
- v
-PostgreSQL
-```
-
----
-
-# Local Development Setup
-
-## Prerequisites
-
-Install:
-
-- Java 17
-- Maven 3.9+
-- Node.js 20+
-- npm
-- PostgreSQL
-- Git
-- Docker Desktop (optional but recommended)
-
-Verify:
+Verify the installations:
 
 ```bash
 java -version
@@ -1235,24 +880,102 @@ mvn -version
 node -version
 npm -version
 git --version
+docker --version
+docker compose version
 ```
 
----
-
-# Clone the Repository
+### Step 1: Clone the repository
 
 ```bash
 git clone https://github.com/yemom/inventory-system.git
+
 cd inventory-system
 ```
 
----
+### Step 2: Configure environment variables
 
-# Backend Setup
+Start with the example environment file:
+
+```bash
+cp .env-example .env
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env-example .env
+```
+
+Edit `.env` and provide the required local configuration.
+
+Generate a strong JWT secret:
+
+```bash
+openssl rand -hex 32
+```
+
+Provide your own secure database and administrator credentials. The backend intentionally refuses to start with an unsafe default JWT secret or missing required administrator credentials.
+
+**Never commit `.env` or real credentials to GitHub.**
+
+### Step 3: Start the application with Docker Compose
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+To run in the background:
+
+```bash
+docker compose up -d --build
+```
+
+The documented local service addresses are:
+
+| Service | Address |
+|---|---|
+| Frontend | http://localhost:3005 |
+| Backend | http://localhost:8081 |
+| REST API | http://localhost:8081/api/v1 |
+| PostgreSQL | localhost:5434 |
+
+Check running containers:
+
+```bash
+docker compose ps
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+Stop the application:
+
+```bash
+docker compose down
+```
+
+To stop containers and remove database volumes:
+
+```bash
+docker compose down -v
+```
+
+**Warning:** The `-v` option removes persistent Docker volumes and can permanently delete local database data. Use it only when you intend to reset the environment.
+
+### Step 4: Run the backend independently
+
+If you want to run the backend outside Docker, ensure PostgreSQL is running and configure the backend environment.
 
 ```bash
 cd backend
+
 mvn clean install
+
 mvn spring-boot:run
 ```
 
@@ -1262,107 +985,21 @@ Backend:
 http://localhost:8081
 ```
 
-API:
+Health check:
 
 ```text
-http://localhost:8081/api/v1
+http://localhost:8081/actuator/health
 ```
 
----
-
-# Frontend Setup
+### Step 5: Run the frontend independently
 
 Open another terminal:
 
 ```bash
 cd frontend
+
 npm install
-npm run dev
-```
 
-Frontend:
-
-```text
-http://localhost:3000
-```
-
-Create:
-
-```text
-frontend/.env.local
-```
-
-Add:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
-```
-
----
-
-# Running the Backend
-
-The backend needs PostgreSQL. Docker is the quickest way to have one:
-
-```bash
-docker run -d --name stockflow-db `
-  -e POSTGRES_DB=stockflow_db `
-  -e POSTGRES_USER=stockflow `
-  -e POSTGRES_PASSWORD=stockflow `
-  -p 5432:5432 postgres:16-alpine
-```
-
-Create `backend/.env` (copy `.env-example` at the repository root) and then run:
-
-```bash
-cd backend
-mvn clean install
-mvn spring-boot:run
-```
-
-| URL | Purpose |
-|---|---|
-| `http://localhost:8081/actuator/health` | Health check |
-| `http://localhost:8081/api/v1` | API root |
-| `http://localhost:8081/swagger-ui.html` | API documentation, if enabled |
-
-The application **refuses to start** with the development default `JWT_SECRET`.
-That is deliberate: a signing key committed to the repository lets anyone forge an
-administrator token. Generate one:
-
-```bash
-openssl rand -hex 32
-```
-
-Redis is optional. Without it, rate limiting and caching degrade to in-process
-equivalents rather than shared ones, which is fine for a single-instance
-development run.
-
-## Database migrations
-
-Hibernate is configured with `ddl-auto=update`, so the schema is derived from the
-entities on start-up. There is no migration tool and therefore no migration
-history — a change to an entity alters the schema in place, which is adequate for
-development and would need Flyway or Liquibase before a production deployment
-with data in it.
-
-## Running the tests
-
-```bash
-mvn test
-```
-
-Integration tests use Testcontainers and therefore need a working Docker daemon.
-If Docker Desktop is not running they will appear to hang rather than fail, which
-is the first thing to check when the suite does not finish.
-
----
-
-# Running the Frontend
-
-```bash
-cd frontend
-npm install
 npm run dev
 ```
 
@@ -1372,8 +1009,7 @@ Frontend:
 http://localhost:3005
 ```
 
-The dev server points at `http://localhost:8081/api/v1`. To change it, or to add
-the public build-time values, create `frontend/.env.local`:
+The frontend API URL is configured through:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
@@ -1381,314 +1017,60 @@ NEXT_PUBLIC_APP_NAME=StockFlow
 NEXT_PUBLIC_APP_URL=http://localhost:3005
 ```
 
-`NEXT_PUBLIC_*` variables are inlined into the client bundle at **build** time, so
-changing one requires a restart of the dev server or a rebuild. They are not
-secrets: anything with this prefix is visible to every browser that loads the app.
+Create or update `frontend/.env.local` with the appropriate values.
 
-`frontend/.env.local` exists and already contains working local values.
-
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Development server with hot reload |
-| `npm run type-check` | TypeScript, no emit |
-| `npm run lint` | ESLint |
-| `npm test` | Jest, watch mode |
-| `npm test -- --ci` | Jest, single run |
-| `npm run build` | Production build |
-| `npm run start` | Serve the production build |
-
----
-# Running with Docker
-
-From the repository root:
-
-```bash
-docker compose up --build
-```
-
-Or:
-
-```bash
-docker-compose up --build
-```
-
-Services:
-
-```text
-PostgreSQL
-Backend
-Frontend
-```
-
-With Docker:
-
-```text
-Frontend:  http://localhost:3005
-Backend:   http://localhost:8081
-API:       http://localhost:8081/api/v1
-PostgreSQL: localhost:5434
-```
+Remember that `NEXT_PUBLIC_*` variables are included in the browser bundle at build time. They are public configuration values, not secrets. Changing them requires restarting the development server or rebuilding the frontend.
 
 ---
 
-# Docker Commands
+## 15. Testing and Quality Assurance
 
-Start:
+Testing is an important part of StockFlow because inventory and financial operations must produce consistent results.
 
-```bash
-docker compose up
-```
-
-Build and start:
-
-```bash
-docker compose up --build
-```
-
-Background:
-
-```bash
-docker compose up -d
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-Stop and remove volumes:
-
-```bash
-docker compose down -v
-```
-
-View containers:
-
-```bash
-docker ps
-```
-
-View logs:
-
-```bash
-docker compose logs
-```
-
-Backend logs:
-
-```bash
-docker compose logs backend
-```
-
-Frontend logs:
-
-```bash
-docker compose logs frontend
-```
-
-Database logs:
-
-```bash
-docker compose logs db
-```
-
----
-
-# Environment Configuration
-
-Example frontend:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
-```
-
-Backend configuration should include values such as:
-
-```env
-DATABASE_URL=jdbc:postgresql://localhost:5434/stockflow_db
-DATABASE_USERNAME=stockflow
-DATABASE_PASSWORD=your-secure-password
-JWT_SECRET=your-secure-jwt-secret
-JWT_EXPIRATION=86400000
-```
-
-Production credentials should never be committed to Git.
-
----
-
-# Testing
-
-## Results
-
-These are the actual results of a full run, not an expectation.
-
-| Suite | Command | Result |
-|---|---|---|
-| Backend | `mvn -B test` | **452 tests - 0 failures, 0 errors** |
-| Frontend | `npx jest --ci` | **225 tests, 22 suites - all passing** |
-| Frontend types | `npx tsc --noEmit` | **clean** |
-| Frontend lint | `npm run lint` | **0 errors**, 55 warnings, all in pre-existing files |
-| Frontend build | `npm run build` | **compiles**, routes prerendered |
-
-Run the two suites **one at a time**. Both fork workers and together they exceed
-the machine's memory: the backend's forked JVM dies with "The forked VM
-terminated without properly saying goodbye", and jest workers fail with heap
-allocation errors. Neither is a test failure — both are resource exhaustion, and
-both pass when run alone.
-
-The backend integration tests need a working Docker daemon for Testcontainers.
-Docker Desktop being stopped is the most common reason they appear to hang.
-
-### Two things that will waste your time if you do not know them
-
-**Currency is formatted with a non-breaking space.** `formatCurrency(750)` returns
-`ETB\u00A0750.00` — the character between `ETB` and the digits is `U+00A0`, not
-`U+0020`. Testing Library's exact string matcher does not normalise it, so
-`screen.getByText(formatCurrency(750))` fails even when the text is on screen and
-character-for-character correct. Assert with a pattern (`getByText(/750\.00/)`)
-or look the element up by its row label instead. Do not "fix" this by changing
-`formatCurrency`; the output is correct and the matcher is the limitation.
-
-**A nullable query parameter needs an explicit cast.** In a JPQL predicate like
-`:search IS NULL OR LOWER(s.orderNumber) LIKE ...`, Hibernate has nothing to
-infer the parameter's type from and binds the null as `bytea`. PostgreSQL then
-refuses the whole query with `function lower(bytea) does not exist` — and only
-when the parameter happens to be null, so it looks like an intermittent failure.
-Write `CAST(:search AS string)`.
-
-## Backend
+### Backend testing
 
 The backend uses:
 
-- JUnit
-- Mockito
-- Spring Boot Test
-- Spring Security Test
-- Testcontainers
+- JUnit.
+- Mockito.
+- Spring Boot Test.
+- Spring Security Test.
+- Testcontainers.
 
-Run:
+Run backend tests:
 
 ```bash
 cd backend
+
 mvn test
 ```
 
-Complete build:
+Run the complete verification lifecycle:
 
 ```bash
 mvn clean verify
 ```
 
-What is covered:
+Integration tests using Testcontainers require a working Docker daemon.
 
-| Area | Where |
-|---|---|
-| Financial formulas, costing, COGS, margins, balances | `FinancialCalculationsTest` (45 tests, pure) |
-| Forecasting, model selection, backtesting, intervals, robust z-score | `TimeSeriesTest` (44 tests, pure) |
-| Reports, exports, formula-injection neutralisation, row cap | `ReportAndExportIntegrationTest` |
-| Sales persistence and payment recording | `SalesPersistenceIntegrationTest` |
-| Purchase receipt, supplier balances, warehouses, transfers | `PurchasingAndWarehouseIntegrationTest` |
-| Returns, refunds, expenses | `ReturnsAndExpensesIntegrationTest` |
-| Forecasting, anomalies, inventory advice, assistant, authorisation boundaries | `AiServiceIntegrationTest` (31 tests) |
-| Chatbot: role-by-role permission matrix, customer isolation, figures matching the reports, no-write requests, injection, rate limit, retention | `ChatbotServiceIntegrationTest` (22 tests) |
-| Chatbot provider: both URL shapes, bearer auth, model-availability check, zero outbound when disabled, every failure mode, no key in any message | `OpenAiCompatibleProviderTest` (18 tests, HTTP mocked) |
-| Chatbot frontend: both channels and their auth, no provider key in any request, expired-session vs rate-limit typing, stored-session TTL, thread loading/empty/error/retry, safe rendering | `chatbotApi.test.ts`, `chatThread.test.tsx` (30 tests) |
-| Approval workflows and permission enforcement | Existing integration suites |
-
-## Test data
-
-Test data is written by fixtures that stamp `TESTDATA-` on every order number and
-payment reference they create, and that exist only under `src/test/java` - never
-on the application's classpath in a deployment. `TradingHistoryFixture` is the one
-that writes a season of trading for the model evaluation suite; it writes rows
-directly rather than calling the API, because going through `POST /sales` twenty
-times a day runs the whole filter chain per sale and took the suite past fifteen
-minutes.
-
-## Frontend
+### Frontend testing
 
 The frontend uses:
 
-- Jest
-- React Testing Library
-- jest-dom
-- jsdom
+- Jest.
+- React Testing Library.
+- jest-dom.
+- jsdom.
 
-Run:
+Run frontend tests:
 
 ```bash
 cd frontend
-npm test
+
+npm test -- --ci
 ```
 
-Watch mode:
-
-```bash
-npm test -- --watch
-```
-
-Type checking:
-
-```bash
-npm run type-check
-```
-
-Linting:
-
-```bash
-npm run lint
-```
-
-Production build:
-
-```bash
-npm run build
-```
-
-`financePayables.test.tsx` is worth reading as an example of the testing
-philosophy: it was rewritten when the page stopped deriving balances in the
-browser. It now pins that the page renders what the server computed, that goods
-in transit are not a payable, and that a recorded payment names an order rather
-than an amount the client chose.
-
----
-# Jest TypeScript Configuration
-
-If TypeScript reports:
-
-```text
-Cannot find name 'describe'
-Cannot find name 'it'
-Cannot find name 'expect'
-Cannot find name 'jest'
-```
-
-install:
-
-```bash
-npm install --save-dev @types/jest
-```
-
-Then ensure Jest types are available to the TypeScript configuration.
-
----
-
-# Build and Production
-
-Build the frontend:
-
-```bash
-npm run build
-```
-
-Start production:
-
-```bash
-npm start
-```
-
-Run type checking:
+Run TypeScript checks:
 
 ```bash
 npm run type-check
@@ -1700,882 +1082,309 @@ Run linting:
 npm run lint
 ```
 
----
-
-# Security
-
-StockFlow uses:
-
-- JWT authentication
-- BCrypt password hashing
-- Role-based access control
-- Permission-based authorization
-- Stateless Spring Security sessions
-- CORS configuration
-- Protected API endpoints
-
-## Security Recommendation
-
-Never commit real production secrets.
-
-Protect:
-
-```text
-Database passwords
-JWT secrets
-Administrator credentials
-API keys
-Cloud credentials
-Service account credentials
-```
-
-Use environment variables, deployment secrets, Docker secrets, or a dedicated secret-management system.
-
-If real credentials have previously been committed to a public repository, rotate them.
-
----
-
-# Development Guidelines
-
-## Backend
-
-Maintain:
-
-```text
-Controller
-    |
-    v
-Service
-    |
-    v
-Repository
-```
-
-Controllers should handle HTTP concerns.
-
-Services should contain business logic.
-
-Repositories should handle persistence.
-
-Security logic should remain in the security layer.
-
-## Frontend
-
-Keep API communication centralized through the API client.
-
-Prefer:
-
-```text
-Component
-    |
-    v
-Hook / Query
-    |
-    v
-API Client
-    |
-    v
-Backend
-```
-
-Use TypeScript types for API data.
-
-Validate user input before submitting forms.
-
----
-
-# Git Workflow
-
-Create a feature branch:
+Build the production frontend:
 
 ```bash
-git checkout -b feature/product-management
-```
-
-Check changes:
-
-```bash
-git status
-```
-
-Add:
-
-```bash
-git add .
-```
-
-Commit:
-
-```bash
-git commit -m "feat: improve product management"
-```
-
-Push:
-
-```bash
-git push origin feature/product-management
-```
-
----
-
-# Commit Convention
-
-Examples:
-
-```text
-feat: add product management
-fix: resolve JWT authentication issue
-fix: correct product stock validation
-refactor: improve inventory service
-test: add product service tests
-docs: update project documentation
-```
-
----
-
-# Production Considerations
-
-Before production deployment, configure:
-
-- Production PostgreSQL
-- Strong JWT secret
-- Secure administrator credentials
-- HTTPS
-- Secure CORS
-- Environment-specific configuration
-- Database backups
-- Monitoring
-- Centralized logging
-- Error handling
-- Rate limiting
-- Audit logging
-- Database migrations
-- Secure secret management
-
-The current backend uses Hibernate automatic schema updates for development.
-
-For production, use controlled database migrations such as Flyway or Liquibase.
-
----
-
-# Future Improvements
-
-## Sales Transaction Persistence
-
-Implement:
-
-- Sales orders
-- Sale items
-- Transaction numbers
-- Payment records
-- Payment status
-- Customer association
-- Discounts
-- VAT
-- Change
-- Receipts
-
-Architecture:
-
-```text
-Sale
- |
- +-- Sale Items
- |
- +-- Customer
- |
- +-- Payment
- |
- +-- User/Cashier
-```
-
-## Purchase Management
-
-```text
-Supplier
-   |
-   v
-Purchase Order
-   |
-   v
-Purchase Items
-   |
-   v
-Inventory Increase
-```
-
-## Stock Transfers
-
-Support transfers between:
-
-- Branches
-- Warehouses
-- Storage locations
-
-## Returns
-
-Implement:
-
-- Customer returns
-- Supplier returns
-- Return reasons
-- Returned quantities
-- Inventory adjustments
-- Refund information
-
-## Damaged and Expired Products
-
-Support:
-
-- Damaged products
-- Expired products
-- Lost products
-- Stock corrections
-
-## Financial Management
-
-Add:
-
-- Expenses
-- Payments
-- Receivables
-- Payables
-- Profit and loss
-- Cash flow
-- Financial reports
-
-## Advanced Reporting
-
-Add reports for:
-
-- Daily sales
-- Monthly sales
-- Product performance
-- Inventory valuation
-- Low-stock products
-- Supplier performance
-- Customer activity
-- Profit and loss
-- Expenses
-- Purchase history
-- Sales history
-
-## Audit Logging
-
-Add audit records containing:
-
-- User
-- Action
-- Entity
-- Entity ID
-- Timestamp
-- Previous value
-- New value
-- IP address where appropriate
-
----
-
-# Known Implementation Notes
-
-## POS Transaction Persistence
-
-The current POS checkout flow creates checkout and receipt information on the frontend.
-
-A completed sale is not currently persisted through a dedicated backend sales transaction API.
-
-The POS should therefore currently be considered a frontend checkout workflow rather than a complete persisted sales transaction system.
-
-## Database Schema Management
-
-The backend currently uses Hibernate automatic schema updates for development.
-
-Production should use a controlled migration strategy.
-
-## Root Package Lock
-
-The frontend has its own package management files.
-
-A root-level Node.js lockfile should only be maintained if the repository intentionally uses a root Node workspace.
-
----
-
-# Troubleshooting
-
-## Backend Cannot Connect to PostgreSQL
-
-Check:
-
-```bash
-docker compose ps
-```
-
-Database logs:
-
-```bash
-docker compose logs db
-```
-
-Verify the database URL and credentials.
-
-## Frontend Cannot Connect to Backend
-
-Check:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1
-```
-
-Verify:
-
-```text
-http://localhost:8081
-```
-
-Also check browser developer tools for:
-
-- CORS errors
-- 401 errors
-- 403 errors
-- 404 errors
-- Network failures
-
-## JWT Authentication Problems
-
-Verify:
-
-```http
-Authorization: Bearer <TOKEN>
-```
-
-Check:
-
-- Token validity
-- Token expiration
-- User existence
-- JWT secret
-- User permissions
-
-## TypeScript Errors
-
-Run:
-
-```bash
-npm run type-check
-```
-
-If dependencies are corrupted:
-
-```bash
-rm -rf node_modules
-npm install
-```
-
-On Windows PowerShell:
-
-```powershell
-Remove-Item -Recurse -Force node_modules
-npm install
-```
-
-## Frontend Build Problems
-
-Run:
-
-```bash
-npm install
-npm run type-check
-npm run lint
 npm run build
 ```
 
+### Repository-documented test results
+
+The repository README documents the following results from its reported test run:
+
+| Test / Check | Documented result |
+|---|---|
+| Backend tests | 452 tests, 0 failures, 0 errors |
+| Frontend tests | 225 tests across 22 suites, all passing |
+| TypeScript | Clean type check |
+| ESLint | 0 errors, 55 warnings |
+| Frontend production build | Compiled successfully and routes prerendered |
+
+These are repository-documented results, not a new test run performed while preparing this README. Re-run the commands above against the current checkout to verify the latest state.
+
+**Testing note:** The repository recommends running backend and frontend test suites separately because running both worker-heavy suites simultaneously can exhaust available memory. Backend integration tests also require Docker for Testcontainers.
+
 ---
 
-# Verification Checklist
+## 16. Deployment
+
+StockFlow includes configuration for a separate frontend and backend deployment.
+
+| Component | Deployment configuration |
+|---|---|
+| Backend | Render |
+| Frontend | Vercel |
+| Database | Managed PostgreSQL |
+| Cache / rate limiting | Redis |
+| Containerization | Docker |
+
+### Backend configuration
+
+The backend requires secure environment variables, including:
+
+```env
+DATABASE_URL=your_database_connection
+DATABASE_USERNAME=your_database_username
+DATABASE_PASSWORD=your_database_password
+
+JWT_SECRET=your_generated_secret
+
+SUPER_ADMIN_USERNAME=your_admin_username
+SUPER_ADMIN_PASSWORD=your_secure_admin_password
+
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain
+```
+
+Optional chatbot configuration:
+
+```env
+CHATBOT_PROVIDER=deterministic
+CHATBOT_LLM_PHRASED=false
+```
+
+The deterministic chatbot does not require an external API key.
+
+### Frontend configuration
+
+Configure the following in the Vercel project settings:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-backend-domain/api/v1
+NEXT_PUBLIC_APP_URL=https://your-frontend-domain
+```
+
+The frontend API URL is compiled into the browser bundle during the build. Redeploy after changing it.
+
+### Health checks
+
+The backend exposes:
 
 ```text
-[ ] PostgreSQL is running
-[ ] Backend starts successfully
-[ ] Frontend starts successfully
-[ ] Database connection works
-[ ] Login works
-[ ] JWT token is generated
-[ ] Protected API requests work
-[ ] Product creation works
-[ ] Product search works
-[ ] Product update works
-[ ] Product deactivation works
-[ ] Category management works
-[ ] Supplier management works
-[ ] Customer management works
-[ ] Inventory information is displayed
-[ ] POS interface works
-[ ] TypeScript passes
-[ ] Tests pass
-[ ] Lint passes
-[ ] Production build succeeds
+GET /actuator/health
+GET /api/v1/dashboard/health
 ```
+
+### Deployment verification
+
+A deployment should not be considered successful merely because a hosting service reports a successful build.
+
+Verify:
+
+- Backend health.
+- Database connectivity.
+- Frontend-to-backend communication.
+- CORS configuration.
+- Authentication.
+- Permission enforcement.
+- Core business transactions.
+- Reports and exports.
+- Backup and recovery procedures.
+
+The repository contains deployment configuration and documentation, but a configured deployment URL should not be interpreted as proof that every production workflow has been independently verified.
+
+See [docs/deployment.md](docs/deployment.md) for the detailed deployment guide.
 
 ---
 
-# Recommended Development Workflow
+## 17. Known Limitations and Future Improvements
+
+StockFlow has a substantial set of implemented business workflows, but several areas require additional development or operational decisions.
+
+| Area | Current limitation | Possible improvement |
+|---|---|---|
+| Batch and lot tracking | No complete lot-level tracking. | Add batch identification and expiry-aware stock allocation. |
+| Supplier lead time | Replenishment uses a configurable default. | Learn lead times from historical purchasing records. |
+| Seasonality | Forecasting focuses on weekly seasonality. | Add annual and longer-term seasonal analysis when sufficient history exists. |
+| Multi-currency | Currency is stored for transaction provenance, but conversion arithmetic is not implemented. | Add exchange-rate management and multi-currency accounting rules. |
+| Forecast execution | Forecasts are calculated per request. | Introduce scheduled forecasting and cached model results as scale requires. |
+| Database migrations | Hibernate schema update is currently used. | Adopt Flyway or Liquibase for controlled production schema changes. |
+| Concurrent updates | Some non-stock entities do not have optimistic version fields. | Add version-based concurrency control where required. |
+| Dashboard customization | Dashboard is a defined operational view. | Consider customizable widgets and role-specific workspaces. |
+| Warehouse selection | Multi-warehouse transaction behavior needs a confirmed business decision. | Make the selected warehouse explicit where operationally required. |
+
+These improvements should be prioritized according to actual business requirements, data quality, and deployment scale.
+
+---
+
+## 18. Security Considerations
+
+StockFlow handles business transactions and potentially sensitive financial information. Security must therefore be applied throughout the application.
+
+Current security mechanisms include:
+
+- JWT-based stateless authentication.
+- BCrypt password hashing.
+- Role-based and permission-based authorization.
+- Backend endpoint protection.
+- Service-level authorization checks.
+- Request validation.
+- CORS configuration.
+- Rate limiting.
+- Audit records for important operations.
+- Server-side handling of chatbot credentials.
+- Customer-specific chatbot session isolation.
+
+### Important security practices
+
+1. Never commit `.env` files or production secrets.
+2. Use strong JWT signing keys.
+3. Rotate credentials that may have been exposed.
+4. Restrict database access.
+5. Use HTTPS in production.
+6. Configure CORS with exact trusted origins.
+7. Back up the database and test restoration.
+8. Review role permissions before creating staff accounts.
+9. Do not expose server-side credentials through frontend variables.
+10. Use controlled database migrations before production schema changes.
+
+---
+
+## 19. Development Guidelines
+
+To keep the codebase maintainable, new features should follow the existing architecture.
+
+### Backend development flow
 
 ```text
-1. Understand the business requirement
-        |
-        v
-2. Design the database/entity model
-        |
-        v
-3. Create DTOs
-        |
-        v
-4. Implement repository
-        |
-        v
-5. Implement service
-        |
-        v
-6. Implement controller
-        |
-        v
-7. Add security permissions
-        |
-        v
-8. Add frontend API integration
-        |
-        v
-9. Build frontend UI
-        |
-        v
-10. Add tests
-        |
-        v
-11. Run type-check
-        |
-        v
-12. Run lint
-        |
-        v
-13. Run backend tests
-        |
-        v
-14. Build frontend
-        |
-        v
-15. Test complete workflow
+Business Requirement
+       |
+       v
+Entity / Data Model
+       |
+       v
+DTO and Validation
+       |
+       v
+Repository
+       |
+       v
+Service and Business Logic
+       |
+       v
+Permission Enforcement
+       |
+       v
+Controller / REST API
+       |
+       v
+Unit and Integration Tests
 ```
 
----
+### Frontend development flow
 
-# Deployment
-
-The application is built to run in two places: the Spring Boot API on **Render**
-and the Next.js frontend on **Vercel**. Both are configured from environment
-variables; nothing secret belongs in the repository.
-
-## What is deployed where
-
-| Piece | Host | Built from | Reachable at |
-|---|---|---|---|
-| API (Spring Boot) | Render web service | `backend/Dockerfile` | `https://inventory-system-pm18.onrender.com` |
-| Frontend (Next.js) | Vercel | `frontend/` (auto-detected Next.js build) | your Vercel domain |
-| PostgreSQL | Render managed database (`stockflow-db`) | — | private network |
-| Redis | Render managed Redis | — | private network |
-
-`render.yaml` in this repository declares the whole backend stack — database,
-Redis, API and health check — so a new Render service can be created straight
-from the blueprint. The frontend is not in that file: Vercel deploys it from
-this Git repository using its own Next.js preset.
-
-## Backend environment variables (Render)
-
-Set these in the Render service's **Environment** tab. The ones marked *secret*
-must never be committed and must never appear in the frontend.
-
-| Variable | Required | Example | Notes |
-|---|---|---|---|
-| `DATABASE_URL` | *secret* | `postgresql://stockflow:…@dpg-…/stockflow_db` | Render injects this when the service is linked to the database |
-| `DATABASE_USERNAME` | *secret* | `stockflow` | |
-| `DATABASE_PASSWORD` | *secret* | `…` | |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | no | `redis`, `6379`, `…` | Without them, rate limiting degrades but the app still starts |
-| `JWT_SECRET` | *secret* | `openssl rand -hex 32` | **No default.** The backend refuses to start without a strong one |
-| `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` | *secret* | `admin`, ≥ 12 chars | Seeds the first super-admin on an empty database |
-| `CORS_ALLOWED_ORIGINS` | yes in production | `https://your-app.vercel.app` | Comma-separated exact origins; without it the browser reports an opaque network error |
-| `CHATBOT_PROVIDER` | no | `deterministic` | `deterministic` (default, no outbound request) or `openai-compatible` |
-| `CHATBOT_API_KEY` or `OPENAI_API_KEY` | no | `sk-…` | Server-side secret for the optional phrasing layer only |
-| `CHATBOT_LLM_PHRASED` | no | `true` | `false` guarantees zero outbound LLM requests |
-
-See `.env-example` for the complete list with safe placeholders, and
-[docs/deployment.md](docs/deployment.md) for the full reference.
-
-## Frontend environment variables (Vercel)
-
-| Variable | Required | Value | Notes |
-|---|---|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | **yes** | `https://inventory-system-pm18.onrender.com/api/v1` | Baked into the browser bundle at **build time** |
-| `NEXT_PUBLIC_APP_URL` | no | `https://your-app.vercel.app` | Used for absolute links |
-
-> **The one thing to get right.** `NEXT_PUBLIC_API_BASE_URL` is inlined when the
-> site is built, not when it is served, so changing it in the dashboard requires
-> a **redeploy**, not just a restart. If it is not set, the client falls back to
-> `http://localhost:8081/api/v1` — which is right for `docker compose up` and
-> wrong for anything else: every request from a user's browser would go to their
-> own machine. Nothing about it is secret; it is public by construction.
-
-## Health checks
-
-The API exposes `GET /actuator/health` (and `GET /api/v1/dashboard/health`).
-Point Render's health check path at `/actuator/health`. The first request after
-a long idle period can take 30–60s while the instance scales up — the frontend's
-request timeout is 60s for exactly this reason.
-
-## Manual actions a dashboard requires
-
-These cannot be done from the repository and must be set once per environment:
-
-1. Create the Render blueprint from `render.yaml`, or create the service by hand.
-2. Link the PostgreSQL database and Redis to the service (Render does not pass
-   them automatically unless the blueprint is used).
-3. Set `JWT_SECRET` and `SUPER_ADMIN_PASSWORD` before the first deploy — the
-   backend refuses to start without them.
-4. Set `CORS_ALLOWED_ORIGINS` to the exact Vercel domain.
-5. In Vercel, set `NEXT_PUBLIC_API_BASE_URL` to the Render API origin and
-   redeploy.
-
-## Verifying a deployment
-
-```bash
-curl -s https://inventory-system-pm18.onrender.com/actuator/health
-curl -s "https://inventory-system-pm18.onrender.com/api/v1/dashboard/stats"   # 401 without a token
+```text
+User Interface
+       |
+       v
+Reusable Components
+       |
+       v
+Hooks / React Query
+       |
+       v
+Centralized API Client
+       |
+       v
+Backend REST API
 ```
 
-No live deployment was verified while preparing this documentation; treat the
-URLs above as configuration, not as a claim that a deploy has been tested.
+### Git commit convention
 
----
+Use descriptive commit messages:
 
-# Continuous integration
+```text
+feat: add warehouse management
+fix: correct inventory stock calculation
+refactor: improve financial calculation service
+test: add sales integration tests
+docs: update project documentation
+```
 
-`.github/workflows/ci.yml` runs on every push and pull request:
-
-| Job | Runs |
-|---|---|
-| `backend` | `mvn -B clean compile`, then `mvn -B clean test` (Testcontainers starts its own PostgreSQL) |
-| `frontend` | `npm ci`, `npm run type-check`, `npm run lint`, `npx jest --ci`, `npm run build` |
-| `docker` | `docker build` for both images |
-
-No job needs production credentials: the integration tests provision their own
-database, and the frontend build only inlines the API URL it is given. Workflow
-runs on GitHub-hosted runners with the Docker daemon available, which is what
-Testcontainers needs.
-
----
-
-# Quality Standards
-
-Changes to StockFlow should aim to maintain:
-
-- Clean architecture
-- Separation of concerns
-- Type safety
-- Secure authentication
-- Proper authorization
-- Input validation
-- Consistent API responses
-- Meaningful error handling
-- Automated testing
-- Maintainable code
-- Reusable frontend components
-- Clear database relationships
-- Production-ready configuration
-
----
-
-# Project Status
-
-All phases are complete and tested. What follows is what was actually done, and
-what remains genuinely unfinished.
-
-## What is implemented and verified
-
-**Transactions are persisted and audited.** Sales, purchases, payments, expenses
-and returns are real records with transaction dates, actors and approval
-workflows. Stock moves only through `StockLedgerService`, in one transaction, and
-every movement row is the sole record of how a quantity changed.
-
-**Inventory is per warehouse.** `WarehouseStock` holds quantity and average cost
-per warehouse. `Product.quantity` is republished from those rows so every existing
-screen keeps working, but the warehouse rows are the record.
-
-**Costing is a documented moving weighted average**, recalculated on every goods
-receipt, **frozen onto each sale line at the point of sale**. A later price change
-cannot rewrite historical profit and a closed period cannot be restated.
-
-**Financial calculations live in one place.** `FinancialCalculations` is pure and
-unit-tested. Revenue is net of returns and excludes sales tax; COGS comes from the
-frozen cost; cash comes from the payment ledger, never from invoices; expenses are
-approved claims only. See
-[docs/financial-calculations.md](docs/financial-calculations.md).
-
-**Fourteen reports**, all from validated records, all with date filters, all
-computed by one service, all exportable to CSV or PDF rendered server-side from the
-same payload the screen showed.
-
-**Read-only intelligence.** Forecasting, anomaly detection, inventory advice,
-financial explanations and a business assistant. No external provider, no
-credentials, no outbound request, and no write method in the package. Model
-versions and every assistant question are logged. See
-[docs/intelligence.md](docs/intelligence.md).
-
-**The business chatbot answers from those same figures — deterministically
-first.** With the shipped defaults it makes no outbound request and needs no
-key. An *optional* OpenAI-compatible model may re-phrase tool results that have
-already been computed; its wording is checked number-by-number against the tool
-output before anyone reads it, the model is verified against the account at
-startup, the key lives server-side only (never in the frontend, an API
-response or a log), `CHATBOT_LLM_PHRASED=false` guarantees zero outbound calls,
-and every failure — timeout, rate limit, HTTP error, malformed response,
-unavailable model — falls back to the deterministic reply. See
-[docs/chatbot.md](docs/chatbot.md).
-
-**Authorization was tightened where it was wrong.** Financial reporting moved off
-`DASHBOARD_VIEW` - which every role holds - onto `FINANCIAL_REPORT_VIEW`,
-`PROFIT_LOSS_READ`, `RECEIVABLE_READ` and `PAYABLE_READ`. AI permissions are
-read-only by construction.
-
-**Tests: 452 backend, 225 frontend, all passing**, plus a clean type-check, lint
-and production build. Actual results are under [Testing](#testing).
-
-## Known limitations
-
-These are real and are stated rather than hidden:
-
-| Limitation | Why it is acceptable here |
-|---|---|
-| **No lot or batch tracking** | Goods are fungible retail, so costing is a moving weighted average. FIFO would need data that is not captured. |
-| **Supplier lead times are a default** | Not yet measured from order dates. Every recommendation says it assumed `AI_DEFAULT_LEAD_TIME_DAYS` rather than passing it off as measured. |
-| **Seasonality is weekly only** | Annual seasonality needs years of history this data does not yet have. The model is documented and would extend. |
-| **No multi-currency arithmetic** | `currency` is carried on orders for provenance; conversion is not performed. |
-| **Forecasts are computed per request** | Fast at this volume and always current. A scheduled job with cached results is a next step for a large deployment, not a correction. |
-| **Hand-written CSV rather than a library** | RFC 4180 is a quoting rule and a line ending. Tested against the specification rather than against a dependency's behaviour. |
-| **The dashboard is one page, not a workspace** | The stated requirements are met. Widget-level drag-and-drop customisation is a product decision, not a correctness one. |
-
-Nothing in this list is a placeholder. Every figure shown comes from a persisted
-transaction, and every claim made by the intelligence layer is traceable to the
-records and the model that produced it.
-
-## Open items that need a decision, not a fix
-
-These are outstanding because they change someone's books or someone's
-deployment. None is safe to resolve unilaterally.
-
-| Item | What happens until it is decided |
-|---|---|
-| **`NEXT_PUBLIC_API_BASE_URL` on Vercel** | The deployed frontend calls `/api/v1/*` on its own origin and every request 404s. Set it to `https://inventory-system-pm18.onrender.com/api/v1` in the Vercel project settings and redeploy. Verified reachable from this repo. |
-| **`CHATBOT_API_KEY` / `OPENAI_API_KEY` return 401** | The configured key is rejected by the provider. The deterministic fallback is what actually runs, and the UI labels it as such. No live model call is claimed anywhere. Either supply a working key or remove the variable so the intent is clear. |
-| **Multi-warehouse stock attribution** | The POS resolves the sale to the first active warehouse rather than asking. Stock leaves the warehouse listed first. Change the ordering on the Warehouses screen, or restore a picker, if that is wrong. |
-| **Concurrent writes use check-then-act** | Sales, purchases and stock adjustments read a balance and then write it back. `WarehouseStockRepository` takes a pessimistic lock on the row, which serialises the stock path, but no `@Version` column exists on `Product`, `SaleOrder` or `PurchaseOrder`, so a lost update remains possible on non-stock fields under real concurrency. |
-| **Historical data has no warehouse** | Movements predating warehouse attribution carry a null warehouse and were credited to the oldest active warehouse. `WarehouseStockBackfillRunner` reconciles the result against `products.quantity` and logs any disagreement; it has never reported one. |
-
----
-
-# Contribution
-
-To contribute:
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Implement the feature or fix.
-4. Add or update tests.
-5. Run type checking.
-6. Run linting.
-7. Run backend tests.
-8. Build the frontend.
-9. Commit your changes.
-10. Push the branch.
-11. Create a pull request.
-
-Example:
+Create a feature branch before implementing a change:
 
 ```bash
 git checkout -b feature/new-feature
+
 git add .
+
 git commit -m "feat: implement new feature"
+
 git push origin feature/new-feature
 ```
 
 ---
 
-# Author
+## 20. Contribution
 
-## Esrom Basazinaw
+Contributions, suggestions, and constructive feedback are welcome.
 
+To contribute:
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Implement your changes.
+4. Add or update tests.
+5. Run backend and frontend verification.
+6. Commit your changes with a meaningful message.
+7. Push your branch.
+8. Open a pull request describing the change.
+
+Please include the business problem, implementation details, and testing performed when submitting a contribution.
+
+---
+
+## 21. Project Documentation
+
+For deeper technical information, refer to the documentation directory.
+
+| Document | Description |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Application architecture, data model, and design decisions. |
+| [docs/financial-calculations.md](docs/financial-calculations.md) | Financial formulas, costing method, and accounting rules. |
+| [docs/intelligence.md](docs/intelligence.md) | Forecasting, anomaly detection, inventory optimization, and business assistant. |
+| [docs/chatbot.md](docs/chatbot.md) | Chatbot architecture, configuration, security, and fallback behavior. |
+| [docs/roles-and-permissions.md](docs/roles-and-permissions.md) | Role and permission matrix with approval workflows. |
+| [docs/deployment.md](docs/deployment.md) | Environment configuration and deployment instructions. |
+
+---
+
+## 22. About the Project
+
+StockFlow was developed as a software engineering project to address practical challenges in inventory management and business operations.
+
+The project focuses on more than building CRUD screens. It emphasizes the engineering decisions behind reliable business software: transaction consistency, historical cost accuracy, secure authorization, auditability, financial integrity, and useful data-driven insights.
+
+It brings together backend engineering, frontend development, database design, security, testing, and statistical analysis in one application.
+
+The project is also an opportunity to explore how software engineering can help businesses make better operational decisions using accurate and accessible information.
+
+---
+
+## 23. Author
+
+**Esrom Basazinaw**  
 Software Engineering Student  
-Addis Ababa Institute of Technology
+Addis Ababa Institute of Technology (AAiT)  
+Addis Ababa, Ethiopia
 
-GitHub:
-
-https://github.com/yemom
-
-Portfolio:
-https://esrom12-portfolio.vercel.app/
+- GitHub: [@yemom](https://github.com/yemom)
+- Portfolio: [esrom12-portfolio.vercel.app](https://esrom12-portfolio.vercel.app/)
+- LinkedIn: [Esrom Basazinaw](https://www.linkedin.com/in/esrom-basazinew-65102a339/)
 
 ---
 
-# Repository
+## 24. Repository
 
-GitHub Repository:
-
-https://github.com/yemom/inventory-system
+[https://github.com/yemom/inventory-system](https://github.com/yemom/inventory-system)
 
 ---
 
-# Files Changed
+## License
 
-The work below is uncommitted. `git status` shows it; nothing has been added or
-committed.
-
-## New backend - finance
-
-| File | Purpose |
-|---|---|
-| `finance/FinancialCalculations.java` | Every formula. Pure, static, no database, no clock. |
-| `finance/FinancialCalculationService.java` | Assembles `FinancialSummary`; one fetch per source record. |
-| `finance/FinancialSummary.java` | The record every report, dashboard and assistant reads. |
-
-## New backend - intelligence
-
-| File | Purpose |
-|---|---|
-| `ai/TimeSeries.java` | All models and statistics, pure and tested. |
-| `ai/AiProperties.java` | Intelligible configuration, every field documented inline. |
-| `ai/AiModelRegistry.java` | Reads and supersedes trained model versions. |
-| `ai/ForecastingService.java` | Model selection by backtest, prediction intervals, refusal on insufficient data. |
-| `ai/AnomalyDetectionService.java` | Revenue, expense and stock alerts, with evidence. |
-| `ai/InventoryOptimizationService.java` | Reorder points, safety stock, stock-out projection. |
-| `ai/FinancialInsightService.java` | Explanations quoting the calculation layer. |
-| `ai/BusinessAssistantService.java` | Intent classification, per-intent permission checks, query logging. |
-| `model/AiModelVersion.java` | Training period, sample size, measured error, candidate scores. |
-| `model/AiQueryLog.java` | Every question, intent, parameters, outcome and duration. |
-
-## New backend - data and services
-
-| File | Purpose |
-|---|---|
-| `model/WarehouseStock.java` | Per-warehouse quantity and weighted-average cost. |
-| `model/ReturnOrder.java`, `ReturnOrderItem.java` | Returns as documents, not as `localStorage`. |
-| `service/WarehouseStockService.java` | Locking, weighted-average cost, `Product.quantity` republish. |
-| `service/StockLedgerService.java` | The only place a `StockMovement` row is written. |
-| `service/StockShortfallPolicy.java` | Clamp for approved counts, refuse for operational moves. |
-| `service/FinanceService.java` | Validated cash: payments cannot be free-standing. |
-| `service/ReturnService.java` | Raise, then approve; approving posts stock and finance together. |
-| `service/ReportService.java` | The fourteen reports, one shape. |
-| `service/ExportService.java` | Server-side CSV and PDF, formula injection neutralised. |
-| `controller/AiController.java`, `ReportController.java`, `FinanceController.java`, `ReturnController.java` | New endpoints. |
-| Repository queries | `sumNetSalesPerDay`, `findOutstandingReceivables`, `findOutstandingPayables`, `findLossesBetween` and the supporting queries. |
-
-## Extended
-
-| File | What changed |
-|---|---|
-| `model/SaleOrder` | `warehouse`, `amountPaid`, `transactionDate`, `currency`, `costOfGoodsSold`. |
-| `model/SaleOrderItem` | `unitCost` (frozen at sale), `quantityReturned`. |
-| `model/PurchaseOrder` | `supplier`, `warehouse`, statuses, terms, due dates. |
-| `model/PurchaseOrderItem` | `quantityReceived`, `quantityReturned`. |
-| `model/StockMovement` | `destinationWarehouse`, `reason`, `movementGroup`, `unitCost`, precise types. |
-| `model/Payment` | `direction`, `partyType`, document links, `transactionDate`, `externalReference`. |
-| `model/Expense` | `transactionDate`, `approver`. |
-| `security/RolePermissionCatalog.java` | Financial permissions moved off `DASHBOARD_VIEW`; five read-only AI permissions added. |
-| `controller/DashboardController.java` | Split into `/stats`, `/financial`, `/insights` with separate permissions. |
-| `controller/PaymentController.java`, `ExpenseController.java`, `PurchaseOrderController.java`, `StockMovementController.java`, `sales/SalesReportService` | Rewritten over the new services. |
-| `pom.xml` | `com.github.librepdf:openpdf:1.3.30`. |
-| `application.properties` | `app.ai.*` and `app.report.*` blocks, every field documented inline. |
-
-## New frontend
-
-| File | Purpose |
-|---|---|
-| `lib/api/aiApi.ts` | Intelligence, finance, dashboard, reports and returns clients. |
-| `hooks/useAiDashboard.ts` | Gated queries, disabled rather than fired-and-refused. |
-| `components/ai/AiInsightPanel.tsx` | Insights, alerts and recommendations with their evidence. |
-| `components/ai/ForecastChart.tsx` | History and forecast on one axis, with the prediction band. |
-| `components/ai/AssistantPanel.tsx` | The assistant, with period, assumptions and source links. |
-| `components/ui/DateRangeFilter.tsx` | Calendar-month presets, not rolling approximations. |
-| `components/reports/ReportScreen.tsx` | One component rendering any report, with export and pagination. |
-| `app/(dashboard)/dashboard/page.tsx` | Rewritten on `/dashboard/financial` and `/dashboard/insights`. |
-| `app/(dashboard)/finance/profit-loss/page.tsx` | Now the backend statement. |
-| `app/(dashboard)/finance/receivables/page.tsx`, `payables/page.tsx` | Now the server's balances, with the collection flow kept. |
-| `app/(dashboard)/sales/returns/page.tsx`, `purchases/returns/page.tsx` | `localStorage` replaced by server documents with approval. |
-| `app/(dashboard)/reports/{sales,purchases,financial,inventory,inventory-value}` | Now `ReportScreen`. |
-| `app/(dashboard)/reports/ai/page.tsx` and `reports/ai/{models,queries}` | Forecast and alerts, model evaluation, query log. |
-
-## Rewritten frontend tests
-
-`financePayables.test.tsx` was rewritten when the page stopped deriving balances
-in the browser. It previously pinned the client-side arithmetic that produced the
-wrong figure - it asserted that the page subtracted `paid` from `totalAmount`
-itself, which is the behaviour that made a paginated list an under-count. It now
-pins that the page renders what the server computed, that goods in transit are not
-a payable, and that a payment names an order rather than an amount the client
-chose.
-
-## New and rewritten documentation
-
-| Document | Covers |
-|---|---|
-| `docs/architecture.md` | How the pieces fit, the data model, the security model, the limitations. |
-| `docs/financial-calculations.md` | Every formula, the costing method, the accounting policies, what is not counted. |
-| `docs/intelligence.md` | How the models work and how they are evaluated. |
-| `docs/roles-and-permissions.md` | Extended with the financial and AI permission boundaries. |
-| `README.md` | Rewritten sections: Business Intelligence, Reports and Exports, Testing, Project Status, Project Structure, this list. |
-| `.env-example` | `AI_*` and `REPORT_EXPORT_MAX_ROWS`, every value explained. |
-| `docker-compose.yml` | New `AI_*` variables; committed super-admin credentials removed. |
-| `render.yaml` | New `AI_*` variables, with a note on why there is no API key. |
-
-## Security fix worth calling out
-
-`docker-compose.yml` committed working super-admin credentials, so every
-deployment started from this file booted with the same administrator account and
-password. They now come from `.env` with no default at all, so an unset variable
-fails the start-up instead of leaving a known account reachable. `.env` itself is
-and was gitignored.
+No open-source license is currently specified for this repository. If the project is intended for public reuse and distribution, add an appropriate license and make its terms clear.
 
 ---
 
-# License
-
-This project is currently maintained as a software engineering project.
-
-Add an appropriate open-source license such as MIT, Apache 2.0, or another license if the project is intended for public distribution.
-
----
-
-# Final Architecture Overview
-
-```text
-                         STOCKFLOW
-                             |
-       +---------------------+---------------------+
-       |                                           |
-       v                                           v
-   FRONTEND                                    BACKEND
-   Next.js                                  Spring Boot
-       |                                           |
-   React UI                                  Controllers
-       |                                           |
-   React Query                                  Services
-       |                                           |
-   Zustand                                    Repositories
-       |                                           |
-   Axios API                                      |
-       |                                           |
-       +-------------------+-----------------------+
-                           |
-                           v
-                      PostgreSQL
-                           |
-                           v
-                    Business Data
-```
-
-StockFlow provides the foundation for a secure, scalable inventory and business management platform, with the architecture designed to support additional transaction, reporting, financial, and operational modules as development continues.
+<p align="center">
+  <strong>StockFlow — Turning Business Operations into Clear, Connected Information.</strong>
+</p>
