@@ -66,7 +66,7 @@ public class User {
     @JoinColumn(name = "role_id")
     private Role role;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "user_granted_permissions",
         joinColumns = @JoinColumn(name = "user_id"),
@@ -75,7 +75,7 @@ public class User {
     @Builder.Default
     private Set<Permission> grantedPermissions = new HashSet<>();
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "user_revoked_permissions",
         joinColumns = @JoinColumn(name = "user_id"),
