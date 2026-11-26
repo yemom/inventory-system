@@ -6,6 +6,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "users")
@@ -63,6 +66,24 @@ public class User {
     @JoinColumn(name = "role_id")
     private Role role;
 
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+        name = "user_granted_permissions",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "permission_id")
+    )
+    @Builder.Default
+    private Set<Permission> grantedPermissions = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+        name = "user_revoked_permissions",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "permission_id")
+    )
+    @Builder.Default
+    private Set<Permission> revokedPermissions = new HashSet<>();
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     @Builder.Default
@@ -90,4 +111,24 @@ public class User {
 
     public String getFullName() { return firstName + " " + lastName; }
     public boolean isActive() { return status == UserStatus.ACTIVE; }
+
+    /**
+     * Effective permissions for this user: (role permissions - revokedPermissions) + grantedPermissions.
+     */
+    public Set<Permission> getEffectivePermissions() {
+        Set<Permission> effective = new HashSet<>();
+        if (role != null && role.getPermissions() != null) {
+            effective.addAll(role.getPermissions());
+        }
+        if (revokedPermissions != null && !revokedPermissions.isEmpty()) {
+            Set<String> revokedNames = revokedPermissions.stream()
+                    .map(Permission::getName)
+                    .collect(Collectors.toSet());
+            effective.removeIf(p -> revokedNames.contains(p.getName()));
+        }
+        if (grantedPermissions != null) {
+            effective.addAll(grantedPermissions);
+        }
+        return effective;
+    }
 }

@@ -15,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -80,6 +81,47 @@ public class StaffController {
                                                            @AuthenticationPrincipal CustomUserDetails principal) {
         service.resetPassword(id, body.get("temporaryPassword"), principal.getUser());
         return ResponseEntity.ok(ApiResponse.ok("Staff password reset successfully.", null));
+    }
+
+    @GetMapping("/permissions")
+    @PreAuthorize("hasAuthority('USER_READ') or hasAuthority('STAFF_VIEW')")
+    public ResponseEntity<ApiResponse<List<String>>> listAllPermissions() {
+        return ResponseEntity.ok(ApiResponse.ok(service.listAllPermissions()));
+    }
+
+    @PutMapping("/{id}/permissions")
+    @PreAuthorize("hasAuthority('USER_UPDATE') or hasAuthority('STAFF_UPDATE')")
+    public ResponseEntity<ApiResponse<UserDTO>> updatePermissions(@PathVariable Long id,
+                                                                  @RequestBody Map<String, List<String>> body,
+                                                                  @AuthenticationPrincipal CustomUserDetails principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Access permissions updated successfully.",
+                service.updatePermissions(id, body.get("permissions"), principal.getUser())));
+    }
+
+    @PostMapping("/{id}/permissions")
+    @PreAuthorize("hasAuthority('USER_UPDATE') or hasAuthority('STAFF_UPDATE')")
+    public ResponseEntity<ApiResponse<UserDTO>> addPermission(@PathVariable Long id,
+                                                              @RequestBody Map<String, String> body,
+                                                              @AuthenticationPrincipal CustomUserDetails principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Permission added successfully.",
+                service.addPermission(id, body.get("permission"), principal.getUser())));
+    }
+
+    @DeleteMapping("/{id}/permissions/{permission}")
+    @PreAuthorize("hasAuthority('USER_UPDATE') or hasAuthority('STAFF_UPDATE')")
+    public ResponseEntity<ApiResponse<UserDTO>> removePermission(@PathVariable Long id,
+                                                                 @PathVariable String permission,
+                                                                 @AuthenticationPrincipal CustomUserDetails principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Permission removed successfully.",
+                service.removePermission(id, permission, principal.getUser())));
+    }
+
+    @PostMapping("/{id}/permissions/reset")
+    @PreAuthorize("hasAuthority('USER_UPDATE') or hasAuthority('STAFF_UPDATE')")
+    public ResponseEntity<ApiResponse<UserDTO>> resetPermissions(@PathVariable Long id,
+                                                                 @AuthenticationPrincipal CustomUserDetails principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Access permissions reset to role defaults.",
+                service.resetPermissions(id, principal.getUser())));
     }
 
     @DeleteMapping("/{id}")

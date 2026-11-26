@@ -54,8 +54,8 @@ public class AuthController {
         userService.updateLastLogin(identifier);
 
         User user = ((CustomUserDetails) userDetails).getUser();
-        List<String> permissions = user.getRole().getPermissions().stream()
-                .map(Permission::getName).collect(Collectors.toList());
+        List<String> permissions = user.getEffectivePermissions().stream()
+                .map(Permission::getName).sorted().collect(Collectors.toList());
 
         return ResponseEntity.ok(AuthResponse.builder()
                 .token(token)
@@ -101,8 +101,8 @@ public class AuthController {
             userService.updateLastLogin(request.getEmail());
 
             User user = ((CustomUserDetails) userDetails).getUser();
-            List<String> permissions = user.getRole().getPermissions().stream()
-                    .map(Permission::getName).collect(Collectors.toList());
+            List<String> permissions = user.getEffectivePermissions().stream()
+                    .map(Permission::getName).sorted().collect(Collectors.toList());
 
             return ResponseEntity.status(201).body(AuthResponse.builder()
                     .token(token)

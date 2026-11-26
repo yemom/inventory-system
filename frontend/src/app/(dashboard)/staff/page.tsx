@@ -13,6 +13,9 @@ import {
   UserCheck,
   UserX,
   Users,
+  X,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -137,6 +140,14 @@ export default function StaffManagementPage() {
   const [resetting, setResetting] = useState<StaffMember | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Access Permissions editor state
+  const [allPermissions, setAllPermissions] = useState<string[]>([]);
+  const [editingPermissions, setEditingPermissions] = useState(false);
+  const [draftPermissions, setDraftPermissions] = useState<string[]>([]);
+  const [permSearch, setPermSearch] = useState('');
+  const [permToAdd, setPermToAdd] = useState('');
+  const [permSaving, setPermSaving] = useState(false);
 
   const canManage = hasPermission('USER_CREATE') || hasPermission('STAFF_CREATE');
   const canUpdate = hasPermission('USER_UPDATE') || hasPermission('STAFF_UPDATE');
@@ -328,6 +339,83 @@ export default function StaffManagementPage() {
     }
   };
 
+  useEffect(() => {
+    if (viewing) {
+      setEditingPermissions(false);
+      setPermSearch('');
+      setPermToAdd('');
+      if (canUpdate && allPermissions.length === 0) {
+        usersApi.listPermissions()
+          .then(res => setAllPermissions(res.data || []))
+          .catch(() => {});
+      }
+    }
+  }, [viewing?.id, canUpdate]);
+
+  const applyUpdatedMember = (updated: StaffMember) => {
+    setViewing(updated);
+    setStaff(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+  };
+
+  const handleAddPermission = async () => {
+    if (!viewing || !permToAdd) return;
+    setPermSaving(true);
+    try {
+      const res = await usersApi.addPermission(viewing.id, permToAdd);
+      applyUpdatedMember(res.data);
+      setPermToAdd('');
+      toast('success', `Added permission ${permToAdd}.`);
+    } catch (error: any) {
+      toast('error', error.response?.data?.message || 'Unable to add permission.');
+    } finally {
+      setPermSaving(false);
+    }
+  };
+
+  const handleRemovePermission = async (permission: string) => {
+    if (!viewing) return;
+    setPermSaving(true);
+    try {
+      const res = await usersApi.removePermission(viewing.id, permission);
+      applyUpdatedMember(res.data);
+      toast('success', `Removed permission ${permission}.`);
+    } catch (error: any) {
+      toast('error', error.response?.data?.message || 'Unable to remove permission.');
+    } finally {
+      setPermSaving(false);
+    }
+  };
+
+  const handleSavePermissions = async () => {
+    if (!viewing) return;
+    setPermSaving(true);
+    try {
+      const res = await usersApi.updatePermissions(viewing.id, draftPermissions);
+      applyUpdatedMember(res.data);
+      setEditingPermissions(false);
+      toast('success', 'Access permissions updated successfully.');
+    } catch (error: any) {
+      toast('error', error.response?.data?.message || 'Unable to update permissions.');
+    } finally {
+      setPermSaving(false);
+    }
+  };
+
+  const handleResetPermissions = async () => {
+    if (!viewing) return;
+    setPermSaving(true);
+    try {
+      const res = await usersApi.resetPermissions(viewing.id);
+      applyUpdatedMember(res.data);
+      setEditingPermissions(false);
+      toast('success', 'Access permissions reset to role defaults.');
+    } catch (error: any) {
+      toast('error', error.response?.data?.message || 'Unable to reset permissions.');
+    } finally {
+      setPermSaving(false);
+    }
+  };
+
   if (!hasPermission('USER_READ') && !hasPermission('STAFF_VIEW')) {
     return <div className="p-8 text-red-500 font-medium">Access denied. Staff Management requires staff view permission.</div>;
   }
@@ -496,8 +584,182 @@ export default function StaffManagementPage() {
               <Detail title="Account" items={[['Status', viewing.status], ['Username', viewing.username], ['Last Login', formatDateTime(viewing.lastLoginAt)], ['Created', formatDateTime(viewing.createdAt)]]} />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Access Permissions</h4>
-              <div className="flex flex-wrap gap-2">{(viewing.permissions || []).map(permission => <Badge key={permission} variant="outline">{permission}</Badge>)}</div>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                  Access Permissions ({(viewing.permissions || []).length})
+                </h4>
+                {canUpdate && mayTouch(viewing) && (
+                  <div className="flex items-center gap-2">
+                    {!editingPermissions ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={permSaving}
+                          onClick={() => {
+                            setDraftPermissions(viewing.permissions || []);
+                            setPermSearch('');
+                            setEditingPermissions(true);
+                          }}
+                        >
+                          <Pencil size={13} /> Edit Permissions
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={permSaving}
+                          onClick={handleResetPermissions}
+                        >
+                          <RotateCcw size={13} /> Reset to Role Defaults
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={permSaving}
+                          onClick={() => setEditingPermissions(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          loading={permSaving}
+                          onClick={handleSavePermissions}
+                        >
+                          <Check size={13} /> Save Permissions
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {!editingPermissions ? (
+                <div className="space-y-3">
+                  {canUpdate && mayTouch(viewing) && allPermissions.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={permToAdd}
+                        onChange={e => setPermToAdd(e.target.value)}
+                        disabled={permSaving}
+                        className="flex-1 min-w-[220px] rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+                      >
+                        <option value="">Select permission to add...</option>
+                        {allPermissions
+                          .filter(p => !(viewing.permissions || []).includes(p))
+                          .map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        disabled={!permToAdd || permSaving}
+                        loading={permSaving}
+                        onClick={handleAddPermission}
+                      >
+                        <Plus size={14} /> Add Permission
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {(viewing.permissions || []).length === 0 ? (
+                      <span className="text-xs text-gray-400">No permissions assigned to this account.</span>
+                    ) : (
+                      (viewing.permissions || []).map(permission => (
+                        <span
+                          key={permission}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-200"
+                        >
+                          <span>{permission}</span>
+                          {canUpdate && mayTouch(viewing) && (
+                            <button
+                              type="button"
+                              title={`Remove ${permission}`}
+                              disabled={permSaving}
+                              onClick={() => handleRemovePermission(permission)}
+                              className="rounded-full p-0.5 text-gray-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/40 dark:hover:text-red-400 disabled:opacity-50"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/60 dark:bg-gray-900/40">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Filter permissions (e.g. ACCOUNTING, SALE, TAX)..."
+                        value={permSearch}
+                        onChange={e => setPermSearch(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-1.5 pl-8 pr-3 text-sm text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        const visible = allPermissions.filter(p => p.toLowerCase().includes(permSearch.toLowerCase()));
+                        setDraftPermissions(Array.from(new Set([...draftPermissions, ...visible])));
+                      }}
+                    >
+                      Select Visible
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => setDraftPermissions([])}
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pr-1">
+                    {allPermissions
+                      .filter(p => p.toLowerCase().includes(permSearch.toLowerCase()))
+                      .map(permission => {
+                        const checked = draftPermissions.includes(permission);
+                        return (
+                          <label
+                            key={permission}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs cursor-pointer transition ${
+                              checked
+                                ? 'border-blue-400 bg-blue-50 text-blue-900 dark:border-blue-600 dark:bg-blue-950/40 dark:text-blue-200'
+                                : 'border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setDraftPermissions(prev =>
+                                  prev.includes(permission)
+                                    ? prev.filter(p => p !== permission)
+                                    : [...prev, permission]
+                                );
+                              }}
+                              className="rounded text-blue-600"
+                            />
+                            <span className="truncate font-mono">{permission}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {draftPermissions.length} permission(s) selected. Click &ldquo;Save Permissions&rdquo; to apply.
+                  </p>
+                </div>
+              )}
             </div>
             <div>
               <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Activity</h4>

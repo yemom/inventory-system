@@ -6,6 +6,8 @@ import com.inventory.backend.dto.UserDTO;
 import com.inventory.backend.model.Role;
 import com.inventory.backend.model.User;
 import com.inventory.backend.model.UserStatus;
+import com.inventory.backend.model.Permission;
+import com.inventory.backend.repository.PermissionRepository;
 import com.inventory.backend.repository.RoleRepository;
 import com.inventory.backend.repository.UserRepository;
 import com.inventory.backend.security.RoleGrantPolicy;
@@ -37,6 +39,9 @@ class UserServiceTest {
     private RoleRepository roleRepository;
 
     @Mock
+    private PermissionRepository permissionRepository;
+
+    @Mock
     private PasswordEncoder passwordEncoder;
 
     @Mock
@@ -61,7 +66,7 @@ class UserServiceTest {
                 .id(99L).username("manager_actor").email("manager_actor@stockflow.test")
                 .role(managerRole).status(UserStatus.ACTIVE).build();
 
-        userService = new UserService(userRepository, roleRepository, passwordEncoder,
+        userService = new UserService(userRepository, roleRepository, permissionRepository, passwordEncoder,
                 new AuditLogService(auditLogRepository), new RoleGrantPolicy());
 
         cashierRole = Role.builder().id(1L).name("CASHIER").description("Cashier Role").build();

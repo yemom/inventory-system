@@ -97,4 +97,24 @@ export const usersApi = {
     const res = await apiClient.delete(`/staff/${id}`);
     return res.data;
   },
+  listPermissions: async () => {
+    const res = await apiClient.get('/staff/permissions');
+    return res.data;
+  },
+  updatePermissions: async (id: number | string, permissions: string[]) => {
+    const res = await apiClient.put(`/staff/${id}/permissions`, { permissions });
+    return res.data;
+  },
+  addPermission: async (id: number | string, permission: string) => {
+    const res = await apiClient.post(`/staff/${id}/permissions`, { permission });
+    return res.data;
+  },
+  removePermission: async (id: number | string, permission: string) => {
+    const res = await apiClient.delete(`/staff/${id}/permissions/${encodeURIComponent(permission)}`);
+    return res.data;
+  },
+  resetPermissions: async (id: number | string) => {
+    const res = await apiClient.post(`/staff/${id}/permissions/reset`);
+    return res.data;
+  },
 };

@@ -44,6 +44,7 @@ const nextConfig = {
     // second machine on the same network works.
     '192.168.137.1',
     '169.254.51.110',
+    '10.5.227.105',
     'host.docker.internal',
   ],
 };

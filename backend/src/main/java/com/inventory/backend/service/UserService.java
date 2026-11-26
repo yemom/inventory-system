@@ -8,11 +8,13 @@ import com.inventory.backend.security.RolePermissionCatalog;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
 public class UserService {
     private final UserRepository userRepo;
     private final RoleRepository roleRepo;
+    private final PermissionRepository permissionRepo;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
     private final RoleGrantPolicy roleGrantPolicy;
@@ -179,8 +182,13 @@ public class UserService {
         if (req.getDateJoined() != null) user.setDateJoined(req.getDateJoined());
         if (req.getStatus() != null) user.setStatus(requireStatus(req.getStatus()));
         if (req.getRoleName() != null) {
-            Role role = roleRepo.findByName(normalizeRole(req.getRoleName()))
+            String normalized = normalizeRole(req.getRoleName());
+            Role role = roleRepo.findByName(normalized)
                     .orElseThrow(() -> new IllegalArgumentException("Role not found"));
+            if (!normalized.equals(previousRole)) {
+                if (user.getGrantedPermissions() != null) user.getGrantedPermissions().clear();
+                if (user.getRevokedPermissions() != null) user.getRevokedPermissions().clear();
+            }
             user.setRole(role);
         }
         User saved = userRepo.save(user);
@@ -225,6 +233,110 @@ public class UserService {
         log(actor, "STAFF_PASSWORD_RESET", u, "Reset temporary password for " + u.getEmployeeId());
     }
 
+    public List<String> listAllPermissions() {
+        return RolePermissionCatalog.ALL_PERMISSIONS.stream().sorted().toList();
+    }
+
+    public UserDTO updatePermissions(Long id, List<String> requestedPermissions, User actor) {
+        User u = findById(id);
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), roleName(u));
+        if (requestedPermissions == null) {
+            throw new IllegalArgumentException("Permissions list is required.");
+        }
+
+        Set<String> normalizedRequested = requestedPermissions.stream()
+                .filter(StringUtils::hasText)
+                .map(p -> p.trim().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+
+        for (String permName : normalizedRequested) {
+            if (!RolePermissionCatalog.ALL_PERMISSIONS.contains(permName)) {
+                throw new IllegalArgumentException("Unknown permission: " + permName);
+            }
+        }
+
+        boolean actorIsSuperAdmin = RolePermissionCatalog.SUPER_ADMIN.equals(actorRoleName(actor));
+        if (!actorIsSuperAdmin) {
+            Set<String> actorPerms = actor != null
+                    ? actor.getEffectivePermissions().stream().map(Permission::getName).collect(Collectors.toSet())
+                    : Set.of();
+            Set<String> currentTargetPerms = u.getEffectivePermissions().stream()
+                    .map(Permission::getName)
+                    .collect(Collectors.toSet());
+            for (String permName : normalizedRequested) {
+                if (!currentTargetPerms.contains(permName) && !actorPerms.contains(permName)) {
+                    throw new AccessDeniedException("You cannot grant permission you do not hold: " + permName);
+                }
+            }
+        }
+
+        Set<String> rolePermNames = u.getRole() != null && u.getRole().getPermissions() != null
+                ? u.getRole().getPermissions().stream().map(Permission::getName).collect(Collectors.toSet())
+                : Set.of();
+
+        Set<Permission> newGranted = new HashSet<>();
+        for (String permName : normalizedRequested) {
+            if (!rolePermNames.contains(permName)) {
+                newGranted.add(resolvePermission(permName));
+            }
+        }
+
+        Set<Permission> newRevoked = new HashSet<>();
+        for (String rolePermName : rolePermNames) {
+            if (!normalizedRequested.contains(rolePermName)) {
+                newRevoked.add(resolvePermission(rolePermName));
+            }
+        }
+
+        u.setGrantedPermissions(newGranted);
+        u.setRevokedPermissions(newRevoked);
+        User saved = userRepo.save(u);
+        log(actor, "STAFF_PERMISSIONS_UPDATED", saved,
+                "Updated access permissions for " + saved.getEmployeeId()
+                        + " (+ " + newGranted.size() + " granted, - " + newRevoked.size() + " revoked)");
+        return toDTO(saved);
+    }
+
+    public UserDTO addPermission(Long id, String permissionName, User actor) {
+        if (!StringUtils.hasText(permissionName)) {
+            throw new IllegalArgumentException("Permission name is required.");
+        }
+        User u = findById(id);
+        Set<String> current = u.getEffectivePermissions().stream()
+                .map(Permission::getName)
+                .collect(Collectors.toSet());
+        current.add(permissionName.trim().toUpperCase(Locale.ROOT));
+        return updatePermissions(id, List.copyOf(current), actor);
+    }
+
+    public UserDTO removePermission(Long id, String permissionName, User actor) {
+        if (!StringUtils.hasText(permissionName)) {
+            throw new IllegalArgumentException("Permission name is required.");
+        }
+        User u = findById(id);
+        String normalized = permissionName.trim().toUpperCase(Locale.ROOT);
+        Set<String> current = u.getEffectivePermissions().stream()
+                .map(Permission::getName)
+                .collect(Collectors.toSet());
+        current.remove(normalized);
+        return updatePermissions(id, List.copyOf(current), actor);
+    }
+
+    public UserDTO resetPermissions(Long id, User actor) {
+        User u = findById(id);
+        roleGrantPolicy.requireManageableTarget(actorRoleName(actor), roleName(u));
+        if (u.getGrantedPermissions() != null) u.getGrantedPermissions().clear();
+        if (u.getRevokedPermissions() != null) u.getRevokedPermissions().clear();
+        User saved = userRepo.save(u);
+        log(actor, "STAFF_PERMISSIONS_RESET", saved, "Reset access permissions to role defaults for " + saved.getEmployeeId());
+        return toDTO(saved);
+    }
+
+    private Permission resolvePermission(String permName) {
+        return permissionRepo.findByName(permName)
+                .orElseGet(() -> permissionRepo.save(Permission.builder().name(permName).build()));
+    }
+
     public void updateLastLogin(String identifier) {
         userRepo.findByEmail(identifier)
                 .or(() -> userRepo.findByUsername(identifier))
@@ -237,7 +349,7 @@ public class UserService {
     }
 
     private UserDTO toDTO(User u) {
-        Set<Permission> permissions = u.getRole() != null ? u.getRole().getPermissions() : Set.of();
+        Set<Permission> permissions = u.getEffectivePermissions();
         return UserDTO.builder()
                 .id(u.getId()).username(u.getUsername())
                 .firstName(u.getFirstName()).lastName(u.getLastName())
